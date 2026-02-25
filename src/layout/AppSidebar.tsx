@@ -82,6 +82,12 @@ const academicsItems: NavItem[] = [
     permission: "classes.view",
   },
   {
+    icon: <UserCircleIcon />,
+    name: "Lecturers",
+    path: "/lecturers",
+    permission: "lecturers.view",
+  },
+  {
     icon: <PageIcon />,
     name: "Admission",
     path: "/admission",
@@ -98,6 +104,11 @@ const academicsItems: NavItem[] = [
     name: "Examinations",
     path: "/examinations",
     permission: "examinations.view",
+    subItems: [
+      { name: "Exam Records", path: "/examinations", permission: "examinations.view" },
+      { name: "Record Exams", path: "/examinations/record", permission: "examinations.create" },
+      { name: "Student Transcript", path: "/examinations/transcript", permission: "examinations.view" },
+    ],
   },
   {
     icon: <DollarLineIcon />,

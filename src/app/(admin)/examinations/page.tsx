@@ -11,9 +11,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import Badge from "@/components/ui/badge/Badge";
+import Link from "next/link";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { DownloadIcon, PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 
 // Types
 type FacultyInfo = { id: number; name: string; code: string };
@@ -108,17 +109,6 @@ export default function ExaminationsPage() {
   const [semesters, setSemesters] = useState<SemesterOption[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Template download: Faculty -> Department -> Class
-  const [templateFacultyId, setTemplateFacultyId] = useState("");
-  const [templateDepartmentId, setTemplateDepartmentId] = useState("");
-  const [templateClassId, setTemplateClassId] = useState("");
-  const [templateLoading, setTemplateLoading] = useState(false);
-
-  // Import from Excel
-  const [importClassId, setImportClassId] = useState("");
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [importLoading, setImportLoading] = useState(false);
-  const [importResult, setImportResult] = useState<{ created: number; updated: number; errors?: string[] } | null>(null);
   const [search, setSearch] = useState("");
   const [filterSemester, setFilterSemester] = useState("");
   const [filterCourseId, setFilterCourseId] = useState("");
@@ -143,7 +133,6 @@ export default function ExaminationsPage() {
     year: new Date().getFullYear().toString(),
     midExam: "",
     finalExam: "",
-    assessment: "",
     project: "",
     assignment: "",
     presentation: "",
@@ -207,70 +196,6 @@ export default function ExaminationsPage() {
     } catch { /* empty */ }
   }, []);
 
-  // Filtered departments (by faculty) and classes (by department)
-  const filteredDepartments = templateFacultyId
-    ? departments.filter((d) => (d.facultyId ?? d.faculty?.id) === Number(templateFacultyId))
-    : departments;
-  const filteredClasses = templateDepartmentId
-    ? classes.filter((c) => c.course?.department?.id === Number(templateDepartmentId))
-    : classes;
-
-  const handleDownloadTemplate = async () => {
-    if (!templateClassId) return;
-    setTemplateLoading(true);
-    setImportResult(null);
-    try {
-      const params = new URLSearchParams({ classId: templateClassId });
-      if (templateFacultyId) params.set("facultyId", templateFacultyId);
-      if (templateDepartmentId) params.set("departmentId", templateDepartmentId);
-      const res = await authFetch(`/api/examinations/template?${params.toString()}`);
-      if (!res.ok) {
-        const data = await res.json();
-        alert(data.error || "Failed to download template");
-        return;
-      }
-      const blob = await res.blob();
-      const cd = res.headers.get("Content-Disposition");
-      const match = cd?.match(/filename="?([^";\n]+)"?/);
-      const filename = match ? match[1] : "Exam_Template.xlsx";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      alert("Failed to download template");
-    }
-    setTemplateLoading(false);
-  };
-
-  const handleImportExcel = async () => {
-    if (!importClassId || !importFile) return;
-    setImportLoading(true);
-    setImportResult(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", importFile);
-      fd.append("classId", importClassId);
-      const res = await authFetch("/api/examinations/import", {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Import failed");
-        return;
-      }
-      setImportResult({ created: data.created, updated: data.updated, errors: data.errors });
-      setImportFile(null);
-      fetchRecords();
-    } catch {
-      alert("Import failed");
-    }
-    setImportLoading(false);
-  };
-
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
@@ -303,25 +228,7 @@ export default function ExaminationsPage() {
     );
   });
 
-  // Open add/edit modal
-  const openAdd = () => {
-    setEditingRecord(null);
-    setForm({
-      studentId: "",
-      courseId: "",
-      semester: semesters[0]?.name ?? "",
-      year: new Date().getFullYear().toString(),
-      midExam: "",
-      finalExam: "",
-      assessment: "",
-      project: "",
-      assignment: "",
-      presentation: "",
-    });
-    setFormError("");
-    setShowModal(true);
-  };
-
+  // Open edit modal
   const openEdit = (r: ExamRecord) => {
     setEditingRecord(r);
     setForm({
@@ -331,7 +238,6 @@ export default function ExaminationsPage() {
       year: r.year.toString(),
       midExam: (r.midExam || 0).toString(),
       finalExam: (r.finalExam || 0).toString(),
-      assessment: (r.assessment || 0).toString(),
       project: (r.project || 0).toString(),
       assignment: (r.assignment || 0).toString(),
       presentation: (r.presentation || 0).toString(),
@@ -351,7 +257,7 @@ export default function ExaminationsPage() {
         year: Number(form.year),
         midExam: Number(form.midExam || 0),
         finalExam: Number(form.finalExam || 0),
-        assessment: Number(form.assessment || 0),
+        assessment: 0,
         project: Number(form.project || 0),
         assignment: Number(form.assignment || 0),
         presentation: Number(form.presentation || 0),
@@ -403,11 +309,10 @@ export default function ExaminationsPage() {
     setGpaLoading(false);
   };
 
-  // Compute live total in form
+  // Compute live total in form (no Quiz - Assignment1, Assignment2 only)
   const liveTotal =
     Number(form.midExam || 0) +
     Number(form.finalExam || 0) +
-    Number(form.assessment || 0) +
     Number(form.project || 0) +
     Number(form.assignment || 0) +
     Number(form.presentation || 0);
@@ -432,145 +337,15 @@ export default function ExaminationsPage() {
 
   return (
     <div>
-      <PageBreadCrumb pageTitle="Examinations" />
+      <PageBreadCrumb pageTitle="Exam Records" />
 
-      {/* Download Template & Import from Excel */}
-      {hasPermission("examinations.create") && (
-        <div className="mb-6 grid gap-6 sm:grid-cols-2">
-          {/* 1. Download Template */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/5">
-            <h3 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">
-              Download Exam Template
-            </h3>
-            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-              Select faculty, department, and class to download an Excel template with students. Fill in marks and import below.
-            </p>
-            <div className="flex flex-col gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Faculty</label>
-                <select
-                  value={templateFacultyId}
-                  onChange={(e) => {
-                    setTemplateFacultyId(e.target.value);
-                    setTemplateDepartmentId("");
-                    setTemplateClassId("");
-                  }}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-transparent px-3 text-sm text-gray-800 outline-none dark:border-gray-700 dark:text-white/80"
-                >
-                  <option value="">All Faculties</option>
-                  {faculties.map((f) => (
-                    <option key={f.id} value={f.id}>{f.code} - {f.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Department</label>
-                <select
-                  value={templateDepartmentId}
-                  onChange={(e) => {
-                    setTemplateDepartmentId(e.target.value);
-                    setTemplateClassId("");
-                  }}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-transparent px-3 text-sm text-gray-800 outline-none dark:border-gray-700 dark:text-white/80"
-                >
-                  <option value="">All Departments</option>
-                  {filteredDepartments.map((d) => (
-                    <option key={d.id} value={d.id}>{d.code} - {d.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Class *</label>
-                <select
-                  value={templateClassId}
-                  onChange={(e) => setTemplateClassId(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-transparent px-3 text-sm text-gray-800 outline-none dark:border-gray-700 dark:text-white/80"
-                >
-                  <option value="">Select Class</option>
-                  {filteredClasses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.course?.code} - {c.name} ({c.semester} {c.year})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <Button
-                size="sm"
-                onClick={handleDownloadTemplate}
-                disabled={!templateClassId || templateLoading}
-              >
-                <DownloadIcon className="mr-1.5 h-4 w-4" />
-                {templateLoading ? "Downloading..." : "Download Template"}
-              </Button>
-            </div>
-          </div>
-
-          {/* 2. Import from Excel */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/5">
-            <h3 className="mb-4 text-base font-semibold text-gray-800 dark:text-white/90">
-              Import Exam Records from Excel
-            </h3>
-            <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-              Upload a filled template to create or update exam records for the selected class.
-            </p>
-            <div className="flex flex-col gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Class *</label>
-                <select
-                  value={importClassId}
-                  onChange={(e) => setImportClassId(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-transparent px-3 text-sm text-gray-800 outline-none dark:border-gray-700 dark:text-white/80"
-                >
-                  <option value="">Select Class</option>
-                  {classes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.course?.code} - {c.name} ({c.semester} {c.year})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Excel File *</label>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                  className="block w-full rounded-lg border border-gray-200 bg-transparent px-3 py-2 text-sm text-gray-800 outline-none dark:border-gray-700 dark:text-white/80"
-                />
-              </div>
-              <Button
-                size="sm"
-                onClick={handleImportExcel}
-                disabled={!importClassId || !importFile || importLoading}
-              >
-                {importLoading ? "Importing..." : "Import from Excel"}
-              </Button>
-              {importResult && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm dark:border-gray-700 dark:bg-white/5">
-                  <p className="font-medium text-gray-800 dark:text-white/90">
-                    Imported: {importResult.created} created, {importResult.updated} updated
-                  </p>
-                  {importResult.errors && importResult.errors.length > 0 && (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-amber-600 dark:text-amber-400">
-                        {importResult.errors.length} error(s)
-                      </summary>
-                      <ul className="mt-1 list-inside list-disc text-xs text-gray-600 dark:text-gray-400">
-                        {importResult.errors.slice(0, 5).map((err, i) => (
-                          <li key={i}>{err}</li>
-                        ))}
-                        {importResult.errors.length > 5 && (
-                          <li>... and {importResult.errors.length - 5} more</li>
-                        )}
-                      </ul>
-                    </details>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="mb-4 flex items-center justify-between">
+        {hasPermission("examinations.create") && (
+          <Link href="/examinations/record" className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-700 transition hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-500/10 dark:text-brand-400 dark:hover:bg-brand-500/20">
+            Record Exams →
+          </Link>
+        )}
+      </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/5">
         {/* Header */}
@@ -584,10 +359,13 @@ export default function ExaminationsPage() {
             </Badge>
           </div>
           {hasPermission("examinations.create") && (
-            <Button size="sm" onClick={openAdd}>
-              <PlusIcon className="mr-1 h-4 w-4" />
+            <Link
+              href="/examinations/record"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-medium text-white shadow-theme-xs transition hover:bg-brand-600"
+            >
+              <PlusIcon className="h-4 w-4" />
               Add Record
-            </Button>
+            </Link>
           )}
         </div>
 
@@ -642,9 +420,8 @@ export default function ExaminationsPage() {
                 <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Semester</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Mid /20</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Final /40</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Assess /10</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Proj /10</TableCell>
-                <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Assign /10</TableCell>
+                <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Asg2 /10</TableCell>
+                <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Asg1 /10</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Pres /10</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Total</TableCell>
                 <TableCell isHeader className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Grade</TableCell>
@@ -693,7 +470,6 @@ export default function ExaminationsPage() {
                     </TableCell>
                     <TableCell className="px-5 py-3 text-center text-sm text-gray-700 dark:text-gray-300">{r.midExam ?? 0}</TableCell>
                     <TableCell className="px-5 py-3 text-center text-sm text-gray-700 dark:text-gray-300">{r.finalExam ?? 0}</TableCell>
-                    <TableCell className="px-5 py-3 text-center text-sm text-gray-700 dark:text-gray-300">{r.assessment ?? 0}</TableCell>
                     <TableCell className="px-5 py-3 text-center text-sm text-gray-700 dark:text-gray-300">{r.project ?? 0}</TableCell>
                     <TableCell className="px-5 py-3 text-center text-sm text-gray-700 dark:text-gray-300">{r.assignment ?? 0}</TableCell>
                     <TableCell className="px-5 py-3 text-center text-sm text-gray-700 dark:text-gray-300">{r.presentation ?? 0}</TableCell>
@@ -863,19 +639,7 @@ export default function ExaminationsPage() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Assessment <span className="text-gray-400">(/10)</span></label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10"
-                    step="0.5"
-                    value={form.assessment}
-                    onChange={(e) => setForm({ ...form, assessment: e.target.value })}
-                    className="h-10 w-full rounded-lg border border-gray-200 bg-transparent px-3 text-sm text-gray-800 outline-none focus:border-brand-300 dark:border-gray-700 dark:text-white/80"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Project <span className="text-gray-400">(/10)</span></label>
+                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Assignment 2 <span className="text-gray-400">(/10)</span></label>
                   <input
                     type="number"
                     min="0"
@@ -887,7 +651,7 @@ export default function ExaminationsPage() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Assignment <span className="text-gray-400">(/10)</span></label>
+                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Assignment 1 <span className="text-gray-400">(/10)</span></label>
                   <input
                     type="number"
                     min="0"
@@ -917,7 +681,7 @@ export default function ExaminationsPage() {
             <div className="mt-5 flex items-center gap-6 rounded-xl bg-gray-50 px-5 py-3 dark:bg-white/5">
               <div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Total</p>
-                <p className="text-2xl font-bold text-gray-800 dark:text-white/90">{liveTotal}<span className="text-sm font-normal text-gray-400">/100</span></p>
+                <p className="text-2xl font-bold text-gray-800 dark:text-white/90">{liveTotal}<span className="text-sm font-normal text-gray-400">/90</span></p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Grade</p>

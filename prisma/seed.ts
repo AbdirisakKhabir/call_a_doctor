@@ -48,6 +48,10 @@ const DEFAULT_PERMISSIONS = [
   { name: "semesters.create", description: "Create semesters", module: "semesters" },
   { name: "semesters.edit", description: "Edit semesters", module: "semesters" },
   { name: "semesters.delete", description: "Delete semesters", module: "semesters" },
+  { name: "lecturers.view", description: "View lecturers", module: "lecturers" },
+  { name: "lecturers.create", description: "Create lecturers", module: "lecturers" },
+  { name: "lecturers.edit", description: "Edit lecturers", module: "lecturers" },
+  { name: "lecturers.delete", description: "Delete lecturers", module: "lecturers" },
 ];
 
 async function main() {

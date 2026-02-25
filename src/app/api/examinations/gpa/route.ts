@@ -25,7 +25,15 @@ export async function GET(req: NextRequest) {
         firstName: true,
         lastName: true,
         imageUrl: true,
-        department: { select: { id: true, name: true, code: true } },
+        admissionDate: true,
+        department: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            faculty: { select: { id: true, name: true, code: true } },
+          },
+        },
       },
     });
 

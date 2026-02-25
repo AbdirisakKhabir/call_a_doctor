@@ -2,19 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import * as XLSX from "xlsx";
-import { calculateTotal, getGradeInfo } from "@/lib/grades";
+import { calculateTotal, getGradeInfo, getGradePointsFromGrade } from "@/lib/grades";
 
-const HEADERS = [
-  "Student ID",
-  "First Name",
-  "Last Name",
-  "Mid Exam (/20)",
-  "Final Exam (/40)",
-  "Assessment (/10)",
-  "Project (/10)",
-  "Assignment (/10)",
-  "Presentation (/10)",
-];
+/** Find column index by flexible header matching */
+function findCol(headerRow: string[], patterns: RegExp[]): number {
+  for (const p of patterns) {
+    const idx = headerRow.findIndex((h) => p.test(String(h).trim()));
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -56,21 +53,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const headerRow = data[0] as string[];
-    const midIdx = headerRow.findIndex((h) => /mid/i.test(String(h)));
-    const finalIdx = headerRow.findIndex((h) => /final/i.test(String(h)));
-    const assessIdx = headerRow.findIndex((h) => /assessment/i.test(String(h)));
-    const projectIdx = headerRow.findIndex((h) => /project/i.test(String(h)));
-    const assignIdx = headerRow.findIndex((h) => /assignment/i.test(String(h)));
-    const presentIdx = headerRow.findIndex((h) => /presentation/i.test(String(h)));
-    const studentIdIdx = headerRow.findIndex((h) => /student\s*id/i.test(String(h)));
+    const headerRow = (data[0] as string[]).map((h) => String(h ?? "").trim());
 
+    // Student ID: "ID Card", "Student ID", etc.
+    const studentIdIdx = findCol(headerRow, [
+      /^id\s*card$/i,
+      /^student\s*id$/i,
+      /^studentid$/i,
+    ]);
     if (studentIdIdx < 0) {
       return NextResponse.json(
-        { error: "Excel must contain a 'Student ID' column" },
+        { error: "Excel must contain an 'ID Card' or 'Student ID' column" },
         { status: 400 }
       );
     }
+
+    // Assessment columns - all optional (empty = 0). No Quiz - Assignment1, Assignment2 only.
+    const midIdx = findCol(headerRow, [/^mid\s*term$/i, /^mid\s*exam/i, /^mid$/i]);
+    const finalIdx = findCol(headerRow, [/^final$/i, /^final\s*exam/i]);
+    const assign2Idx = findCol(headerRow, [/^assignment2$/i, /^assign2$/i]);
+    const assign1Idx = findCol(headerRow, [/^assignment1$/i, /^assignment$/i, /^assign1$/i]);
+    const attendanceIdx = findCol(headerRow, [/^attendance$/i]);
+
+    // Pre-computed values from file - use when provided
+    const totalIdx = findCol(headerRow, [/^total$/i]);
+    const gradeIdx = findCol(headerRow, [/^grade$/i]);
+    const gpaIdx = findCol(headerRow, [/^gpa$/i]);
 
     const created: number[] = [];
     const updated: number[] = [];
@@ -93,36 +101,58 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
+      // Parse optional assessment columns - empty or missing = 0. No Quiz.
       const mid = parseNum(row[midIdx]);
       const final = parseNum(row[finalIdx]);
-      const assess = parseNum(row[assessIdx]);
-      const project = parseNum(row[projectIdx]);
-      const assign = parseNum(row[assignIdx]);
-      const present = parseNum(row[presentIdx]);
-
-      if (mid < 0 || mid > 20) {
-        errors.push(`Row ${i + 1}: Mid Exam must be 0-20`);
-        continue;
-      }
-      if (final < 0 || final > 40) {
-        errors.push(`Row ${i + 1}: Final Exam must be 0-40`);
-        continue;
-      }
-      if (assess < 0 || assess > 10 || project < 0 || project > 10 || assign < 0 || assign > 10 || present < 0 || present > 10) {
-        errors.push(`Row ${i + 1}: Assessment, Project, Assignment, Presentation must be 0-10`);
-        continue;
-      }
+      const assign2 = parseNum(row[assign2Idx]);
+      const assign1 = parseNum(row[assign1Idx]);
+      const attendance = parseNum(row[attendanceIdx]);
 
       const marks = {
         midExam: mid,
         finalExam: final,
-        assessment: assess,
-        project,
-        assignment: assign,
-        presentation: present,
+        assessment: 0, // No Quiz
+        project: assign2,
+        assignment: assign1,
+        presentation: attendance,
       };
-      const totalMarks = calculateTotal(marks);
-      const { grade, gradePoints } = getGradeInfo(totalMarks);
+
+      // Validate only when value is provided and column exists
+      if (midIdx >= 0 && (marks.midExam < 0 || marks.midExam > 20)) {
+        errors.push(`Row ${i + 1}: Mid Term must be 0-20`);
+        continue;
+      }
+      if (finalIdx >= 0 && (marks.finalExam < 0 || marks.finalExam > 40)) {
+        errors.push(`Row ${i + 1}: Final must be 0-40`);
+        continue;
+      }
+      const max10 = [marks.assessment, marks.project, marks.assignment, marks.presentation];
+      if (max10.some((v) => v < 0 || v > 10)) {
+        errors.push(`Row ${i + 1}: Assignment1, Assignment2, Attendance must be 0-10`);
+        continue;
+      }
+
+      let totalMarks: number;
+      let grade: string;
+      let gradePoints: number;
+
+      const fileTotal = totalIdx >= 0 ? parseNumOrNull(row[totalIdx]) : null;
+      const fileGrade = gradeIdx >= 0 ? String(row[gradeIdx] ?? "").trim() : "";
+      const fileGpa = gpaIdx >= 0 ? parseNumOrNull(row[gpaIdx]) : null;
+
+      // Use Total from file when provided; otherwise calculate from components
+      totalMarks =
+        fileTotal !== null && fileTotal >= 0 ? fileTotal : calculateTotal(marks);
+
+      if (fileGrade && /^[A-D][+-]?|F$/i.test(fileGrade)) {
+        grade = fileGrade.toUpperCase().replace(/^([A-D])$/, "$1");
+        const pts = getGradePointsFromGrade(grade);
+        gradePoints = fileGpa !== null ? fileGpa : pts ?? 0;
+      } else {
+        const info = getGradeInfo(totalMarks);
+        grade = info.grade;
+        gradePoints = info.gradePoints;
+      }
 
       const existing = await prisma.examRecord.findUnique({
         where: {
@@ -138,7 +168,7 @@ export async function POST(req: NextRequest) {
       if (existing) {
         await prisma.examRecord.update({
           where: { id: existing.id },
-          data: { ...marks, totalMarks, grade, gradePoints },
+          data: { ...marks, totalMarks, grade, gradePoints, status: "draft" },
         });
         updated.push(existing.id);
       } else {
@@ -152,6 +182,7 @@ export async function POST(req: NextRequest) {
             totalMarks,
             grade,
             gradePoints,
+            status: "draft",
           },
         });
         created.push(rec.id);
@@ -173,4 +204,10 @@ function parseNum(val: string | number | undefined): number {
   if (val === undefined || val === null || val === "") return 0;
   const n = Number(val);
   return Number.isNaN(n) ? 0 : n;
+}
+
+function parseNumOrNull(val: string | number | undefined): number | null {
+  if (val === undefined || val === null || val === "") return null;
+  const n = Number(val);
+  return Number.isNaN(n) ? null : n;
 }

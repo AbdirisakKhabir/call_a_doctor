@@ -68,6 +68,19 @@ model Faculty {
   @@map("faculties")
 }
 
+model Lecturer {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  phone     String?
+  degree    String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("lecturers")
+}
+
 model Department {
   id          Int       @id @default(autoincrement())
   name        String    @unique
@@ -228,6 +241,7 @@ model ExamRecord {
   totalMarks   Float    @default(0) // sum of all (out of 100)
   grade        String? // "A", "A-", "B+", "B", "B-", "C+", "C", "D", "F"
   gradePoints  Float?   @default(0) // 4.0, 3.7, 3.3, 3.0, 2.7, 2.3, 2.0, 1.0, 0.0
+  status       String   @default("approved") // "draft" | "approved" - draft until instructor verifies
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

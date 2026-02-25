@@ -70,22 +70,27 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Match ATU Berbera grade reporting form format (Assignment1, Assignment2 - no Quiz)
     const headers = [
-      "Student ID",
-      "First Name",
-      "Last Name",
-      "Mid Exam (/20)",
-      "Final Exam (/40)",
-      "Assessment (/10)",
-      "Project (/10)",
-      "Assignment (/10)",
-      "Presentation (/10)",
+      "S/No",
+      "ID Card",
+      "Student's Name",
+      "Mid Term",
+      "Assignment2",
+      "Assignment1",
+      "final",
+      "Attendance",
+      "Total",
+      "Grade",
+      "GPA",
     ];
 
-    const rows = students.map((s) => [
+    const rows = students.map((s, idx) => [
+      idx + 1,
       s.studentId,
-      s.firstName,
-      s.lastName,
+      `${s.firstName} ${s.lastName}`,
+      "",
+      "",
       "",
       "",
       "",
@@ -99,15 +104,17 @@ export async function GET(req: NextRequest) {
 
     // Set column widths
     ws["!cols"] = [
-      { wch: 18 },
-      { wch: 15 },
-      { wch: 15 },
+      { wch: 6 },
       { wch: 14 },
-      { wch: 14 },
-      { wch: 14 },
+      { wch: 28 },
+      { wch: 10 },
       { wch: 12 },
-      { wch: 14 },
-      { wch: 16 },
+      { wch: 12 },
+      { wch: 8 },
+      { wch: 12 },
+      { wch: 8 },
+      { wch: 6 },
+      { wch: 6 },
     ];
 
     const wb = XLSX.utils.book_new();

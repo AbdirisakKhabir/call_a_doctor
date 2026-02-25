@@ -762,6 +762,25 @@ span.flatpickr-weekday,
   .print\:inline {
     display: inline !important;
   }
+  .break-before-page {
+    page-break-before: always;
+  }
+  .transcript-document {
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .transcript-table td,
+  .transcript-table th {
+    line-height: 1.2 !important;
+    padding: 2px 4px !important;
+  }
+  .transcript-row td {
+    padding: 1px 4px !important;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
   body {
     background: white;
   }

@@ -61,6 +61,13 @@ export function getGradeInfo(totalMarks: number): GradeInfo {
   return { grade: "F", gradePoints: 0.0 };
 }
 
+/** Parse grade letter (A, B+, F, etc.) to grade points. Returns null if unknown. */
+export function getGradePointsFromGrade(gradeStr: string): number | null {
+  const normalized = String(gradeStr || "").trim().toUpperCase();
+  const entry = GRADE_SCALE.find((g) => g.grade.toUpperCase() === normalized);
+  return entry ? entry.points : null;
+}
+
 export interface SemesterGPA {
   semester: string;
   year: number;
