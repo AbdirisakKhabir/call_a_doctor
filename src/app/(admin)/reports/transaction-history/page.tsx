@@ -52,7 +52,7 @@ export default function TransactionHistoryReportPage() {
   }, [bankId, type, dateFrom, dateTo]);
 
   useEffect(() => {
-    authFetch("/api/banks").then((r) => r.ok && r.json().then(setBanks));
+    authFetch("/api/banks").then((r) => { if (r.ok) r.json().then(setBanks); });
   }, []);
 
   useEffect(() => {
@@ -248,9 +248,7 @@ export default function TransactionHistoryReportPage() {
                   }`}>
                     {t.type === "deposit" || t.type === "transfer_in" ? "+" : "-"}${t.amount.toLocaleString()}
                   </TableCell>
-                  <TableCell className="max-w-[200px] truncate" title={t.description || ""}>
-                    {t.description || "—"}
-                  </TableCell>
+                  <TableCell><span className="max-w-[200px] truncate block" title={t.description || ""}>{t.description || "—"}</span></TableCell>
                   <TableCell>
                     {t.student
                       ? `${t.student.firstName} ${t.student.lastName} (${t.student.studentId})`
@@ -275,7 +273,7 @@ export default function TransactionHistoryReportPage() {
                       -${transactions.filter((t) => t.type === "withdrawal" || t.type === "transfer_out").reduce((s, t) => s + t.amount, 0).toLocaleString()}
                     </span>
                   </TableCell>
-                  <TableCell colSpan={3} />
+                  <TableCell colSpan={3}>&nbsp;</TableCell>
                 </TableRow>
               )}
             </TableBody>

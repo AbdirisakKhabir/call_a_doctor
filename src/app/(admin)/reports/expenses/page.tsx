@@ -183,7 +183,7 @@ export default function ExpenseReportPage() {
                     data.expenses.map((e) => (
                       <TableRow key={e.id}>
                         <TableCell>{new Date(e.createdAt).toLocaleDateString()}</TableCell>
-                        <TableCell className="max-w-[180px] truncate" title={e.description}>{e.description}</TableCell>
+                        <TableCell><span className="max-w-[180px] truncate block" title={e.description}>{e.description}</span></TableCell>
                         <TableCell>{e.category || "—"}</TableCell>
                         <TableCell>{e.bank ? `${e.bank.code}` : "—"}</TableCell>
                         <TableCell className="text-right font-semibold text-red-600 dark:text-red-400">

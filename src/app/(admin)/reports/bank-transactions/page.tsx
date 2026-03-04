@@ -43,7 +43,7 @@ export default function BankTransactionsReportPage() {
   }, [bankId, dateFrom, dateTo]);
 
   useEffect(() => {
-    authFetch("/api/banks").then((r) => r.ok && r.json().then(setBanks));
+    authFetch("/api/banks").then((r) => { if (r.ok) r.json().then(setBanks); });
   }, []);
 
   useEffect(() => {

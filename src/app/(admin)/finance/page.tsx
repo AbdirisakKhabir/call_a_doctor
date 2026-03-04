@@ -264,7 +264,7 @@ export default function FinancePage() {
       setReceiptNumber("");
       setTransactionId("");
       setPayNote("");
-      authFetch("/api/banks").then((r) => r.ok && r.json().then(setBanks));
+      authFetch("/api/banks").then((r) => { if (r.ok) r.json().then(setBanks); });
     } catch {
       setPayError("Network error");
     } finally {
