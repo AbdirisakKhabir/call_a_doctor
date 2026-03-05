@@ -440,7 +440,7 @@ export default function RecordExamsPage() {
                     <TableCell isHeader className="w-12 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300">#</TableCell>
                     <TableCell isHeader className="min-w-[110px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300">ID Card</TableCell>
                     <TableCell isHeader className="min-w-[180px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300">Student</TableCell>
-                    <TableCell isHeader className="w-16 px-2 py-3 text-center text-xs font-semibold uppercase text-gray-600 dark:text-gray-300" title="Attendance % (Present+Excused)">Attend %</TableCell>
+                    <TableCell isHeader className="w-16 px-2 py-3 text-center text-xs font-semibold uppercase text-gray-600 dark:text-gray-300"><span title="Attendance % (Present+Excused)">Attend %</span></TableCell>
                     <TableCell isHeader className="w-20 px-2 py-3 text-center text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">Mid</TableCell>
                     <TableCell isHeader className="w-20 px-2 py-3 text-center text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">Asg2</TableCell>
                     <TableCell isHeader className="w-20 px-2 py-3 text-center text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">Asg1</TableCell>
@@ -459,8 +459,8 @@ export default function RecordExamsPage() {
                         <TableCell className="px-3 py-2 text-center text-sm text-gray-500 dark:text-gray-400">{idx + 1}</TableCell>
                         <TableCell className="px-3 py-2 font-mono text-sm text-gray-800 dark:text-white/90">{r.student.studentId}</TableCell>
                         <TableCell className="px-3 py-2 text-sm font-medium text-gray-800 dark:text-white/90">{r.student.firstName} {r.student.lastName}</TableCell>
-                        <TableCell className="px-3 py-2 text-center text-sm text-gray-600 dark:text-gray-400" title="Attendance % (10% of grade)">
-                          {r.attendance != null ? `${r.attendance.attendancePercent}%` : "—"}
+                        <TableCell className="px-3 py-2 text-center text-sm text-gray-600 dark:text-gray-400">
+                          <span title="Attendance % (10% of grade)">{r.attendance != null ? `${r.attendance.attendancePercent}%` : "—"}</span>
                         </TableCell>
                         <TableCell className="p-2"><input type="number" min={0} max={20} step={0.5} value={rec.midExam || ""} onChange={(e) => updateRecordRow(idx, "midExam", e.target.value)} className={inputCellClass} /></TableCell>
                         <TableCell className="p-2"><input type="number" min={0} max={10} step={0.5} value={rec.project || ""} onChange={(e) => updateRecordRow(idx, "project", e.target.value)} className={inputCellClass} /></TableCell>

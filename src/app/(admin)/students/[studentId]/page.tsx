@@ -228,7 +228,7 @@ export default function StudentProfilePage() {
                   {student.department.name} ({student.department.code})
                 </p>
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {student.program || "—"} {student.class && `| ${student.class.course.code}`}
+                  {student.program || "—"} {student.class && `| ${student.class.department?.code ?? "—"}`}
                 </p>
               </div>
             </div>

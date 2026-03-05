@@ -14,8 +14,8 @@ type ClassInfo = {
   name: string;
   semester: string;
   year: number;
-  course: { code: string };
   departmentId?: number;
+  department?: { id: number; code: string; name: string };
 };
 
 export type StudentFormData = {
@@ -340,8 +340,8 @@ export default function StudentRegistrationForm({
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Class</label>
               <select value={form.classId} onChange={(e) => setForm((f) => ({ ...f, classId: e.target.value }))} className={selectClass}>
                 <option value="">Select class (optional)</option>
-                {classes.filter((c) => !form.departmentId || c.departmentId === Number(form.departmentId)).map((c) => (
-                  <option key={c.id} value={String(c.id)}>{c.department?.code} - {c.name} ({c.semester} {c.year})</option>
+                {classes.filter((c) => !form.departmentId || (c.departmentId ?? c.department?.id) === Number(form.departmentId)).map((c) => (
+                  <option key={c.id} value={String(c.id)}>{c.department?.code ?? "—"} - {c.name} ({c.semester} {c.year})</option>
                 ))}
               </select>
             </div>

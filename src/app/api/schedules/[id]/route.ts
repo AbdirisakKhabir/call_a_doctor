@@ -19,7 +19,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     const body = await req.json();
     const { classId, lecturerId, dayOfWeek, shift, startTime, endTime, room } = body;
 
-    const existing = await prisma.classSchedule.findUnique({ where: { id }, select: { courseId: true, classId: true } });
+    const existing = await prisma.classSchedule.findUnique({ where: { id }, select: { courseId: true, classId: true, lecturerId: true } });
     if (!existing) return NextResponse.json({ error: "Schedule not found" }, { status: 404 });
 
     const courseId = body.courseId != null ? Number(body.courseId) : existing.courseId;

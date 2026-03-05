@@ -73,7 +73,7 @@ export default function ClassRevenueReportPage() {
     const headers = ["Class", "Course", "Department", "Semester", "Students", "Paid", "Unpaid", "Revenue"];
     const rows = revenue.map((r) => [
       r.name,
-      `${r.department.code} - ${r.department.name}`,
+      r.department ? `${r.department.code} - ${r.department.name}` : "—",
       r.department ? `${r.department.code} - ${r.department.name}` : "—",
       `${r.semester} ${r.year}`,
       r.studentCount,
@@ -186,7 +186,7 @@ export default function ClassRevenueReportPage() {
                     {revenue.map((r) => (
                       <TableRow key={r.id}>
                         <TableCell className="font-medium">{r.name}</TableCell>
-                        <TableCell>{r.department.code} - {r.department.name}</TableCell>
+                        <TableCell>{r.department ? `${r.department.code} - ${r.department.name}` : "—"}</TableCell>
                         <TableCell>{r.department ? `${r.department.code} - ${r.department.name}` : "—"}</TableCell>
                         <TableCell>{r.semester} {r.year}</TableCell>
                         <TableCell className="text-center">{r.studentCount}</TableCell>

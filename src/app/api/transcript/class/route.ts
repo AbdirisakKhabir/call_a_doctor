@@ -20,9 +20,7 @@ export async function GET(req: NextRequest) {
     const cls = await prisma.class.findUnique({
       where: { id: Number(classId) },
       include: {
-        course: {
-          select: { id: true, name: true, code: true, department: { select: { name: true, code: true } } },
-        },
+        department: { select: { id: true, name: true, code: true } },
       },
     });
 

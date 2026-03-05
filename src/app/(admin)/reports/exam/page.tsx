@@ -19,7 +19,7 @@ type ClassItem = {
   name: string;
   semester: string;
   year: number;
-  course: { code: string; name: string; department: { id: number; name: string; code: string } };
+  department: { id: number; name: string; code: string };
 };
 type ExamRecord = {
   id: number;

@@ -21,7 +21,7 @@ type ClassItem = {
   name: string;
   semester: string;
   year: number;
-  course: { code: string; name: string; department?: { id: number; name: string; code: string } };
+  department: { id: number; name: string; code: string };
 };
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -183,7 +183,7 @@ export default function StudentTransactionsReportPage() {
                 <option value="">All Classes</option>
                 {filteredClasses.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.course?.code} - {c.name} ({c.semester} {c.year})
+                    {c.department?.code} - {c.name} ({c.semester} {c.year})
                   </option>
                 ))}
               </select>

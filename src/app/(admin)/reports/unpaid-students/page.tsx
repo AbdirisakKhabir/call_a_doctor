@@ -15,7 +15,7 @@ import { authFetch } from "@/lib/api";
 import { DownloadIcon } from "@/icons";
 
 type SemesterOption = { id: number; name: string; sortOrder: number; isActive: boolean };
-type ClassOption = { id: number; name: string; semester: string; year: number; course: { code: string; name: string } };
+type ClassOption = { id: number; name: string; semester: string; year: number; department: { id: number; code: string; name: string } };
 type UnpaidStudent = {
   id: number;
   studentId: string;
@@ -38,7 +38,7 @@ export default function UnpaidStudentsReportPage() {
   const [unpaidYear, setUnpaidYear] = useState(String(CURRENT_YEAR));
   const [unpaidClassId, setUnpaidClassId] = useState("");
   const [unpaidStudents, setUnpaidStudents] = useState<UnpaidStudent[]>([]);
-  const [unpaidClassInfo, setUnpaidClassInfo] = useState<{ name: string; semester: string; year: number; course: { code: string; name: string } } | null>(null);
+  const [unpaidClassInfo, setUnpaidClassInfo] = useState<{ name: string; semester: string; year: number; department: { code: string; name: string } } | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

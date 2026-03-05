@@ -17,7 +17,7 @@ import { DownloadIcon, DollarLineIcon, UserCircleIcon } from "@/icons";
 
 type Bank = { id: number; name: string; code: string; balance: number; accountNumber?: string | null };
 type SemesterOption = { id: number; name: string; sortOrder: number; isActive: boolean };
-type ClassOption = { id: number; name: string; semester: string; year: number; course: { code: string; name: string } };
+type ClassOption = { id: number; name: string; semester: string; year: number; department: { id: number; code: string; name: string } };
 type UnpaidStudent = {
   id: number;
   studentId: string;
@@ -76,7 +76,7 @@ export default function FinancePage() {
   const [unpaidYear, setUnpaidYear] = useState(String(CURRENT_YEAR));
   const [unpaidClassId, setUnpaidClassId] = useState("");
   const [unpaidStudents, setUnpaidStudents] = useState<UnpaidStudent[]>([]);
-  const [unpaidClassInfo, setUnpaidClassInfo] = useState<{ name: string; semester: string; year: number; course: { code: string; name: string } } | null>(null);
+  const [unpaidClassInfo, setUnpaidClassInfo] = useState<{ name: string; semester: string; year: number; department: { code: string; name: string } } | null>(null);
   const [unpaidLoading, setUnpaidLoading] = useState(false);
 
   const canRecordPayment = hasPermission("finance.create") || hasPermission("finance.view");
