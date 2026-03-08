@@ -245,13 +245,14 @@ export default function RecordExamsPage() {
   };
 
   const handleImportExcel = async () => {
-    if (!importClassId || !importFile) return;
+    if (!importClassId || !importCourseId || !importFile) return;
     setImportLoading(true);
     setImportResult(null);
     try {
       const fd = new FormData();
       fd.append("file", importFile);
       fd.append("classId", importClassId);
+      fd.append("courseId", importCourseId);
       const res = await authFetch("/api/examinations/import", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) {
@@ -364,7 +365,7 @@ export default function RecordExamsPage() {
                 <input type="file" accept=".xlsx,.xls" onChange={(e) => setImportFile(e.target.files?.[0] || null)} className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-600 dark:border-gray-600 dark:bg-gray-800 dark:file:bg-brand-500/20 dark:file:text-brand-400" />
               </div>
             </div>
-            <Button size="sm" onClick={handleImportExcel} disabled={!importClassId || !importFile || importLoading}>
+            <Button size="sm" onClick={handleImportExcel} disabled={!importClassId || !importCourseId || !importFile || importLoading}>
               {importLoading ? "Importing..." : "Import from Excel"}
             </Button>
             {importResult && (

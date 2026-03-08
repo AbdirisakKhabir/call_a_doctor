@@ -48,12 +48,15 @@ export async function POST(req: NextRequest) {
       /^studentid$/i,
       /^id\s*card$/i,
     ]);
+    const fullNameIdx = findCol(headerRow, [/^full\s*name$/i, /^fullname$/i]);
     const firstNameIdx = findCol(headerRow, [/^first\s*name$/i, /^firstname$/i]);
     const lastNameIdx = findCol(headerRow, [/^last\s*name$/i, /^lastname$/i]);
 
-    if (firstNameIdx < 0 || lastNameIdx < 0) {
+    const hasFullName = fullNameIdx >= 0;
+    const hasFirstLast = firstNameIdx >= 0 && lastNameIdx >= 0;
+    if (!hasFullName && !hasFirstLast) {
       return NextResponse.json(
-        { error: "Excel must contain 'First Name' and 'Last Name' columns" },
+        { error: "Excel must contain 'Full Name' or both 'First Name' and 'Last Name' columns" },
         { status: 400 }
       );
     }
@@ -96,28 +99,39 @@ export async function POST(req: NextRequest) {
       const row = data[i] as (string | number)[];
       if (!row || row.length === 0) continue;
 
-      const firstName = String(row[firstNameIdx] ?? "").trim();
-      const lastName = String(row[lastNameIdx] ?? "").trim();
-      if (!firstName || !lastName) {
-        errors.push(`Row ${i + 1}: First name and last name are required`);
-        continue;
+      let firstName: string;
+      let lastName: string;
+      if (hasFullName) {
+        const fullName = String(row[fullNameIdx] ?? "").trim();
+        if (!fullName) {
+          errors.push(`Row ${i + 1}: Full name is required`);
+          continue;
+        }
+        const parts = fullName.split(/\s+/);
+        firstName = parts[0] ?? "";
+        lastName = parts.length > 1 ? parts.slice(1).join(" ") : "";
+      } else {
+        firstName = String(row[firstNameIdx] ?? "").trim();
+        lastName = String(row[lastNameIdx] ?? "").trim();
+        if (!firstName || !lastName) {
+          errors.push(`Row ${i + 1}: First name and last name are required`);
+          continue;
+        }
       }
 
       let studentId: string;
-      if (studentIdIdx >= 0) {
-        const provided = String(row[studentIdIdx] ?? "").trim();
-        if (provided) {
-          const existing = await prisma.student.findUnique({
-            where: { studentId: provided },
-          });
-          if (existing) {
-            errors.push(`Row ${i + 1}: Student ID "${provided}" already exists`);
-            continue;
-          }
-          studentId = provided;
-        } else {
-          studentId = `${prefix}${String(nextNum++).padStart(4, "0")}`;
+      const providedRaw = studentIdIdx >= 0 ? row[studentIdIdx] : undefined;
+      const provided = String(providedRaw ?? "").trim();
+      const hasProvidedId = provided.length > 0 && !/^0+$/.test(provided);
+      if (hasProvidedId) {
+        const existing = await prisma.student.findUnique({
+          where: { studentId: provided },
+        });
+        if (existing) {
+          errors.push(`Row ${i + 1}: Student ID "${provided}" already exists`);
+          continue;
         }
+        studentId = provided;
       } else {
         studentId = `${prefix}${String(nextNum++).padStart(4, "0")}`;
       }

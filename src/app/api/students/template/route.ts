@@ -17,8 +17,7 @@ export async function GET(req: NextRequest) {
 
     const headers = [
       "Student ID",
-      "First Name",
-      "Last Name",
+      "Full Name",
       "Mother Name",
       "Parent Phone",
       "Email",
@@ -33,9 +32,8 @@ export async function GET(req: NextRequest) {
     ];
 
     const sampleRow = [
-      "STD-2026-0001",
-      "Ahmed",
-      "Hassan",
+      "",
+      "Ahmed Hassan",
       "Fatima Hassan",
       "+252 61 1234567",
       "ahmed@example.com",

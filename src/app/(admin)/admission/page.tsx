@@ -464,7 +464,7 @@ export default function AdmissionPage() {
             </div>
             <div className="space-y-4 px-6 py-5">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Download the template, fill in student data (Student ID is optional—leave empty to auto-generate), then upload the file.
+                Download the template, fill in student data with Full Name (Student ID is optional—leave empty to auto-generate), then upload the file.
               </p>
               <Button variant="outline" startIcon={<DownloadIcon />} onClick={handleDownloadTemplate} disabled={importLoading} size="sm">
                 Download Template
