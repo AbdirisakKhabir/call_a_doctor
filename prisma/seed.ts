@@ -123,13 +123,19 @@ async function main() {
     update: {},
   });
 
-  // Create default academic years
+  // Create default academic years: 2015-2016 through 2025-2026
   const currentYear = new Date().getFullYear();
-  for (let y = currentYear - 2; y <= currentYear + 2; y++) {
-    const name = `${y}-${y + 1}`;
+  for (let startYear = 2015; startYear <= 2025; startYear++) {
+    const endYear = startYear + 1;
+    const name = `${startYear}-${endYear}`;
     await prisma.academicYear.upsert({
       where: { name },
-      create: { startYear: y, endYear: y + 1, name, isActive: y === currentYear - 1 || y === currentYear },
+      create: {
+        startYear,
+        endYear,
+        name,
+        isActive: startYear === currentYear - 1 || startYear === currentYear,
+      },
       update: {},
     });
   }
