@@ -247,7 +247,8 @@ export async function POST(req: NextRequest) {
       }
       const dept = departments.find((d) => d.id === departmentId) ?? Object.values(deptByCode).find((d) => d.id === departmentId);
 
-      const emailVal = emailIdx >= 0 ? String(row[emailIdx] ?? "").trim().toLowerCase() : null;
+      const emailRaw = emailIdx >= 0 ? String(row[emailIdx] ?? "").trim().toLowerCase() : "";
+      const emailVal = emailRaw || null; // Use null for empty - DB unique constraint rejects multiple ""
       if (emailVal) {
         const existing = await prisma.student.findUnique({
           where: { email: emailVal },
@@ -310,7 +311,24 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error("Student import error:", e);
-    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+    const err = e as Error & { code?: string; meta?: { target?: string[] } };
+    if (err.code === "P2002") {
+      const target = err.meta?.target?.join(", ") ?? "unique field";
+      return NextResponse.json(
+        { error: `Duplicate value: ${target}. Check for duplicate Student IDs or emails in your file.` },
+        { status: 400 }
+      );
+    }
+    if (err.code === "P2003") {
+      return NextResponse.json(
+        { error: "Invalid department. Please ensure the selected department exists." },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json(
+      { error: err.message || "Something went wrong" },
+      { status: 500 }
+    );
   }
 }
 
