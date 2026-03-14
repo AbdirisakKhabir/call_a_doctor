@@ -79,6 +79,9 @@ export default function AdmissionPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterDeptId, setFilterDeptId] = useState<string>("all");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [modal, setModal] = useState<"import" | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importDepartmentId, setImportDepartmentId] = useState("");
@@ -194,7 +197,82 @@ export default function AdmissionPage() {
     }
   }
 
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((s) => s.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} selected student(s)?`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await authFetch("/api/students/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSelectedIds(new Set());
+        await loadStudents();
+        if (data.errors?.length) {
+          alert(`Deleted ${data.deleted}. ${data.skipped} failed:\n${data.errors.slice(0, 5).join("\n")}${data.errors.length > 5 ? `\n... and ${data.errors.length - 5} more` : ""}`);
+        }
+      } else {
+        alert(data.error || "Bulk delete failed");
+      }
+    } catch {
+      alert("Bulk delete failed");
+    }
+    setBulkDeleting(false);
+  }
+
+  async function handleDeleteByDepartment() {
+    if (filterDeptId === "all") {
+      alert("Select a department first to delete all its students.");
+      return;
+    }
+    const deptName = departments.find((d) => String(d.id) === filterDeptId)?.name ?? "this department";
+    if (!confirm(`Delete ALL students in ${deptName}?`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await authFetch("/api/students/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ departmentId: Number(filterDeptId) }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSelectedIds(new Set());
+        await loadStudents();
+        if (data.errors?.length) {
+          alert(`Deleted ${data.deleted}. ${data.skipped} failed.`);
+        }
+      } else {
+        alert(data.error || "Bulk delete failed");
+      }
+    } catch {
+      alert("Bulk delete failed");
+    }
+    setBulkDeleting(false);
+  }
+
   const filtered = students.filter((s) => {
+    if (filterDeptId !== "all" && String(s.departmentId) !== filterDeptId) return false;
     if (filterStatus !== "all" && s.status !== filterStatus) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
@@ -298,7 +376,43 @@ export default function AdmissionPage() {
               {filtered.length}
             </span>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            {canDelete && filtered.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={selectedIds.size === 0 || bulkDeleting}
+                  className="text-error-600 border-error-200 hover:bg-error-50 dark:border-error-800 dark:text-error-400 dark:hover:bg-error-500/10"
+                >
+                  {bulkDeleting ? "Deleting..." : `Delete ${selectedIds.size} selected`}
+                </Button>
+                {filterDeptId !== "all" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeleteByDepartment}
+                    disabled={bulkDeleting}
+                    className="text-error-600 border-error-200 hover:bg-error-50 dark:border-error-800 dark:text-error-400 dark:hover:bg-error-500/10"
+                  >
+                    Delete all in department
+                  </Button>
+                )}
+              </div>
+            )}
+            <select
+              value={filterDeptId}
+              onChange={(e) => { setFilterDeptId(e.target.value); setSelectedIds(new Set()); }}
+              className="h-10 rounded-lg border border-gray-200 bg-transparent px-3 text-sm text-gray-700 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:text-gray-300 dark:focus:border-brand-500/40"
+            >
+              <option value="all">All Departments</option>
+              {departments.map((d) => (
+                <option key={d.id} value={String(d.id)}>
+                  {d.name} ({d.code})
+                </option>
+              ))}
+            </select>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -337,7 +451,7 @@ export default function AdmissionPage() {
               </svg>
             </div>
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              {search || filterStatus !== "all"
+              {search || filterStatus !== "all" || filterDeptId !== "all"
                 ? "No students match your filters."
                 : "No students yet. Add a new student to get started."}
             </p>
@@ -346,6 +460,17 @@ export default function AdmissionPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-transparent! hover:bg-transparent!">
+                {canDelete && filtered.length > 0 && (
+                  <TableCell isHeader className="w-12 px-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === filtered.length && filtered.length > 0}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700"
+                      aria-label="Select all"
+                    />
+                  </TableCell>
+                )}
                 <TableCell isHeader>#</TableCell>
                 <TableCell isHeader>Student</TableCell>
                 <TableCell isHeader>Student ID</TableCell>
@@ -359,6 +484,17 @@ export default function AdmissionPage() {
             <TableBody>
               {filtered.map((s, idx) => (
                 <TableRow key={s.id}>
+                  {canDelete && filtered.length > 0 && (
+                    <TableCell className="w-12 px-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(s.id)}
+                        onChange={() => toggleSelect(s.id)}
+                        className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700"
+                        aria-label={`Select ${s.studentId}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium text-gray-400 dark:text-gray-500">
                     {idx + 1}
                   </TableCell>
