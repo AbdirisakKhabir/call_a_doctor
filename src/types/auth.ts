@@ -5,10 +5,14 @@ export type AuthUser = {
   roleId: number;
   roleName: string;
   permissions: string[];
+  /** null = may use all branches; non-empty = restricted to these branch ids */
+  branchIds?: number[] | null;
+  /** Set when this user is linked to a Doctor record (login as doctor). */
+  doctorId?: number | null;
 };
 
-export const AUTH_STORAGE_KEY = "university_auth";
-export const TOKEN_KEY = "university_token";
+export const AUTH_STORAGE_KEY = "call_a_doctor_auth";
+export const TOKEN_KEY = "call_a_doctor_token";
 
 /** Session expires after 1 hour of inactivity from login */
 export const SESSION_TTL_MS = 60 * 60 * 1000;

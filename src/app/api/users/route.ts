@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { userHasPermission } from "@/lib/permissions";
+import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,18 +12,90 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const searchParams = req.nextUrl.searchParams;
+    const includeBranches =
+      searchParams.get("includeBranches") === "true" &&
+      (await userHasPermission(auth.userId, "settings.manage"));
+    const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(searchParams);
+    const searchQ = searchParams.get("search")?.trim() || "";
+    const where = searchQ
+      ? {
+          OR: [
+            { name: { contains: searchQ } },
+            { email: { contains: searchQ } },
+            { role: { name: { contains: searchQ } } },
+          ],
+        }
+      : {};
+
+    const select = {
+      id: true,
+      email: true,
+      name: true,
+      roleId: true,
+      isActive: true,
+      createdAt: true,
+      role: { select: { name: true } },
+      ...(includeBranches
+        ? {
+            branches: {
+              select: { branchId: true },
+            },
+          }
+        : {}),
+    } as const;
+
+    function mapUserRow(u: unknown) {
+      if (!includeBranches) return u;
+      const row = u as { branches?: { branchId: number }[] } & Record<string, unknown>;
+      const { branches, ...rest } = row;
+      return {
+        ...rest,
+        branchIds: branches && branches.length > 0 ? branches.map((b) => b.branchId) : null,
+      };
+    }
+
+    if (paginate) {
+      const [users, total] = await Promise.all([
+        prisma.user.findMany({
+          where,
+          select,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.user.count({ where }),
+      ]);
+      return NextResponse.json({
+        data: users.map(mapUserRow),
+        total,
+        page,
+        pageSize,
+      });
+    }
+
     const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        roleId: true,
-        isActive: true,
-        createdAt: true,
-        role: { select: { name: true } },
-      },
+      where,
+      select,
       orderBy: { createdAt: "desc" },
     });
+
+    if (includeBranches) {
+      return NextResponse.json(
+        users.map((u) => {
+          const { branches, ...rest } = u as typeof u & {
+            branches?: { branchId: number }[];
+          };
+          return {
+            ...rest,
+            branchIds:
+              branches && branches.length > 0
+                ? branches.map((b) => b.branchId)
+                : null,
+          };
+        })
+      );
+    }
 
     return NextResponse.json(users);
   } catch (e) {

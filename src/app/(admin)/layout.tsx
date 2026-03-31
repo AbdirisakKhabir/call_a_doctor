@@ -5,6 +5,7 @@ import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
 import AdminAuthGuard from "@/components/auth/AdminAuthGuard";
+import { ExpirySoonProvider } from "@/context/ExpirySoonContext";
 import React from "react";
 
 export default function AdminLayout({
@@ -18,11 +19,12 @@ export default function AdminLayout({
   const mainContentMargin = isMobileOpen
     ? "ml-0"
     : isExpanded || isHovered
-    ? "lg:ml-[290px]"
+    ? "lg:ml-[260px]"
     : "lg:ml-[90px]";
 
   return (
     <AdminAuthGuard>
+      <ExpirySoonProvider>
       <div className="min-h-screen xl:flex">
         {/* Sidebar and Backdrop */}
         <AppSidebar />
@@ -37,6 +39,7 @@ export default function AdminLayout({
           <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">{children}</div>
         </div>
       </div>
+      </ExpirySoonProvider>
     </AdminAuthGuard>
   );
 }

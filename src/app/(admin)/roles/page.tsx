@@ -14,6 +14,7 @@ import Badge from "@/components/ui/badge/Badge";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 
 type Permission = { id: number; name: string; module: string | null };
 
@@ -30,6 +31,9 @@ export default function RolesPage() {
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
@@ -45,10 +49,14 @@ export default function RolesPage() {
   const canDelete = hasPermission("roles.delete");
 
   async function loadRoles() {
-    const res = await authFetch("/api/roles");
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+    const res = await authFetch(`/api/roles?${params}`);
     if (res.ok) {
-      const data = await res.json();
-      setRoles(data);
+      const body = await res.json();
+      setRoles(body.data ?? []);
+      setTotal(typeof body.total === "number" ? body.total : 0);
     }
   }
 
@@ -61,12 +69,13 @@ export default function RolesPage() {
   }
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await Promise.all([loadRoles(), loadPermissions()]);
-      setLoading(false);
-    })();
+    loadPermissions();
   }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    loadRoles().finally(() => setLoading(false));
+  }, [page]);
 
   function openAdd() {
     setModal("add");
@@ -198,7 +207,7 @@ export default function RolesPage() {
             All Roles
           </h3>
           <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-50 px-1.5 text-xs font-semibold text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-            {roles.length}
+            {loading ? "…" : total}
           </span>
         </div>
 
@@ -236,7 +245,7 @@ export default function RolesPage() {
               {roles.map((r, idx) => (
                 <TableRow key={r.id}>
                   <TableCell className="font-medium text-gray-400 dark:text-gray-500">
-                    {idx + 1}
+                    {(page - 1) * pageSize + idx + 1}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -305,6 +314,15 @@ export default function RolesPage() {
             </TableBody>
           </Table>
         )}
+
+        <ListPaginationFooter
+          loading={loading}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          noun="roles"
+          onPageChange={setPage}
+        />
       </div>
 
       {/* Modal */}

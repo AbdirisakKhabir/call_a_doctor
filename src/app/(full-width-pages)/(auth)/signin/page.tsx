@@ -3,8 +3,8 @@ import { Metadata } from "next";
 import { Suspense } from "react";
 
 export const metadata: Metadata = {
-  title: "Abaarso Tech University - Sign In",
-  description: "Sign in to Abaarso Tech University",
+  title: "Call a Doctor - Sign In",
+  description: "Sign in to Clinic Management System",
 };
 
 export default function SignIn() {

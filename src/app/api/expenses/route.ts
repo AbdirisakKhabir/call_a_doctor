@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,33 +11,44 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get("status");
-    const year = searchParams.get("year");
+    const categoryId = searchParams.get("categoryId");
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(searchParams);
 
-    const where: { status?: string } = {};
-    if (status && ["pending", "approved", "rejected"].includes(status)) {
-      where.status = status;
+    const where: { categoryId?: number; expenseDate?: { gte?: Date; lte?: Date } } = {};
+    if (categoryId && Number.isInteger(Number(categoryId))) {
+      where.categoryId = Number(categoryId);
     }
-
-    const expenses = await prisma.expense.findMany({
-      where,
-      include: {
-        requestedBy: { select: { id: true, name: true, email: true } },
-        approvedBy: { select: { id: true, name: true, email: true } },
-        bank: { select: { id: true, name: true, code: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    let filtered = expenses;
-    if (year) {
-      const y = Number(year);
-      if (!Number.isNaN(y)) {
-        filtered = expenses.filter((e) => new Date(e.createdAt).getFullYear() === y);
+    if (from || to) {
+      where.expenseDate = {};
+      if (from) where.expenseDate.gte = new Date(from);
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        where.expenseDate.lte = toDate;
       }
     }
 
-    return NextResponse.json(filtered);
+    const query = {
+      where,
+      include: {
+        category: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
+      orderBy: { expenseDate: "desc" as const },
+    };
+
+    if (paginate) {
+      const [expenses, total] = await Promise.all([
+        prisma.expense.findMany({ ...query, skip, take: pageSize }),
+        prisma.expense.count({ where }),
+      ]);
+      return NextResponse.json({ data: expenses, total, page, pageSize });
+    }
+
+    const expenses = await prisma.expense.findMany(query);
+    return NextResponse.json(expenses);
   } catch (e) {
     console.error("Expenses list error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -50,65 +62,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: auth.userId },
-      include: {
-        role: {
-          include: {
-            permissions: { include: { permission: true } },
-          },
-        },
-      },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    const permissions = user.role.permissions.map((rp) => rp.permission.name);
-    const canCreate = permissions.includes("expenses.create") || user.role.name === "Admin";
-    if (!canCreate) {
-      return NextResponse.json(
-        { error: "You do not have permission to request expenses" },
-        { status: 403 }
-      );
-    }
-
     const body = await req.json();
-    const { amount, description, category, bankId } = body;
+    const { categoryId, amount, expenseDate, description } = body;
 
-    if (!amount || amount <= 0 || !description?.trim()) {
-      return NextResponse.json(
-        { error: "Amount (positive) and description are required" },
-        { status: 400 }
-      );
+    if (!categoryId || !Number.isInteger(Number(categoryId))) {
+      return NextResponse.json({ error: "Category is required" }, { status: 400 });
     }
-
-    const data: {
-      amount: number;
-      description: string;
-      category?: string;
-      bankId?: number;
-      requestedById: number;
-    } = {
-      amount: Number(amount),
-      description: String(description).trim(),
-      requestedById: auth.userId,
-    };
-    if (category?.trim()) data.category = String(category).trim();
-    if (bankId) {
-      const bank = await prisma.bank.findUnique({ where: { id: Number(bankId) } });
-      if (bank?.isActive) data.bankId = bank.id;
+    const amt = Number(amount);
+    if (isNaN(amt) || amt < 0) {
+      return NextResponse.json({ error: "Valid amount is required" }, { status: 400 });
     }
 
     const expense = await prisma.expense.create({
-      data,
+      data: {
+        categoryId: Number(categoryId),
+        amount: amt,
+        expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
+        description: description ? String(description).trim() : null,
+        createdById: auth.userId,
+      },
       include: {
-        requestedBy: { select: { id: true, name: true, email: true } },
-        bank: { select: { id: true, name: true, code: true } },
+        category: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
       },
     });
-
     return NextResponse.json(expense);
   } catch (e) {
     console.error("Create expense error:", e);

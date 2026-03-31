@@ -14,6 +14,7 @@ import Badge from "@/components/ui/badge/Badge";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 
 type UserRow = {
   id: number;
@@ -35,6 +36,9 @@ export default function UsersPage() {
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -49,10 +53,15 @@ export default function UsersPage() {
   const canDelete = hasPermission("users.delete");
 
   async function loadUsers() {
-    const res = await authFetch("/api/users");
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("search", search.trim());
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+    const res = await authFetch(`/api/users?${params}`);
     if (res.ok) {
-      const data = await res.json();
-      setUsers(data);
+      const body = await res.json();
+      setUsers(body.data ?? []);
+      setTotal(typeof body.total === "number" ? body.total : 0);
     }
   }
 
@@ -65,12 +74,17 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await Promise.all([loadUsers(), loadRoles()]);
-      setLoading(false);
-    })();
+    loadRoles();
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    setLoading(true);
+    loadUsers().finally(() => setLoading(false));
+  }, [page, search]);
 
   function openAdd() {
     setModal("add");
@@ -154,16 +168,6 @@ export default function UsersPage() {
     }
   }
 
-  const filtered = users.filter((u) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      (u.name?.toLowerCase().includes(q) ?? false) ||
-      u.email.toLowerCase().includes(q) ||
-      u.role.name.toLowerCase().includes(q)
-    );
-  });
-
   if (!hasPermission("users.view")) {
     return (
       <div>
@@ -203,7 +207,7 @@ export default function UsersPage() {
               All Users
             </h3>
             <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-50 px-1.5 text-xs font-semibold text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-              {filtered.length}
+              {loading ? "…" : total}
             </span>
           </div>
           <div className="relative w-full sm:w-64">
@@ -225,7 +229,7 @@ export default function UsersPage() {
           <div className="flex items-center justify-center py-16">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-brand-500 dark:border-gray-700 dark:border-t-brand-400" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : users.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
               <svg className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -252,10 +256,10 @@ export default function UsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((u, idx) => (
+              {users.map((u, idx) => (
                 <TableRow key={u.id}>
                   <TableCell className="font-medium text-gray-400 dark:text-gray-500">
-                    {idx + 1}
+                    {(page - 1) * pageSize + idx + 1}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -317,6 +321,15 @@ export default function UsersPage() {
             </TableBody>
           </Table>
         )}
+
+        <ListPaginationFooter
+          loading={loading}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          noun="users"
+          onPageChange={setPage}
+        />
       </div>
 
       {/* Modal */}

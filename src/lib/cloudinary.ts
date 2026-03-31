@@ -8,7 +8,7 @@ cloudinary.config({
 
 export async function uploadImage(
   fileBuffer: Buffer,
-  folder = "university/students"
+  folder = "clinic/uploads"
 ): Promise<{ url: string; publicId: string }> {
   return new Promise((resolve, reject) => {
     cloudinary.uploader
@@ -42,7 +42,7 @@ export async function deleteImage(publicId: string): Promise<void> {
 
 export async function uploadRaw(
   fileBuffer: Buffer,
-  folder = "university/lecturers",
+  folder = "clinic/uploads",
   resourceType: "raw" | "auto" = "raw"
 ): Promise<{ url: string; publicId: string }> {
   return new Promise((resolve, reject) => {

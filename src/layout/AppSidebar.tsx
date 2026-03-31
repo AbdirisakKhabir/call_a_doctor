@@ -9,15 +9,15 @@ import {
   BoxCubeIcon,
   CalenderIcon,
   ChevronDownIcon,
+  DocsIcon,
   DollarLineIcon,
   GridIcon,
   HorizontaLDots,
   ListIcon,
   LockIcon,
-  PageIcon,
   PieChartIcon,
+  PlugInIcon,
   TableIcon,
-  TimeIcon,
   UserCircleIcon,
 } from "../icons/index";
 
@@ -28,179 +28,218 @@ type SubItem = {
   path: string;
   pro?: boolean;
   new?: boolean;
+  /** If true, only highlight when pathname equals `path` (not deeper routes). */
+  exact?: boolean;
   permission?: string;
+  /** If set, user needs at least one of these (overrides `permission`) */
+  permissionAny?: string[];
 };
 
 type NavItem = {
   name: string;
   icon: React.ReactNode;
   path?: string;
+  /** If set, user must have this permission */
   permission?: string;
+  /** If set, user must have at least one of these (takes precedence over `permission`) */
+  permissionAny?: string[];
   subItems?: SubItem[];
 };
 
-type MenuCategory = "academics" | "reports" | "hr" | "activities";
+type MenuCategory =
+  | "main"
+  | "pharmacy"
+  | "reports"
+  | "outreachReports"
+  | "appointments"
+  | "visitCards"
+  | "lab"
+  | "prescriptions"
+  | "financial"
+  | "accounting"
+  | "settings"
+  | "activities";
 
 // --- Data Structures ---
 
-// Academics (top): Dashboard, Faculties, Departments, Courses, Classes, Admission, Attendance, Examinations
-const academicsItems: NavItem[] = [
+// Main: Dashboard
+const mainItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
     path: "/",
     permission: "dashboard.view",
   },
-  {
-    icon: <BoxCubeIcon />,
-    name: "Faculties",
-    path: "/faculties",
-    permission: "faculties.view",
-  },
-  {
-    icon: <TableIcon />,
-    name: "Departments",
-    path: "/departments",
-    permission: "departments.view",
-  },
-  {
-    icon: <ListIcon />,
-    name: "Courses",
-    path: "/courses",
-    permission: "courses.view",
-  },
-  {
-    icon: <TimeIcon />,
-    name: "Semesters",
-    path: "/semesters",
-    permission: "semesters.view",
-  },
+];
+
+// Appointments (calendar + setup only — visit cards are a separate menu)
+const appointmentsItems: NavItem[] = [
   {
     icon: <CalenderIcon />,
-    name: "Classes",
-    path: "/classes",
-    permission: "classes.view",
-  },
-  {
-    icon: <TimeIcon />,
-    name: "Schedule",
-    path: "/schedule",
-    permission: "schedule.view",
-  },
-  {
-    icon: <UserCircleIcon />,
-    name: "Lecturers",
-    path: "/lecturers",
-    permission: "lecturers.view",
-  },
-  {
-    icon: <PageIcon />,
-    name: "Admission",
-    path: "/admission",
-    permission: "admission.view",
+    name: "Appointments",
+    path: "/appointments",
+    permission: "appointments.view",
     subItems: [
-      { name: "Student List", path: "/admission", permission: "admission.view" },
-      { name: "Upgrade Students", path: "/admission/upgrade", permission: "admission.edit" },
-      { name: "Transfer Student", path: "/admission/transfer", permission: "admission.edit" },
-    ],
-  },
-  {
-    icon: <PieChartIcon />,
-    name: "Attendance",
-    path: "/attendance",
-    permission: "attendance.view",
-  },
-  {
-    icon: <ListIcon />,
-    name: "Examinations",
-    path: "/examinations",
-    permission: "examinations.view",
-    subItems: [
-      { name: "Exam Records", path: "/examinations", permission: "examinations.view" },
-      { name: "Record Exams", path: "/examinations/record", permission: "examinations.create" },
-      { name: "Student Transcript", path: "/examinations/transcript", permission: "examinations.view" },
-    ],
-  },
-  {
-    icon: <DollarLineIcon />,
-    name: "Finance",
-    path: "/finance",
-    permission: "finance.view",
-    subItems: [
-      { name: "Record Payment", path: "/finance", permission: "finance.view" },
-      { name: "Banks", path: "/finance/banks", permission: "banks.view" },
-      { name: "Expenses", path: "/finance/expenses", permission: "expenses.view" },
+      { name: "All Appointments", path: "/appointments", permission: "appointments.view", exact: true },
+      { name: "New appointment", path: "/appointments/new", permission: "appointments.view" },
     ],
   },
 ];
 
-const hrItems: NavItem[] = [
+// Visit cards (reception queue — separate from appointment calendar)
+const visitCardsItems: NavItem[] = [
+  {
+    icon: <TableIcon />,
+    name: "Visit cards",
+    path: "/visit-cards",
+    permissionAny: ["visit_cards.view_all", "visit_cards.view_own", "visit_cards.create"],
+    subItems: [
+      {
+        name: "All visit cards",
+        path: "/visit-cards",
+        permissionAny: ["visit_cards.view_all", "visit_cards.view_own", "visit_cards.create"],
+      },
+      { name: "New visit card", path: "/visit-cards/new", permission: "visit_cards.create" },
+    ],
+  },
+];
+
+// Lab
+const labItems: NavItem[] = [
+  {
+    icon: <DocsIcon />,
+    name: "Laboratory",
+    path: "/lab/orders",
+    permission: "lab.view",
+    subItems: [
+      { name: "Categories", path: "/lab/categories", permission: "lab.view" },
+      { name: "Tests", path: "/lab/tests", permission: "lab.view" },
+      { name: "Orders & Results", path: "/lab/orders", permission: "lab.view" },
+    ],
+  },
+];
+
+// Prescriptions
+const prescriptionsItems: NavItem[] = [
+  {
+    icon: <ListIcon />,
+    name: "Prescriptions",
+    path: "/prescriptions",
+    permission: "prescriptions.view",
+  },
+];
+
+// Pharmacy — stock & catalog → retail & billing → outreach field ops
+const pharmacyItems: NavItem[] = [
+  {
+    icon: <BoxCubeIcon />,
+    name: "Pharmacy",
+    path: "/pharmacy/inventory",
+    permission: "pharmacy.view",
+    subItems: [
+      { name: "Inventory", path: "/pharmacy/inventory", permission: "pharmacy.view" },
+      { name: "Opening inventory", path: "/pharmacy/opening-inventory", permission: "pharmacy.create" },
+      { name: "Categories", path: "/pharmacy/categories", permission: "pharmacy.view" },
+      { name: "Purchases", path: "/pharmacy/purchases", permission: "pharmacy.view" },
+      { name: "Suppliers", path: "/pharmacy/suppliers", permission: "pharmacy.view" },
+      { name: "Internal usage", path: "/pharmacy/internal-usage", permission: "pharmacy.view" },
+      { name: "POS", path: "/pharmacy/pos", permission: "pharmacy.pos" },
+      { name: "Patient invoice", path: "/pharmacy/patient-invoice", permission: "prescriptions.view" },
+      { name: "Sale returns", path: "/pharmacy/sale-returns", permission: "pharmacy.pos" },
+      { name: "Sales list", path: "/pharmacy/sales", permission: "pharmacy.view" },
+      { name: "Outreach teams", path: "/pharmacy/outreach/teams", permission: "pharmacy.view" },
+      { name: "Outreach return", path: "/pharmacy/outreach/returns", permission: "pharmacy.pos" },
+      { name: "Emergency medication", path: "/pharmacy/outreach/dispense", permission: "pharmacy.pos" },
+    ],
+  },
   {
     icon: <UserCircleIcon />,
-    name: "Human Resources",
-    path: "/hr",
-    permission: "hr.view",
-    subItems: [
-      { name: "Employees", path: "/hr/employees", permission: "hr.view" },
-      { name: "Positions", path: "/hr/positions", permission: "hr.view" },
-      { name: "Payroll Requests", path: "/hr/payroll", permission: "payroll.view" },
-      { name: "HR Report", path: "/reports/hr", permission: "hr.view" },
-    ],
+    name: "Patients",
+    path: "/patients",
+    permission: "pharmacy.view",
+  },
+  {
+    icon: <DollarLineIcon />,
+    name: "Payments",
+    path: "/payments",
+    permissionAny: ["accounts.deposit", "pharmacy.pos"],
   },
 ];
 
 const reportsItems: NavItem[] = [
   {
-    icon: <PageIcon />,
-    name: "Admission Report",
-    path: "/reports/admission",
-    permission: "reports.view",
-  },
-  {
     icon: <PieChartIcon />,
-    name: "Attendance Report",
-    path: "/reports/attendance",
-    permission: "reports.view",
-  },
-  {
-    icon: <ListIcon />,
-    name: "Exam Report",
-    path: "/reports/exam",
-    permission: "reports.view",
-  },
-  {
-    icon: <UserCircleIcon />,
-    name: "Lecturer Report",
-    path: "/reports/lecturers",
-    permission: "lecturers.view",
-  },
-  {
-    icon: <UserCircleIcon />,
-    name: "HR Report",
-    path: "/reports/hr",
-    permission: "hr.view",
-  },
-  {
-    icon: <DollarLineIcon />,
-    name: "Finance Reports",
-    path: "/reports/payment",
-    permission: "reports.view",
+    name: "Pharmacy reports",
+    path: "/reports/sales",
+    permission: "pharmacy.view",
     subItems: [
-      { name: "Student Transactions", path: "/reports/student-transactions", permission: "reports.view" },
-      { name: "Class Revenue", path: "/reports/class-revenue", permission: "reports.view" },
-      { name: "Unpaid Students", path: "/reports/unpaid-students", permission: "reports.view" },
-      { name: "Bank Balances", path: "/reports/bank-balances", permission: "banks.view" },
-      { name: "Bank Transactions", path: "/reports/bank-transactions", permission: "banks.view" },
-      { name: "Transaction History", path: "/reports/transaction-history", permission: "finance.view" },
-      { name: "Treasury Summary", path: "/reports/treasury", permission: "finance.view" },
-      { name: "Daily Revenue", path: "/reports/daily-revenue", permission: "finance.view" },
-      { name: "Expense Report", path: "/reports/expenses", permission: "expenses.view" },
-      { name: "Income Statement", path: "/reports/income-statement", permission: "finance.view" },
+      { name: "Sales report", path: "/reports/sales", permission: "pharmacy.view" },
+      { name: "Purchase report", path: "/reports/purchases", permission: "pharmacy.view" },
+      { name: "Inventory report", path: "/reports/inventory", permission: "pharmacy.view" },
+      { name: "Internal usage report", path: "/reports/internal-usage", permission: "pharmacy.view" },
+      { name: "Categories report", path: "/reports/categories", permission: "pharmacy.view" },
+      { name: "Suppliers report", path: "/reports/suppliers", permission: "pharmacy.view" },
+      { name: "Opening inventory report", path: "/reports/opening-inventory", permission: "pharmacy.view" },
     ],
   },
 ];
 
-// Activities (bottom): Users, Roles, Permissions
+const outreachReportsItems: NavItem[] = [
+  {
+    icon: <DocsIcon />,
+    name: "Outreach reports",
+    path: "/reports/outreach",
+    permission: "pharmacy.view",
+  },
+];
+
+// Financial
+const financialItems: NavItem[] = [
+  {
+    icon: <DollarLineIcon />,
+    name: "Finance",
+    path: "/expenses",
+    permission: "expenses.view",
+    subItems: [
+      { name: "Expenses", path: "/expenses", permission: "expenses.view" },
+      { name: "Financial Reports", path: "/financial-reports", permission: "financial.view" },
+    ],
+  },
+];
+
+// Accounting: ledger accounts, payment methods, deposits, statements (accounts.* permissions)
+const accountingItems: NavItem[] = [
+  {
+    icon: <TableIcon />,
+    name: "Accounting",
+    path: "/accounting",
+    subItems: [
+      { name: "Overview", path: "/accounting", permission: "accounts.view" },
+      { name: "Accounts", path: "/settings/accounts", permission: "accounts.view" },
+      { name: "Payment methods", path: "/settings/payment-methods", permission: "accounts.view" },
+      { name: "Deposits & withdrawals", path: "/settings/account-transactions", permission: "accounts.view" },
+      { name: "Account statement", path: "/settings/account-statement", permission: "accounts.reports" },
+    ],
+  },
+];
+
+// Settings: branches, doctors, services, system preferences (settings.* + appointments.* for clinic setup)
+const settingsItems: NavItem[] = [
+  {
+    icon: <PlugInIcon />,
+    name: "Settings",
+    path: "/settings",
+    permissionAny: ["settings.view", "appointments.view"],
+    subItems: [
+      { name: "Overview", path: "/settings", permission: "settings.view" },
+      { name: "Branches & access", path: "/settings/branches", permission: "settings.manage" },
+      { name: "Doctors", path: "/settings/doctors", permission: "appointments.view" },
+      { name: "Services", path: "/settings/services", permission: "appointments.view" },
+    ],
+  },
+];
+
+// Activities: Users, Roles, Permissions
 const activitiesItems: NavItem[] = [
   {
     icon: <UserCircleIcon />,
@@ -215,7 +254,7 @@ const activitiesItems: NavItem[] = [
     permission: "roles.view",
   },
   {
-    icon: <LockIcon />,
+    icon: <ListIcon />,
     name: "Permissions",
     path: "/permissions",
     permission: "permissions.view",
@@ -224,17 +263,30 @@ const activitiesItems: NavItem[] = [
 
 // --- Helper Functions ---
 
-function filterByPermission<T extends { permission?: string; subItems?: SubItem[] }>(
+function navItemAllowed<T extends { permission?: string; permissionAny?: string[] }>(
+  item: T,
+  hasPermission: (p: string) => boolean
+): boolean {
+  if (item.permissionAny?.length) {
+    return item.permissionAny.some((p) => hasPermission(p));
+  }
+  return !item.permission || hasPermission(item.permission);
+}
+
+function filterByPermission<T extends { permission?: string; permissionAny?: string[]; subItems?: SubItem[] }>(
   items: T[],
   hasPermission: (p: string) => boolean
 ): T[] {
   return items
-    .filter((item) => !item.permission || hasPermission(item.permission))
+    .filter((item) => navItemAllowed(item, hasPermission))
     .map((item) => {
       if (!item.subItems) return item;
-      const filteredSub = item.subItems.filter(
-        (s) => !s.permission || hasPermission(s.permission)
-      );
+      const filteredSub = item.subItems.filter((s) => {
+        if (s.permissionAny?.length) {
+          return s.permissionAny.some((p) => hasPermission(p));
+        }
+        return !s.permission || hasPermission(s.permission);
+      });
       return { ...item, subItems: filteredSub.length ? filteredSub : undefined };
     })
     .filter((item) => !item.subItems || (item.subItems && item.subItems.length > 0));
@@ -248,9 +300,20 @@ const AppSidebar: React.FC = () => {
   const pathname = usePathname();
 
   // Filtered menus (memoized to prevent useEffect infinite loop)
-  const academicsNav = useMemo(() => filterByPermission(academicsItems, hasPermission), [hasPermission]);
+  const mainNav = useMemo(() => filterByPermission(mainItems, hasPermission), [hasPermission]);
+  const pharmacyNav = useMemo(() => filterByPermission(pharmacyItems, hasPermission), [hasPermission]);
   const reportsNav = useMemo(() => filterByPermission(reportsItems, hasPermission), [hasPermission]);
-  const hrNav = useMemo(() => filterByPermission(hrItems, hasPermission), [hasPermission]);
+  const outreachReportsNav = useMemo(
+    () => filterByPermission(outreachReportsItems, hasPermission),
+    [hasPermission]
+  );
+  const appointmentsNav = useMemo(() => filterByPermission(appointmentsItems, hasPermission), [hasPermission]);
+  const visitCardsNav = useMemo(() => filterByPermission(visitCardsItems, hasPermission), [hasPermission]);
+  const labNav = useMemo(() => filterByPermission(labItems, hasPermission), [hasPermission]);
+  const prescriptionsNav = useMemo(() => filterByPermission(prescriptionsItems, hasPermission), [hasPermission]);
+  const financialNav = useMemo(() => filterByPermission(financialItems, hasPermission), [hasPermission]);
+  const accountingNav = useMemo(() => filterByPermission(accountingItems, hasPermission), [hasPermission]);
+  const settingsNav = useMemo(() => filterByPermission(settingsItems, hasPermission), [hasPermission]);
   const activitiesNav = useMemo(() => filterByPermission(activitiesItems, hasPermission), [hasPermission]);
 
   // State
@@ -261,7 +324,18 @@ const AppSidebar: React.FC = () => {
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>({});
   const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  const isActive = useCallback((path: string) => path === pathname, [pathname]);
+  const isActive = useCallback((path: string) => {
+    if (path === "/") return pathname === "/";
+    return pathname === path || pathname.startsWith(`${path}/`);
+  }, [pathname]);
+
+  const isSubItemActive = useCallback(
+    (subItem: SubItem) => {
+      if (subItem.exact) return pathname === subItem.path;
+      return isActive(subItem.path);
+    },
+    [pathname, isActive]
+  );
 
   const handleSubmenuToggle = (index: number, menuType: MenuCategory) => {
     setOpenSubmenu((prev) => {
@@ -276,18 +350,51 @@ const AppSidebar: React.FC = () => {
   useEffect(() => {
     let submenuMatched = false;
     let matchedState: { type: MenuCategory; index: number } | null = null;
-    const categories: MenuCategory[] = ["academics", "reports", "hr", "activities"];
+    const categories: MenuCategory[] = [
+      "main",
+      "appointments",
+      "visitCards",
+      "lab",
+      "prescriptions",
+      "pharmacy",
+      "reports",
+      "outreachReports",
+      "financial",
+      "accounting",
+      "settings",
+      "activities",
+    ];
 
     categories.forEach((menuType) => {
       const items =
-        menuType === "academics" ? academicsNav :
-        menuType === "reports" ? reportsNav :
-        menuType === "hr" ? hrNav : activitiesNav;
+        menuType === "main"
+          ? mainNav
+          : menuType === "pharmacy"
+            ? pharmacyNav
+            : menuType === "reports"
+              ? reportsNav
+              : menuType === "outreachReports"
+                ? outreachReportsNav
+                : menuType === "appointments"
+                  ? appointmentsNav
+                  : menuType === "visitCards"
+                    ? visitCardsNav
+                    : menuType === "lab"
+                      ? labNav
+                      : menuType === "prescriptions"
+                        ? prescriptionsNav
+                        : menuType === "financial"
+                          ? financialNav
+                          : menuType === "accounting"
+                            ? accountingNav
+                            : menuType === "settings"
+                              ? settingsNav
+                              : activitiesNav;
 
       items.forEach((nav, index) => {
         if (nav.subItems) {
           nav.subItems.forEach((subItem) => {
-            if (subItem.path === pathname) {
+            if (isSubItemActive(subItem)) {
               matchedState = { type: menuType, index };
               submenuMatched = true;
             }
@@ -304,7 +411,23 @@ const AppSidebar: React.FC = () => {
       if (!submenuMatched && prev === null) return prev;
       return null;
     });
-  }, [pathname, academicsNav, reportsNav, hrNav, activitiesNav]);
+  }, [
+    pathname,
+    mainNav,
+    pharmacyNav,
+    reportsNav,
+    outreachReportsNav,
+    appointmentsNav,
+    visitCardsNav,
+    labNav,
+    prescriptionsNav,
+    financialNav,
+    accountingNav,
+    settingsNav,
+    activitiesNav,
+    isActive,
+    isSubItemActive,
+  ]);
 
   // Effect: Update height for transitions (measure after DOM update)
   useEffect(() => {
@@ -322,7 +445,7 @@ const AppSidebar: React.FC = () => {
   }, [openSubmenu]);
 
   const renderMenuItems = (items: NavItem[], menuType: MenuCategory) => (
-    <ul className="flex flex-col gap-4">
+    <ul className="flex flex-col gap-1">
       {items.map((nav, index) => (
         <li key={nav.name}>
           {nav.subItems ? (
@@ -372,13 +495,13 @@ const AppSidebar: React.FC = () => {
                       : "0px",
                 }}
               >
-                <ul className="mt-2 space-y-1 ml-9">
+                <ul className="mt-1 space-y-0.5 ml-7">
                   {nav.subItems.map((subItem) => (
                     <li key={subItem.name}>
                       <Link
                         href={subItem.path}
                         className={`menu-dropdown-item ${
-                          isActive(subItem.path)
+                          isSubItemActive(subItem)
                             ? "menu-dropdown-item-active"
                             : "menu-dropdown-item-inactive"
                         }`}
@@ -418,69 +541,156 @@ const AppSidebar: React.FC = () => {
 
   return (
     <aside
-      className={`no-print fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
-        ${isExpanded || isMobileOpen || isHovered ? "w-[290px]" : "w-[90px]"}
+      className={`no-print fixed mt-16 flex flex-col lg:mt-0 top-0 px-3 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
+        ${isExpanded || isMobileOpen || isHovered ? "w-[260px]" : "w-[90px]"}
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
         lg:translate-x-0`}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={`py-8 flex ${!isExpanded && !isHovered && !isMobileOpen ? "lg:justify-center" : ""}`}>
-        <Link href="/" className={`flex items-center gap-2 ${!isExpanded && !isHovered && !isMobileOpen ? "lg:justify-center" : ""}`}>
+      <div className={`shrink-0 py-4 flex ${!isExpanded && !isHovered && !isMobileOpen ? "lg:justify-center" : ""}`}>
+        <Link href="/" className={`flex items-center justify-center overflow-hidden ${!isExpanded && !isHovered && !isMobileOpen ? "w-16 h-12" : "w-full min-w-0"}`}>
           <Image
-            src="/logo/logo%20abaarso.png"
-            alt="ATU Berbera"
-            width={48}
+            src="/logo/call-a-doctor.png"
+            alt="Call a Doctor"
+            width={280}
             height={48}
             priority
-            className="object-contain h-12 w-12 shrink-0"
+            className={`object-contain h-12 ${!isExpanded && !isHovered && !isMobileOpen ? "w-16" : "w-full max-w-[280px]"}`}
           />
-          {(isExpanded || isHovered || isMobileOpen) && (
-            <span className="text-sm font-semibold text-gray-800 dark:text-white/90 whitespace-nowrap">
-              ABAARSO TECH UNIVERSITY
-            </span>
-          )}
         </Link>
       </div>
 
-      <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
-        <nav className="mb-6">
-          <div className="flex flex-col gap-4">
-            {/* Academics Section (top) */}
-            {academicsNav.length > 0 && (
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain duration-300 ease-linear custom-scrollbar pr-1">
+        <nav className="mb-3">
+          <div className="flex flex-col [&>div+div]:mt-3 [&>div+div]:border-t [&>div+div]:border-gray-100 [&>div+div]:pt-3 dark:[&>div+div]:border-gray-800/60">
+            {mainNav.length > 0 && (
               <div>
-                <h2 className={`mb-4 text-xs uppercase flex text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}>
-                  {isExpanded || isHovered || isMobileOpen ? "Academics" : <HorizontaLDots />}
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Main" : <HorizontaLDots />}
                 </h2>
-                {renderMenuItems(academicsNav, "academics")}
+                {renderMenuItems(mainNav, "main")}
               </div>
             )}
 
-            {/* HR Section */}
-            {hrNav.length > 0 && (
+            {appointmentsNav.length > 0 && (
               <div>
-                <h2 className={`mb-4 text-xs uppercase flex text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}>
-                  {isExpanded || isHovered || isMobileOpen ? "Human Resources" : <HorizontaLDots />}
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Appointments" : <HorizontaLDots />}
                 </h2>
-                {renderMenuItems(hrNav, "hr")}
+                {renderMenuItems(appointmentsNav, "appointments")}
               </div>
             )}
 
-            {/* Reports Section */}
+            {visitCardsNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Visit cards" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(visitCardsNav, "visitCards")}
+              </div>
+            )}
+
+            {labNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Laboratory" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(labNav, "lab")}
+              </div>
+            )}
+
+            {prescriptionsNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Prescriptions" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(prescriptionsNav, "prescriptions")}
+              </div>
+            )}
+
+            {pharmacyNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Pharmacy" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(pharmacyNav, "pharmacy")}
+              </div>
+            )}
+
             {reportsNav.length > 0 && (
               <div>
-                <h2 className={`mb-4 text-xs uppercase flex text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}>
-                  {isExpanded || isHovered || isMobileOpen ? "Reports" : <HorizontaLDots />}
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Pharmacy reports" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(reportsNav, "reports")}
               </div>
             )}
 
-            {/* Activities Section (bottom): Users, Roles, Permissions */}
+            {outreachReportsNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Outreach" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(outreachReportsNav, "outreachReports")}
+              </div>
+            )}
+
+            {financialNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Finance" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(financialNav, "financial")}
+              </div>
+            )}
+
+            {accountingNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Accounting" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(accountingNav, "accounting")}
+              </div>
+            )}
+
+            {settingsNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Settings" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(settingsNav, "settings")}
+              </div>
+            )}
+
             {activitiesNav.length > 0 && (
               <div>
-                <h2 className={`mb-4 text-xs uppercase flex text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}>
-                  {isExpanded || isHovered || isMobileOpen ? "Activities" : <HorizontaLDots />}
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Administration" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(activitiesNav, "activities")}
               </div>

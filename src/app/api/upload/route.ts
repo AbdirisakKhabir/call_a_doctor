@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
-    const folder = (formData.get("folder") as string) || "university/students";
+    const folder = (formData.get("folder") as string) || "clinic/uploads";
     const type = (formData.get("type") as string) || "image"; // "image" | "raw" (PDF)
 
     if (!file) {
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
 
     if (type === "raw") {
-      // PDF / raw files for lecturer CV
+      // PDF / raw files
       const allowedTypes = ["application/pdf"];
       if (!allowedTypes.includes(file.type)) {
         return NextResponse.json(
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const cvFolder = folder === "university/students" ? "university/lecturers/cv" : folder;
+      const cvFolder = folder === "clinic/uploads" ? "clinic/cv" : folder;
       const result = await uploadRaw(buffer, cvFolder, "raw");
       return NextResponse.json(result);
     }

@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       include: {
+        doctorProfile: { select: { id: true } },
         role: {
           include: {
             permissions: {
@@ -28,6 +29,13 @@ export async function GET(req: NextRequest) {
 
     const permissions = user.role.permissions.map((rp) => rp.permission.name);
 
+    const branchRows = await prisma.userBranch.findMany({
+      where: { userId: user.id },
+      select: { branchId: true },
+    });
+    const branchIds =
+      branchRows.length === 0 ? null : branchRows.map((r) => r.branchId);
+
     return NextResponse.json({
       user: {
         id: user.id,
@@ -36,6 +44,8 @@ export async function GET(req: NextRequest) {
         roleId: user.roleId,
         roleName: user.role.name,
         permissions,
+        branchIds,
+        doctorId: user.doctorProfile?.id ?? null,
       },
     });
   } catch (e) {

@@ -1,4 +1,4 @@
-// University Management System - Prisma Schema
+// Clinic Management System - Prisma Schema
 // https://pris.ly/d/prisma-schema
 
 generator client {
@@ -11,24 +11,31 @@ datasource db {
 }
 
 model User {
-  id                 Int                  @id @default(autoincrement())
-  email              String               @unique
-  password           String
-  name               String?
-  roleId             Int
-  role               Role                 @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  isActive           Boolean              @default(true)
-  attendanceSessions AttendanceSession[]
-  tuitionPayments    TuitionPayment[]
-  bankWithdrawals    BankWithdrawal[]
-  bankTransfers      BankTransfer[]
-  transactionHistory TransactionHistory[]
-  expensesRequested  Expense[]            @relation("ExpenseRequestedBy")
-  expensesApproved   Expense[]            @relation("ExpenseApprovedBy")
-  payrollsRequested  Payroll[]            @relation("PayrollRequestedBy")
-  payrollsApproved   Payroll[]            @relation("PayrollApprovedBy")
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  id               Int           @id @default(autoincrement())
+  email            String        @unique
+  password         String
+  name             String?
+  roleId           Int
+  role             Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  isActive         Boolean       @default(true)
+  purchases        Purchase[]
+  sales            Sale[]
+  appointments     Appointment[]
+  labOrdersCreated LabOrder[]    @relation("LabOrderCreatedBy")
+  labResultsRecorded LabOrderItem[] @relation("LabResultRecordedBy")
+  prescriptionsCreated Prescription[] @relation("PrescriptionCreatedBy")
+  expensesCreated  Expense[]     @relation("ExpenseCreatedBy")
+  branches         UserBranch[]
+  financeTransactions AccountTransaction[] @relation("FinanceTransactionCreatedBy")
+  internalStockLogs InternalStockLog[]
+  outreachReturnsCreated OutreachReturn[] @relation("OutreachReturnCreatedBy")
+  outreachDispensesCreated OutreachDispense[] @relation("OutreachDispenseCreatedBy")
+  patientPaymentsCreated PatientPayment[] @relation("PatientPaymentCreatedBy")
+  pharmacySaleReturnsCreated PharmacySaleReturn[] @relation("PharmacySaleReturnCreatedBy")
+  doctorProfile    Doctor?
+  visitCardsCreated DoctorVisitCard[] @relation("VisitCardCreatedBy")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   @@map("users")
 }
@@ -47,7 +54,7 @@ model Permission {
   id          Int              @id @default(autoincrement())
   name        String           @unique // e.g. "users.view", "users.create"
   description String?
-  module      String? // e.g. "users", "admission", "attendance"
+  module      String? // e.g. "users", "roles", "permissions"
   roles       RolePermission[]
 
   @@map("permissions")
@@ -63,416 +70,745 @@ model RolePermission {
   @@map("role_permissions")
 }
 
-model Faculty {
-  id          Int          @id @default(autoincrement())
-  name        String       @unique
-  code        String       @unique // e.g. "ENG", "SCI", "BUS"
+// Single-row global settings (id = 1).
+model AppSettings {
+  id               Int      @id @default(1)
+  expirySoonMode   String   @default("days") // days | months
+  expirySoonDays   Int      @default(10)
+  expirySoonMonths Int      @default(1) // 1 = through end of current month, 2 = through end of next month, etc.
+  updatedAt        DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
+// --- Patients ---
+
+model Patient {
+  id              Int              @id @default(autoincrement())
+  patientCode     String           @unique
+  name            String
+  phone           String?
+  email           String?
+  dateOfBirth     DateTime?
+  gender          String?
+  address         String?
+  notes           String?
+  /// Balance owed by patient (e.g. outreach medication charges).
+  accountBalance  Float            @default(0)
+  isActive        Boolean          @default(true)
+  sales           Sale[]
+  appointments    Appointment[]
+  patientHistories PatientHistory[]
+  labOrders       LabOrder[]
+  prescriptions   Prescription[]
+  outreachDispenses OutreachDispense[]
+  patientPayments PatientPayment[]
+  doctorVisitCards DoctorVisitCard[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("patients")
+}
+
+// --- Branches ---
+
+model Branch {
+  id          Int           @id @default(autoincrement())
+  name        String
+  address     String?
+  phone       String?
+  email       String?
+  isActive    Boolean       @default(true)
+  doctors     Doctor[]
+  services    Service[]
+  appointments Appointment[]
+  users       UserBranch[]
+  purchases   Purchase[]
+  sales       Sale[]
+  internalStockLogs InternalStockLog[]
+  categories  Category[]
+  suppliers   Supplier[]
+  products    Product[]
+  outreachTeams OutreachTeam[]
+  outreachReturns OutreachReturn[]
+  outreachDispenses OutreachDispense[]
+  pharmacySaleReturns PharmacySaleReturn[]
+  doctorVisitCards DoctorVisitCard[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("branches")
+}
+
+model UserBranch {
+  userId   Int
+  branchId Int
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([userId, branchId])
+  @@map("user_branches")
+}
+
+// --- Doctors ---
+
+model Doctor {
+  id              Int              @id @default(autoincrement())
+  name            String
+  email           String?
+  phone           String?
+  specialty       String?
+  branchId        Int?
+  branch          Branch?          @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  isActive        Boolean          @default(true)
+  appointments    Appointment[]
+  patientHistories PatientHistory[]
+  labOrders       LabOrder[]
+  prescriptions   Prescription[]
+  userId          Int?            @unique
+  user            User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  doctorVisitCards DoctorVisitCard[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("doctors")
+}
+
+// --- Services ---
+
+model Service {
+  id                  Int                 @id @default(autoincrement())
+  name                String
+  description         String?
+  price               Float               @default(0)
+  durationMinutes     Int?                // e.g. 30, 60
+  branchId            Int?
+  branch              Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  isActive            Boolean             @default(true)
+  appointmentServices AppointmentService[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@map("services")
+}
+
+// --- Appointments ---
+
+model Appointment {
+  id             Int                 @id @default(autoincrement())
+  branchId       Int
+  branch         Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  doctorId       Int
+  doctor         Doctor              @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  patientId      Int
+  patient        Patient             @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointmentDate DateTime           @db.Date
+  startTime      String              // e.g. "09:00"
+  endTime        String?             // e.g. "09:30"
+  status         String              @default("scheduled") // scheduled, completed, cancelled, no-show
+  notes          String?
+  totalAmount    Float               @default(0)
+  createdById    Int?
+  createdBy      User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  services       AppointmentService[]
+  patientHistories PatientHistory[]
+  labOrders      LabOrder[]
+  prescriptions  Prescription[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@map("appointments")
+}
+
+model AppointmentService {
+  id             Int         @id @default(autoincrement())
+  appointmentId  Int
+  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  serviceId      Int
+  service        Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  quantity       Int         @default(1)
+  unitPrice      Float
+  totalAmount    Float
+  createdAt      DateTime    @default(now())
+
+  @@map("appointment_services")
+}
+
+/// Reception queue card: patient + doctor + visit date; doctor-linked users only see their cards.
+model DoctorVisitCard {
+  id                Int       @id @default(autoincrement())
+  cardNumber        String
+  branchId          Int
+  branch            Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  patientId         Int
+  patient           Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctorId          Int
+  doctor            Doctor    @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  visitDate         DateTime  @db.Date
+  status            String    @default("inWaiting") // inWaiting, inProgress, completed, cancelled
+  paymentStatus     String    @default("unpaid") // paid, unpaid, appointment, free
+  visitFee          Float     @default(0)
+  paymentMethodId   Int?
+  paymentMethod     LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  createdById       Int?
+  createdBy         User?     @relation("VisitCardCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  notes             String?
+  depositTransaction AccountTransaction?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([branchId, cardNumber])
+  @@index([branchId, visitDate])
+  @@index([doctorId, visitDate])
+  @@map("doctor_visit_cards")
+}
+
+// --- Pharmacy ---
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  branchId    Int
+  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  name        String
   description String?
-  program     String? // "Bachelor", "Masters"
-  isActive    Boolean      @default(true)
-  departments Department[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  isActive    Boolean   @default(true)
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  @@map("faculties")
+  @@unique([branchId, name])
+  @@map("categories")
 }
 
-model Lecturer {
-  id             Int                  @id @default(autoincrement())
-  name           String
-  email          String               @unique
-  phone          String?
-  degree         String?
-  imageUrl       String? // Cloudinary URL
-  imagePublicId  String?
-  cvUrl          String? // Cloudinary URL for CV PDF
-  cvPublicId     String?
-  isActive       Boolean              @default(true)
-  departments    LecturerDepartment[]
-  courses        LecturerCourse[]
-  classSchedules ClassSchedule[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+model Supplier {
+  id            Int       @id @default(autoincrement())
+  branchId      Int
+  branch        Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  address       String?
+  isActive      Boolean   @default(true)
+  purchases     Purchase[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  @@map("lecturers")
+  @@index([branchId])
+  @@map("suppliers")
 }
 
-model LecturerDepartment {
-  lecturerId   Int
-  departmentId Int
-  lecturer     Lecturer   @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+model Product {
+  id                Int               @id @default(autoincrement())
+  branchId          Int
+  branch            Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  name              String
+  code              String
+  description       String?
+  imageUrl          String?
+  imagePublicId     String?
+  costPrice         Float             @default(0)
+  sellingPrice      Float             @default(0)
+  quantity          Int               @default(0)
+  /// Optional: boxes inside one carton (null = cartons not used).
+  boxesPerCarton    Int?
+  /// Optional: pieces inside one box (null = boxes not used). Inventory is always in pcs.
+  pcsPerBox         Int?
+  unit              String            @default("pcs")
+  /// Optional batch / lot expiry (e.g. for medicines).
+  expiryDate        DateTime?
+  /// When false, item is not sold at POS (lab supplies, cleaning, etc.); stock tracked via purchases + internal usage.
+  forSale           Boolean           @default(true)
+  /// laboratory | cleaning | general — relevant when forSale is false
+  internalPurpose   String?
+  categoryId        Int?
+  category          Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  isActive          Boolean           @default(true)
+  purchaseItems     PurchaseItem[]
+  saleItems         SaleItem[]
+  prescriptionItems PrescriptionItem[]
+  internalStockLogs InternalStockLog[]
+  outreachInventoryItems OutreachInventoryItem[]
+  outreachReturnItems    OutreachReturnItem[]
+  outreachDispenseItems  OutreachDispenseItem[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
-  @@id([lecturerId, departmentId])
-  @@map("lecturer_departments")
+  @@unique([branchId, code])
+  @@map("products")
 }
 
-model LecturerCourse {
-  lecturerId Int
-  courseId   Int
-  lecturer   Lecturer @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
-  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-
-  @@id([lecturerId, courseId])
-  @@map("lecturer_courses")
-}
-
-model Department {
-  id          Int                  @id @default(autoincrement())
-  name        String               @unique
-  code        String               @unique // e.g. "CS", "EE", "ACC"
-  description String?
-  facultyId   Int
-  faculty     Faculty              @relation(fields: [facultyId], references: [id], onDelete: Restrict)
-  tuitionFee  Float?               @default(0)
-  isActive    Boolean              @default(true)
-  courses     Course[]
-  classes     Class[]
-  students    Student[]
-  lecturers   LecturerDepartment[]
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-
-  @@map("departments")
-}
-
-model Course {
-  id             Int             @id @default(autoincrement())
-  name           String
-  code           String          // e.g. "CS101", "ENG201" - unique per department
-  description    String?
-  creditHours    Int             @default(3)
-  departmentId   Int
-  department     Department      @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  isActive       Boolean         @default(true)
-  examRecords    ExamRecord[]
-  lecturers      LecturerCourse[]
-  classSchedules ClassSchedule[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-
-  @@unique([code, departmentId])
-  @@unique([name, departmentId])
-  @@map("courses")
-}
-
-model Semester {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique // e.g. "Fall", "Spring", "Summer"
-  sortOrder Int      @default(0) // for display/ordering (lower = earlier in year)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("semesters")
-}
-
-model AcademicYear {
-  id        Int      @id @default(autoincrement())
-  startYear Int      // e.g. 2024
-  endYear   Int      // e.g. 2025
-  name      String   @unique // e.g. "2024-2025"
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("academic_years")
-}
-
-model Class {
-  id                 Int                 @id @default(autoincrement())
-  name               String // e.g. "Level 1-A", "Section B"
-  departmentId       Int
-  department         Department          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  semester           String // e.g. "Fall", "Spring", "Summer"
-  year               Int // e.g. 2026 (from academic year)
-  room               String? // e.g. "Room 201"
-  schedule           String? // e.g. "Mon/Wed 9:00-10:30"
-  capacity           Int                 @default(40)
-  isActive           Boolean             @default(true)
-  attendanceSessions AttendanceSession[]
-  students           Student[]
-  classSchedules     ClassSchedule[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-
-  @@unique([name, semester, year])
-  @@map("classes")
-}
-
-model ClassSchedule {
-  id         Int      @id @default(autoincrement())
-  classId    Int
-  class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
-  courseId   Int
-  course     Course   @relation(fields: [courseId], references: [id], onDelete: Restrict)
-  lecturerId Int
-  lecturer   Lecturer @relation(fields: [lecturerId], references: [id], onDelete: Restrict)
-  dayOfWeek  String // "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
-  shift      String // "Morning", "Afternoon", "Evening"
-  startTime  String // e.g. "09:00"
-  endTime    String // e.g. "10:30"
-  semester   String
-  year       Int
-  room       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@unique([classId, dayOfWeek, shift, startTime])
-  @@map("class_schedules")
-}
-
-model Student {
-  id                 Int                  @id @default(autoincrement())
-  studentId          String               @unique // e.g. "STD-2026-0001"
-  firstName          String
-  lastName           String
-  motherName         String?
-  parentPhone        String?
-  email              String?              @unique
-  phone              String?
-  dateOfBirth        DateTime?
-  gender             String? // "Male", "Female"
-  address            String?
-  imageUrl           String? // Cloudinary URL (optional)
-  imagePublicId      String? // Cloudinary public_id for deletion
-  departmentId       Int
-  department         Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  classId            Int?
-  class              Class?               @relation(fields: [classId], references: [id], onDelete: SetNull)
-  program            String? // "Bachelor", "Masters"
-  admissionDate      DateTime             @default(now())
-  status             String               @default("Admitted") // "Pending", "Admitted", "Rejected", "Graduated"
-  paymentStatus      String               @default("Fully Paid") // "Full Scholarship", "Half Scholar", "Fully Paid"
-  balance            Float                @default(0) // Amount owed; charged at registration, reduced by payments
-  attendanceRecords  AttendanceRecord[]
-  examRecords        ExamRecord[]
-  tuitionPayments    TuitionPayment[]
-  transactionHistory TransactionHistory[]
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-
-  @@map("students")
-}
-
-model Bank {
-  id                 Int                  @id @default(autoincrement())
-  name               String // e.g. "Dahabshiil - Main", "Edahab - Tuition"
-  code               String               @unique // e.g. "DHB-001", "EDH-001"
-  accountNumber      String? // Bank account number
-  balance            Float                @default(0)
-  isActive           Boolean              @default(true)
-  tuitionPayments    TuitionPayment[] // Payments deposited to this bank
-  withdrawals        BankWithdrawal[]     @relation("WithdrawFromBank")
-  transfersOut       BankTransfer[]       @relation("TransferFromBank")
-  transfersIn        BankTransfer[]       @relation("TransferToBank")
-  transactionHistory TransactionHistory[]
-  expenses           Expense[]
-  payrolls           Payroll[]
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-
-  @@map("banks")
-}
-
-model TransactionHistory {
-  id               Int      @id @default(autoincrement())
-  type             String // "deposit" | "withdrawal" | "transfer_out" | "transfer_in"
-  amount           Float
-  bankId           Int
-  bank             Bank     @relation(fields: [bankId], references: [id], onDelete: Restrict)
-  relatedBankId    Int? // For transfers: the other bank
-  description      String? // Human-readable e.g. "Tuition: John Doe - Fall 2026"
-  studentId        Int?
-  student          Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  tuitionPaymentId Int?
-  bankWithdrawalId Int?
-  bankTransferId   Int?
-  createdAt        DateTime @default(now())
-  createdById      Int?
-  createdBy        User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
-
-  @@map("transaction_history")
-}
-
-model TuitionPayment {
-  id            Int      @id @default(autoincrement())
-  studentId     Int
-  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  bankId        Int? // Optional for legacy payments; required for new deposits
-  bank          Bank?    @relation(fields: [bankId], references: [id], onDelete: SetNull)
-  amount        Float    @default(0)
-  semester      String // "Fall", "Spring", "Summer"
-  year          Int // e.g. 2026
-  paymentMethod String   @default("bank_receipt") // "bank_receipt" | "electronic"
-  receiptNumber String? // Bank receipt number
-  transactionId String? // Electronic transaction ID
-  paymentDate   DateTime @default(now()) // Date student actually paid
-  paidAt        DateTime @default(now()) // When recorded in system
-  recordedById  Int?
-  recordedBy    User?    @relation(fields: [recordedById], references: [id], onDelete: SetNull)
-  note          String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@unique([studentId, semester, year])
-  @@map("tuition_payments")
-}
-
-model BankWithdrawal {
+/// Stock removed for internal operations (lab, cleaning) — not a retail sale.
+model InternalStockLog {
   id          Int      @id @default(autoincrement())
-  bankId      Int
-  bank        Bank     @relation("WithdrawFromBank", fields: [bankId], references: [id], onDelete: Restrict)
-  amount      Float
-  reason      String?
-  withdrawnAt DateTime @default(now())
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  branchId    Int?
+  branch      Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  quantity    Int
+  purpose     String
+  notes       String?
   createdById Int?
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
 
-  @@map("bank_withdrawals")
+  @@index([productId, createdAt])
+  @@map("internal_stock_logs")
+}
+
+model Purchase {
+  id          Int           @id @default(autoincrement())
+  branchId    Int?
+  branch      Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  supplierId  Int
+  supplier    Supplier      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseDate DateTime     @default(now())
+  totalAmount Float         @default(0)
+  status      String        @default("completed")
+  notes       String?
+  /// Ledger payment method used to pay the supplier (links to finance account).
+  paymentMethodId Int?
+  paymentMethod   LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  createdById Int?
+  createdBy   User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items       PurchaseItem[]
+  ledgerTransaction AccountTransaction?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         Int     @id @default(autoincrement())
+  purchaseId Int
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity   Int
+  /// pcs | box | carton — quantity is in this unit; stock is updated in pcs.
+  purchaseUnit String @default("pcs")
+  unitPrice  Float
+  totalAmount Float
+  createdAt  DateTime @default(now())
+
+  @@map("purchase_items")
+}
+
+model Sale {
+  id            Int       @id @default(autoincrement())
+  branchId      Int?
+  branch        Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  saleDate      DateTime  @default(now())
+  totalAmount   Float     @default(0)
+  discount      Float     @default(0)
+  paymentMethod String   @default("cash")
+  notes         String?
+  patientId     Int?
+  patient       Patient?  @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  /// walking | patient | outreach
+  customerType  String   @default("walking")
+  outreachTeamId Int?
+  outreachTeam  OutreachTeam? @relation(fields: [outreachTeamId], references: [id], onDelete: SetNull)
+  /// Stock issued on credit to outreach team (no till deposit; increases team credit balance).
+  outreachOnCredit Boolean @default(false)
+  createdById   Int?
+  createdBy     User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items         SaleItem[]
+  depositTransaction AccountTransaction?
+  pharmacySaleReturns PharmacySaleReturn[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id         Int    @id @default(autoincrement())
+  saleId     Int
+  sale       Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId  Int
+  product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity   Int
+  /// pcs | box | carton — quantity is in this unit; shelf stock moves in pcs.
+  saleUnit   String @default("pcs")
+  unitPrice  Float
+  totalAmount Float
+  pharmacySaleReturnItems PharmacySaleReturnItem[]
+  createdAt  DateTime @default(now())
+
+  @@map("sale_items")
+}
+
+/// Customer return of retail pharmacy sale lines — restores shelf inventory.
+model PharmacySaleReturn {
+  id          Int       @id @default(autoincrement())
+  branchId    Int
+  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  saleId      Int
+  sale        Sale      @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  returnDate  DateTime  @default(now())
+  totalAmount Float     @default(0)
+  notes       String?
+  createdById Int?
+  createdBy   User?     @relation("PharmacySaleReturnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items       PharmacySaleReturnItem[]
+  createdAt   DateTime  @default(now())
+
+  @@index([branchId, returnDate])
+  @@index([saleId])
+  @@map("pharmacy_sale_returns")
+}
+
+model PharmacySaleReturnItem {
+  id          Int       @id @default(autoincrement())
+  returnId    Int
+  return      PharmacySaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItemId  Int
+  saleItem    SaleItem  @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
+  quantity    Int
+  unitPrice   Float
+  totalAmount Float
+  createdAt   DateTime  @default(now())
+
+  @@map("pharmacy_sale_return_items")
+}
+
+// --- Outreach (home clinic / emergency medication bag) ---
+
+model OutreachTeam {
+  id            Int       @id @default(autoincrement())
+  branchId      Int
+  branch        Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  name          String
+  phone         String?
+  notes         String?
+  /// Amount this team owes the pharmacy for stock taken on credit (AR).
+  creditBalance Float     @default(0)
+  isActive      Boolean   @default(true)
+  members       OutreachTeamMember[]
+  inventory     OutreachInventoryItem[]
+  sales         Sale[]
+  returns       OutreachReturn[]
+  dispenses     OutreachDispense[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([branchId])
+  @@map("outreach_teams")
+}
+
+model OutreachTeamMember {
+  id        Int           @id @default(autoincrement())
+  teamId    Int
+  team      OutreachTeam  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name      String
+  phone     String?
+  role      String?
+  createdAt DateTime      @default(now())
+
+  @@index([teamId])
+  @@map("outreach_team_members")
+}
+
+model OutreachInventoryItem {
+  id        Int           @id @default(autoincrement())
+  teamId    Int
+  team      OutreachTeam  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int           @default(0)
+
+  @@unique([teamId, productId])
+  @@map("outreach_inventory_items")
+}
+
+model OutreachReturn {
+  id          Int       @id @default(autoincrement())
+  teamId      Int
+  team        OutreachTeam @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  branchId    Int
+  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  returnDate  DateTime  @default(now())
+  totalAmount Float     @default(0)
+  notes       String?
+  createdById Int?
+  createdBy   User?     @relation("OutreachReturnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items       OutreachReturnItem[]
+  createdAt   DateTime  @default(now())
+
+  @@index([teamId, returnDate])
+  @@map("outreach_returns")
+}
+
+model OutreachReturnItem {
+  id         Int     @id @default(autoincrement())
+  returnId   Int
+  return     OutreachReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity   Int
+  unitPrice  Float
+  totalAmount Float
+  createdAt  DateTime @default(now())
+
+  @@map("outreach_return_items")
+}
+
+model OutreachDispense {
+  id          Int       @id @default(autoincrement())
+  patientId   Int
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  teamId      Int
+  team        OutreachTeam @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  branchId    Int
+  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  totalAmount Float
+  notes       String?
+  createdById Int?
+  createdBy   User?     @relation("OutreachDispenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items       OutreachDispenseItem[]
+  createdAt   DateTime  @default(now())
+
+  @@index([teamId, createdAt])
+  @@map("outreach_dispenses")
+}
+
+model OutreachDispenseItem {
+  id          Int       @id @default(autoincrement())
+  dispenseId  Int
+  dispense    OutreachDispense @relation(fields: [dispenseId], references: [id], onDelete: Cascade)
+  productId   Int
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity    Int
+  unitPrice   Float
+  totalAmount Float
+  createdAt   DateTime  @default(now())
+
+  @@map("outreach_dispense_items")
+}
+
+model PatientPayment {
+  id         Int       @id @default(autoincrement())
+  patientId  Int
+  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  amount     Float
+  /// medication | prescription | pharmacy_credit — what the payment is applied toward (balance still decrements the same)
+  category   String    @default("medication")
+  paymentMethodId Int?
+  paymentMethod LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  notes      String?
+  createdById Int?
+  createdBy   User?    @relation("PatientPaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([patientId, createdAt])
+  @@map("patient_payments")
+}
+
+// --- Patient History (Doctor records) ---
+
+model PatientHistory {
+  id             Int          @id @default(autoincrement())
+  patientId      Int
+  patient        Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId  Int?
+  appointment    Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  doctorId       Int
+  doctor         Doctor       @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  type           String       // chief_complaint, history, examination, diagnosis, notes
+  notes          String       @db.Text
+  createdAt      DateTime     @default(now())
+
+  @@map("patient_histories")
+}
+
+// --- Lab ---
+
+model LabCategory {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  tests       LabTest[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("lab_categories")
+}
+
+model LabTest {
+  id          Int           @id @default(autoincrement())
+  categoryId  Int
+  category    LabCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  name        String
+  code        String?
+  unit        String?
+  normalRange String?       // e.g. "70-100 mg/dL"
+  isActive    Boolean       @default(true)
+  orderItems  LabOrderItem[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("lab_tests")
+}
+
+model LabOrder {
+  id             Int           @id @default(autoincrement())
+  appointmentId  Int
+  appointment    Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  patientId      Int
+  patient        Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctorId       Int
+  doctor         Doctor       @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  orderedById    Int?
+  orderedBy      User?        @relation("LabOrderCreatedBy", fields: [orderedById], references: [id], onDelete: SetNull)
+  status         String       @default("pending") // pending, completed, cancelled
+  notes          String?
+  items          LabOrderItem[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("lab_orders")
+}
+
+model LabOrderItem {
+  id             Int       @id @default(autoincrement())
+  labOrderId     Int
+  labOrder       LabOrder  @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+  labTestId      Int
+  labTest        LabTest   @relation(fields: [labTestId], references: [id], onDelete: Restrict)
+  resultValue    String?   @db.Text
+  resultUnit     String?
+  status         String    @default("pending") // pending, completed
+  recordedById   Int?
+  recordedBy     User?     @relation("LabResultRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedAt     DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  @@map("lab_order_items")
+}
+
+// --- Prescriptions (Doctor prescribes from inventory) ---
+
+model Prescription {
+  id             Int                @id @default(autoincrement())
+  appointmentId  Int
+  appointment    Appointment        @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  patientId      Int
+  patient        Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctorId       Int
+  doctor         Doctor             @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  createdById    Int?
+  createdBy      User?              @relation("PrescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  /// Urgent / home-visit style Rx (multiple allowed per patient; filter on Patient invoice).
+  isEmergency    Boolean            @default(false)
+  status         String             @default("pending") // pending, dispensed, cancelled
+  notes          String?
+  items          PrescriptionItem[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id             Int          @id @default(autoincrement())
+  prescriptionId Int
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  productId      Int
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity       Int
+  dosage         String?      // e.g. "1 tablet twice daily"
+  instructions   String?
+  dispensedQty   Int?        @default(0) // how much was dispensed
+  createdAt      DateTime     @default(now())
+
+  @@map("prescription_items")
+}
+
+// --- Expenses ---
+
+model ExpenseCategory {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  expenses  Expense[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("expense_categories")
 }
 
 model Expense {
-  id              Int       @id @default(autoincrement())
-  amount          Float
-  description     String
-  category        String? // e.g. "Operations", "Salaries", "Utilities"
-  bankId          Int? // Bank to withdraw from when approved
-  bank            Bank?     @relation(fields: [bankId], references: [id], onDelete: SetNull)
-  status          String    @default("pending") // "pending" | "approved" | "rejected"
-  requestedById   Int
-  requestedBy     User      @relation("ExpenseRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
-  approvedById    Int?
-  approvedBy      User?     @relation("ExpenseApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt      DateTime?
-  rejectionReason String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id          Int              @id @default(autoincrement())
+  categoryId  Int
+  category    ExpenseCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  amount      Float
+  expenseDate DateTime         @db.Date
+  description String?
+  createdById Int?
+  createdBy   User?            @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   @@map("expenses")
 }
 
-model BankTransfer {
-  id            Int      @id @default(autoincrement())
-  fromBankId    Int
-  fromBank      Bank     @relation("TransferFromBank", fields: [fromBankId], references: [id], onDelete: Restrict)
-  toBankId      Int
-  toBank        Bank     @relation("TransferToBank", fields: [toBankId], references: [id], onDelete: Restrict)
-  amount        Float
-  reason        String?
-  transferredAt DateTime @default(now())
-  createdById   Int?
-  createdBy     User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt     DateTime @default(now())
+// --- Finance: accounts, payment methods, ledger ---
 
-  @@map("bank_transfers")
-}
-
-model AttendanceSession {
-  id        Int                @id @default(autoincrement())
-  classId   Int
-  class     Class              @relation(fields: [classId], references: [id], onDelete: Restrict)
-  date      DateTime           @db.Date
-  shift     String // "Morning", "Afternoon", "Evening"
-  takenById Int
-  takenBy   User               @relation(fields: [takenById], references: [id], onDelete: Restrict)
-  takenAt   DateTime           @default(now()) // exact timestamp when attendance was taken
-  note      String?
-  records   AttendanceRecord[]
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-
-  @@unique([classId, date, shift])
-  @@map("attendance_sessions")
-}
-
-model AttendanceRecord {
-  id        Int               @id @default(autoincrement())
-  sessionId Int
-  session   AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  studentId Int
-  student   Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  status    String // "Present", "Absent", "Late", "Excused"
-  note      String?
-  createdAt DateTime          @default(now())
-
-  @@unique([sessionId, studentId])
-  @@map("attendance_records")
-}
-
-model Position {
-  id          Int        @id @default(autoincrement())
-  name        String     @unique // e.g. "Registrar", "Accountant", "HR Officer"
-  description String?
-  isActive    Boolean    @default(true)
-  employees   Employee[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  @@map("positions")
-}
-
-model Employee {
-  id         Int       @id @default(autoincrement())
-  name       String
-  email      String    @unique
-  phone      String?
-  positionId Int
-  position   Position  @relation(fields: [positionId], references: [id], onDelete: Restrict)
-  department String? // e.g. "Admin", "Finance", "IT Support"
-  hireDate   DateTime  @default(now())
-  isActive   Boolean   @default(true)
-  payrolls   Payroll[]
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  @@map("employees")
-}
-
-model Payroll {
+model FinanceAccount {
   id              Int       @id @default(autoincrement())
-  amount          Float
-  description     String
-  period          String? // e.g. "January 2026", "Q1 2026"
-  employeeId      Int? // Optional link to employee
-  employee        Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  bankId          Int? // Bank to pay from when approved
-  bank            Bank?     @relation(fields: [bankId], references: [id], onDelete: SetNull)
-  status          String    @default("pending") // "pending" | "approved" | "rejected"
-  requestedById   Int
-  requestedBy     User      @relation("PayrollRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
-  approvedById    Int?
-  approvedBy      User?     @relation("PayrollApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt      DateTime?
-  rejectionReason String?
+  name            String
+  code            String?   @unique
+  type            String    @default("cash") // cash, bank, mobile, other
+  openingBalance  Float     @default(0)
+  isActive        Boolean   @default(true)
+  paymentMethods  LedgerPaymentMethod[]
+  transactions    AccountTransaction[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  @@map("payrolls")
+  @@map("finance_accounts")
 }
 
-model ExamRecord {
-  id           Int      @id @default(autoincrement())
-  studentId    Int
-  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  courseId     Int
-  course       Course   @relation(fields: [courseId], references: [id], onDelete: Restrict)
-  semester     String // "Fall", "Spring", "Summer"
-  year         Int // e.g. 2026
-  midExam      Float?   @default(0) // out of 20
-  finalExam    Float?   @default(0) // out of 40
-  assessment   Float?   @default(0) // out of 10
-  project      Float?   @default(0) // out of 10
-  assignment   Float?   @default(0) // out of 10
-  presentation Float?   @default(0) // out of 10
-  totalMarks   Float    @default(0) // sum of all (out of 100)
-  grade        String? // "A", "A-", "B+", "B", "B-", "C+", "C", "D", "F"
-  gradePoints  Float?   @default(0) // 4.0, 3.7, 3.3, 3.0, 2.7, 2.3, 2.0, 1.0, 0.0
-  status       String   @default("approved") // "draft" | "approved" - draft until instructor verifies
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+model LedgerPaymentMethod {
+  id        Int            @id @default(autoincrement())
+  name      String
+  accountId Int
+  account   FinanceAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  isActive  Boolean        @default(true)
+  transactions AccountTransaction[]
+  purchases Purchase[]
+  patientPayments PatientPayment[]
+  doctorVisitCards DoctorVisitCard[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
-  @@unique([studentId, courseId, semester, year])
-  @@map("exam_records")
+  @@map("ledger_payment_methods")
+}
+
+model AccountTransaction {
+  id                Int       @id @default(autoincrement())
+  accountId         Int
+  account           FinanceAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  kind              String    // deposit | withdrawal
+  amount            Float
+  description       String?
+  saleId            Int?      @unique
+  sale              Sale?     @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  purchaseId        Int?      @unique
+  purchase          Purchase? @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  paymentMethodId   Int?
+  paymentMethod     LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  transactionDate   DateTime  @default(now())
+  createdById       Int?
+  createdBy         User?     @relation("FinanceTransactionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  doctorVisitCardId Int?      @unique
+  doctorVisitCard   DoctorVisitCard? @relation(fields: [doctorVisitCardId], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now())
+
+  @@index([accountId, transactionDate])
+  @@map("account_transactions")
 }

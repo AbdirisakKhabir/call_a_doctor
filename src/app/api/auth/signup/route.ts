@@ -32,15 +32,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let studentRole = await prisma.role.findUnique({
-      where: { name: "Student" },
+    let staffRole = await prisma.role.findUnique({
+      where: { name: "Staff" },
     });
 
-    if (!studentRole) {
-      studentRole = await prisma.role.create({
+    if (!staffRole) {
+      staffRole = await prisma.role.create({
         data: {
-          name: "Student",
-          description: "Default role for newly registered students",
+          name: "Staff",
+          description: "Default role for newly registered staff",
         },
       });
     }
@@ -53,13 +53,13 @@ export async function POST(req: NextRequest) {
       await prisma.rolePermission.upsert({
         where: {
           roleId_permissionId: {
-            roleId: studentRole.id,
+            roleId: staffRole.id,
             permissionId: dashboardPermission.id,
           },
         },
         update: {},
         create: {
-          roleId: studentRole.id,
+          roleId: staffRole.id,
           permissionId: dashboardPermission.id,
         },
       });
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
         email: normalizedEmail,
         password: hashedPassword,
         name: fullName,
-        roleId: studentRole.id,
+        roleId: staffRole.id,
       },
       include: {
         role: {
@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
           roleId: user.roleId,
           roleName: user.role.name,
           permissions,
+          branchIds: null,
         },
       },
       { status: 201 }

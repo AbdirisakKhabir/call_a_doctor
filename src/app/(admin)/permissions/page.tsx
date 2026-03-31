@@ -18,14 +18,14 @@ const MODULE_COLORS: Record<string, "primary" | "success" | "warning" | "info" |
   roles: "success",
   permissions: "warning",
   dashboard: "info",
-  faculties: "error",
-  departments: "primary",
-  courses: "warning",
-  classes: "success",
-  admission: "info",
-  attendance: "error",
-  examinations: "primary",
-  reports: "success",
+  pharmacy: "success",
+  appointments: "info",
+  patients: "primary",
+  accounts: "warning",
+  settings: "info",
+  expenses: "error",
+  financial: "success",
+  lab: "info",
 };
 
 export default function PermissionsPage() {

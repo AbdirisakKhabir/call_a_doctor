@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+
+function mapRoleRow(r: {
+  id: number;
+  name: string;
+  description: string | null;
+  _count: { users: number };
+  permissions: { permission: Record<string, unknown> }[];
+}) {
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    userCount: r._count.users,
+    permissions: r.permissions.map((rp) => rp.permission),
+  };
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,23 +25,37 @@ export async function GET(req: NextRequest) {
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(req.nextUrl.searchParams);
+
+    const include = {
+      _count: { select: { users: true } },
+      permissions: { include: { permission: true } },
+    };
+
+    if (paginate) {
+      const [roles, total] = await Promise.all([
+        prisma.role.findMany({
+          include,
+          orderBy: { name: "asc" },
+          skip,
+          take: pageSize,
+        }),
+        prisma.role.count(),
+      ]);
+      return NextResponse.json({
+        data: roles.map(mapRoleRow),
+        total,
+        page,
+        pageSize,
+      });
+    }
+
     const roles = await prisma.role.findMany({
-      include: {
-        _count: { select: { users: true } },
-        permissions: { include: { permission: true } },
-      },
+      include,
       orderBy: { name: "asc" },
     });
 
-    return NextResponse.json(
-      roles.map((r) => ({
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        userCount: r._count.users,
-        permissions: r.permissions.map((rp) => rp.permission),
-      }))
-    );
+    return NextResponse.json(roles.map(mapRoleRow));
   } catch (e) {
     console.error("Roles list error:", e);
     return NextResponse.json(

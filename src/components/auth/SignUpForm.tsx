@@ -27,7 +27,6 @@ export default function SignUpForm() {
     if (isLoading) return;
     if (user) {
       router.replace("/");
-      router.refresh();
     }
   }, [user, isLoading, router]);
 
@@ -71,8 +70,7 @@ export default function SignUpForm() {
         setError(loginResult.error);
         return;
       }
-      router.push("/");
-      router.refresh();
+      router.replace("/");
     } catch {
       setError("Network error.");
     } finally {
@@ -104,7 +102,7 @@ export default function SignUpForm() {
           <div className="mb-5 sm:mb-8">
             <Link href="/" className="inline-block mb-5">
               <Image
-                src="/logo/logo%20abaarso.png"
+                src="/logo/call-a-doctor.png"
                 alt="Logo"
                 width={160}
                 height={44}
