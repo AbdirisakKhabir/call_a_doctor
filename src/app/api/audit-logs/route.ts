@@ -4,9 +4,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
-
-/** Admin role name in the database (seeded as "Admin"). */
-const ADMIN_ROLE_NAME = "Admin";
+import { ADMIN_ROLE_NAME } from "@/lib/admin-role";
 
 export async function GET(req: NextRequest) {
   try {

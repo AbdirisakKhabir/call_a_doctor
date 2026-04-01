@@ -49,6 +49,8 @@ export default function SettingsHubPage() {
     hasPermission("appointments.view") ||
     hasPermission("audit.view") ||
     hasPermission("audit.view_admins");
+  const canSeeAudit =
+    hasPermission("audit.view") || hasPermission("audit.view_admins");
 
   if (!canSettingsHub) {
     return (
@@ -82,6 +84,35 @@ export default function SettingsHubPage() {
         </Link>
         .
       </p>
+
+      <div className="mt-6 rounded-xl border border-brand-100 bg-brand-50/80 p-4 dark:border-brand-900/40 dark:bg-brand-950/30">
+        <p className="text-sm font-medium text-gray-900 dark:text-white">Tracking &amp; audit</p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Use the sidebar: <strong>Settings</strong> → <strong>Activity log</strong> (everyone) or <strong>Admin activity</strong> (Admin accounts only).
+        </p>
+        {canSeeAudit ? (
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Quick links:{" "}
+            <Link href="/settings/activity" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+              Activity log
+            </Link>
+            {" · "}
+            <Link href="/settings/admin-activity" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+              Admin activity
+            </Link>
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-amber-900 dark:text-amber-100/90">
+            Your role needs <code className="rounded bg-white/70 px-1 text-xs dark:bg-black/40">audit.view</code> or{" "}
+            <code className="rounded bg-white/70 px-1 text-xs dark:bg-black/40">audit.view_admins</code>. An administrator can add these under{" "}
+            <Link href="/roles" className="font-medium underline">
+              Roles
+            </Link>
+            , then sign out and back in. Accounts with the <strong>Admin</strong> role can always open audit pages.
+          </p>
+        )}
+      </div>
+
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         {visible.map((c) => (
           <Link
