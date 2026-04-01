@@ -310,10 +310,6 @@ model Product {
   costPrice         Float             @default(0)
   sellingPrice      Float             @default(0)
   quantity          Int               @default(0)
-  /// Optional: boxes inside one carton (null = cartons not used).
-  boxesPerCarton    Int?
-  /// Optional: pieces inside one box (null = boxes not used). Inventory is always in pcs.
-  pcsPerBox         Int?
   unit              String            @default("pcs")
   /// Optional batch / lot expiry (e.g. for medicines).
   expiryDate        DateTime?
@@ -386,7 +382,7 @@ model PurchaseItem {
   productId  Int
   product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   quantity   Int
-  /// pcs | box | carton — quantity is in this unit; stock is updated in pcs.
+  /// Always pieces (pcs); column kept for schema compatibility.
   purchaseUnit String @default("pcs")
   unitPrice  Float
   totalAmount Float
@@ -430,7 +426,7 @@ model SaleItem {
   productId  Int
   product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
   quantity   Int
-  /// pcs | box | carton — quantity is in this unit; shelf stock moves in pcs.
+  /// Always pieces (pcs); column kept for schema compatibility.
   saleUnit   String @default("pcs")
   unitPrice  Float
   totalAmount Float

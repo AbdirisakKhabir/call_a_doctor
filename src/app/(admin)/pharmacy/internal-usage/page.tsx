@@ -61,8 +61,8 @@ export default function InternalUsagePage() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [lines, setLines] = useState<{ productId: string; quantity: string; unit: string }[]>([
-    { productId: "", quantity: "1", unit: "pcs" },
+  const [lines, setLines] = useState<{ productId: string; quantity: string }[]>([
+    { productId: "", quantity: "1" },
   ]);
   const [form, setForm] = useState({
     purpose: "general" as "laboratory" | "cleaning" | "general",
@@ -113,7 +113,7 @@ export default function InternalUsagePage() {
 
   useEffect(() => {
     if (!branchId) return;
-    setLines([{ productId: "", quantity: "1", unit: "pcs" }]);
+    setLines([{ productId: "", quantity: "1" }]);
     loadInternalProducts();
   }, [branchId]);
 
@@ -127,14 +127,14 @@ export default function InternalUsagePage() {
   }, [logBranchFilter, logPage]);
 
   function addLine() {
-    setLines((prev) => [...prev, { productId: "", quantity: "1", unit: "pcs" }]);
+    setLines((prev) => [...prev, { productId: "", quantity: "1" }]);
   }
 
   function removeLine(index: number) {
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   }
 
-  function updateLine(index: number, patch: Partial<{ productId: string; quantity: string; unit: string }>) {
+  function updateLine(index: number, patch: Partial<{ productId: string; quantity: string }>) {
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   }
 
@@ -149,7 +149,6 @@ export default function InternalUsagePage() {
       .map((line) => ({
         productId: Number(line.productId),
         quantity: Math.max(1, Math.floor(Number(line.quantity) || 0)),
-        unit: line.unit || "pcs",
       }))
       .filter((line) => Number.isInteger(line.productId) && line.productId > 0);
     if (items.length === 0) {
@@ -173,7 +172,7 @@ export default function InternalUsagePage() {
         setError(data.error || "Failed to record usage");
         return;
       }
-      setLines([{ productId: "", quantity: "1", unit: "pcs" }]);
+      setLines([{ productId: "", quantity: "1" }]);
       setForm((f) => ({ ...f, notes: "" }));
       await Promise.all([loadInternalProducts(), loadLogs()]);
     } finally {
@@ -255,20 +254,8 @@ export default function InternalUsagePage() {
                       ))}
                     </select>
                   </div>
-                  <div className="w-full sm:w-28">
-                    <Label className="text-xs">Unit</Label>
-                    <select
-                      value={line.unit}
-                      onChange={(e) => updateLine(index, { unit: e.target.value })}
-                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-white px-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                    >
-                      <option value="pcs">pcs</option>
-                      <option value="box">Box</option>
-                      <option value="carton">Carton</option>
-                    </select>
-                  </div>
                   <div className="w-full sm:w-24">
-                    <Label className="text-xs">Qty</Label>
+                    <Label className="text-xs">Qty (pcs)</Label>
                     <input
                       type="number"
                       min={1}

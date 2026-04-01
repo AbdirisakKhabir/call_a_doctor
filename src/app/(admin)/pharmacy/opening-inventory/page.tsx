@@ -35,8 +35,6 @@ export default function OpeningInventoryPage() {
     sellingPrice: "",
     quantity: "",
     unit: "pcs",
-    boxesPerCarton: "",
-    pcsPerBox: "",
     categoryId: "",
     forSale: true,
     internalPurpose: "general" as "laboratory" | "cleaning" | "general",
@@ -140,8 +138,6 @@ export default function OpeningInventoryPage() {
           sellingPrice: form.forSale ? Number(form.sellingPrice) || 0 : 0,
           quantity: Math.max(0, Math.floor(Number(form.quantity) || 0)),
           unit: form.unit,
-          boxesPerCarton: form.boxesPerCarton.trim() === "" ? null : Number(form.boxesPerCarton),
-          pcsPerBox: form.pcsPerBox.trim() === "" ? null : Number(form.pcsPerBox),
           categoryId: form.categoryId ? Number(form.categoryId) : null,
           forSale: form.forSale,
           internalPurpose: form.forSale ? undefined : form.internalPurpose,
@@ -161,8 +157,6 @@ export default function OpeningInventoryPage() {
         sellingPrice: "",
         quantity: "",
         unit: "pcs",
-        boxesPerCarton: "",
-        pcsPerBox: "",
         categoryId: "",
         forSale: true,
         internalPurpose: "general",
@@ -379,32 +373,8 @@ export default function OpeningInventoryPage() {
             </div>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Stock is tracked in pieces (pcs). Optional packaging lets you use cartons/boxes at POS and on purchases.
+            Stock is tracked in pieces (pcs).
           </p>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <div>
-              <Label>Boxes per carton</Label>
-              <input
-                type="number"
-                min="1"
-                value={form.boxesPerCarton}
-                onChange={(e) => setForm((f) => ({ ...f, boxesPerCarton: e.target.value }))}
-                placeholder="Leave empty if not used"
-                className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-              />
-            </div>
-            <div>
-              <Label>Pieces per box</Label>
-              <input
-                type="number"
-                min="1"
-                value={form.pcsPerBox}
-                onChange={(e) => setForm((f) => ({ ...f, pcsPerBox: e.target.value }))}
-                placeholder="Leave empty if not used"
-                className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-              />
-            </div>
-          </div>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <Label>Unit</Label>

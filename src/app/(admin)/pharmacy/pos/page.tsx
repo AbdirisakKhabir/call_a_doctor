@@ -18,15 +18,6 @@ import {
   PosBarcodeKeyboardCapture,
   type PosProductPayload,
 } from "@/components/pharmacy/PosBarcodeBridge";
-import {
-  type SaleUnit,
-  availableSaleUnits,
-  maxWholeUnits,
-  parseSaleUnit,
-  quantityInUnitToPcs,
-  unitLabel,
-} from "@/lib/product-packaging";
-
 type CartItem = {
   productId: number;
   name: string;
@@ -35,7 +26,6 @@ type CartItem = {
   sellingPrice: number;
   quantity: number;
   totalAmount: number;
-  saleUnit: SaleUnit;
 };
 
 type Product = {
@@ -46,14 +36,8 @@ type Product = {
   sellingPrice: number;
   quantity: number;
   unit: string;
-  boxesPerCarton: number | null;
-  pcsPerBox: number | null;
   expiryDate: string | null;
 };
-
-function packOf(p: Pick<Product, "boxesPerCarton" | "pcsPerBox">) {
-  return { boxesPerCarton: p.boxesPerCarton, pcsPerBox: p.pcsPerBox };
-}
 
 type Branch = { id: number; name: string };
 
@@ -77,6 +61,7 @@ type SaleRow = {
   patient: { id: number; patientCode: string; name: string } | null;
   outreachTeam?: { id: number; name: string; creditBalance: number } | null;
   depositTransaction?: { id: number } | null;
+  createdBy?: { id: number; name: string | null } | null;
   /** Present on full sale fetch; omitted on paginated list API. */
   items?: {
     productId: number;
@@ -89,8 +74,6 @@ type SaleRow = {
       name: string;
       code: string;
       imageUrl: string | null;
-      boxesPerCarton: number | null;
-      pcsPerBox: number | null;
     };
   }[];
 };
@@ -128,6 +111,10 @@ export default function POSPage() {
   const [salesPage, setSalesPage] = useState(1);
   const [salesLoading, setSalesLoading] = useState(false);
   const [salesError, setSalesError] = useState("");
+  const [viewSaleOpen, setViewSaleOpen] = useState(false);
+  const [viewSaleDetail, setViewSaleDetail] = useState<SaleRow | null>(null);
+  const [viewSaleLoading, setViewSaleLoading] = useState(false);
+  const [viewSaleError, setViewSaleError] = useState("");
 
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
@@ -397,31 +384,53 @@ export default function POSPage() {
     if (mainTab === "sales") loadSales();
   }, [mainTab, loadSales]);
 
+  async function openViewSale(saleId: number) {
+    setViewSaleOpen(true);
+    setViewSaleDetail(null);
+    setViewSaleError("");
+    setViewSaleLoading(true);
+    try {
+      const res = await authFetch(`/api/pharmacy/sales/${saleId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setViewSaleError(data.error || "Could not load sale");
+        return;
+      }
+      setViewSaleDetail(data as SaleRow);
+    } finally {
+      setViewSaleLoading(false);
+    }
+  }
+
+  function closeViewSale() {
+    setViewSaleOpen(false);
+    setViewSaleDetail(null);
+    setViewSaleError("");
+  }
+
   const getEditMaxQty = useCallback(
-    (productId: number, saleUnit: SaleUnit) => {
+    (productId: number) => {
       const p = products.find((x) => x.id === productId);
       const base = p?.quantity ?? 0;
       const sold = editReturnedQtyByProduct[productId] ?? 0;
-      const avail = base + sold;
-      return maxWholeUnits(avail, packOf(p ?? { boxesPerCarton: null, pcsPerBox: null }), saleUnit);
+      return base + sold;
     },
     [products, editReturnedQtyByProduct]
   );
 
   const addToEditCart = useCallback(
     (p: Product) => {
-      const saleUnit: SaleUnit = "pcs";
-      const max = getEditMaxQty(p.id, saleUnit);
+      const max = getEditMaxQty(p.id);
       if (max <= 0) return;
       setEditCart((prev) => {
-        const existing = prev.find((c) => c.productId === p.id && c.saleUnit === saleUnit);
+        const existing = prev.find((c) => c.productId === p.id);
         const qty = (existing?.quantity || 0) + 1;
         if (qty > max) return prev;
         const price = existing?.sellingPrice ?? p.sellingPrice;
         const totalAmount = qty * price;
         if (existing) {
           return prev.map((c) =>
-            c.productId === p.id && c.saleUnit === saleUnit ? { ...c, quantity: qty, totalAmount } : c
+            c.productId === p.id ? { ...c, quantity: qty, totalAmount } : c
           );
         }
         return [
@@ -434,7 +443,6 @@ export default function POSPage() {
             sellingPrice: p.sellingPrice,
             quantity: 1,
             totalAmount: p.sellingPrice,
-            saleUnit,
           },
         ];
       });
@@ -442,38 +450,22 @@ export default function POSPage() {
     [getEditMaxQty]
   );
 
-  const updateEditCartQty = (productId: number, saleUnit: SaleUnit, delta: number) => {
+  const updateEditCartQty = (productId: number, delta: number) => {
     setEditCart((prev) => {
-      const item = prev.find((c) => c.productId === productId && c.saleUnit === saleUnit);
+      const item = prev.find((c) => c.productId === productId);
       if (!item) return prev;
-      const max = getEditMaxQty(productId, saleUnit);
+      const max = getEditMaxQty(productId);
       const newQty = Math.max(0, Math.min(max, item.quantity + delta));
-      if (newQty === 0) return prev.filter((c) => !(c.productId === productId && c.saleUnit === saleUnit));
+      if (newQty === 0) return prev.filter((c) => c.productId !== productId);
       const totalAmount = newQty * item.sellingPrice;
       return prev.map((c) =>
-        c.productId === productId && c.saleUnit === saleUnit ? { ...c, quantity: newQty, totalAmount } : c
+        c.productId === productId ? { ...c, quantity: newQty, totalAmount } : c
       );
     });
   };
 
-  const setEditCartSaleUnit = (productId: number, fromUnit: SaleUnit, toUnit: SaleUnit) => {
-    if (fromUnit === toUnit) return;
-    setEditCart((prev) => {
-      const product = products.find((p) => p.id === productId);
-      if (!product) return prev;
-      const maxU = getEditMaxQty(productId, toUnit);
-      if (maxU <= 0) return prev;
-      return prev.map((c) => {
-        if (c.productId !== productId || c.saleUnit !== fromUnit) return c;
-        const qty = Math.min(c.quantity, maxU);
-        const q = Math.max(1, qty);
-        return { ...c, saleUnit: toUnit, quantity: q, totalAmount: q * c.sellingPrice };
-      });
-    });
-  };
-
-  const removeFromEditCart = (productId: number, saleUnit: SaleUnit) => {
-    setEditCart((prev) => prev.filter((c) => !(c.productId === productId && c.saleUnit === saleUnit)));
+  const removeFromEditCart = (productId: number) => {
+    setEditCart((prev) => prev.filter((c) => c.productId !== productId));
   };
 
   function closeEditModal() {
@@ -524,34 +516,24 @@ export default function POSPage() {
       const saleItems = data.items ?? [];
       const soldPcs: Record<number, number> = {};
       for (const it of saleItems) {
-        const pack = {
-          boxesPerCarton: it.product?.boxesPerCarton ?? null,
-          pcsPerBox: it.product?.pcsPerBox ?? null,
-        };
-        const conv = quantityInUnitToPcs(pack, it.quantity, parseSaleUnit(it.saleUnit));
-        const pcs = "error" in conv ? 0 : conv.pcs;
-        soldPcs[it.productId] = (soldPcs[it.productId] || 0) + pcs;
+        soldPcs[it.productId] = (soldPcs[it.productId] || 0) + it.quantity;
       }
       setEditReturnedQtyByProduct(soldPcs);
 
-      const merged = new Map<string, CartItem>();
+      const merged = new Map<number, CartItem>();
       for (const it of saleItems) {
-        const su = parseSaleUnit(it.saleUnit);
-        const key = `${it.productId}:${su}`;
-        const prev = merged.get(key);
+        const prev = merged.get(it.productId);
         if (prev) {
           const q = prev.quantity + it.quantity;
           const totalAmt = prev.totalAmount + it.totalAmount;
-          const avg = totalAmt / q;
-          merged.set(key, {
+          merged.set(it.productId, {
             ...prev,
             quantity: q,
-            sellingPrice: avg,
+            sellingPrice: totalAmt / q,
             totalAmount: totalAmt,
-            saleUnit: su,
           });
         } else {
-          merged.set(key, {
+          merged.set(it.productId, {
             productId: it.productId,
             name: it.product.name,
             code: it.product.code,
@@ -559,7 +541,6 @@ export default function POSPage() {
             sellingPrice: it.unitPrice,
             quantity: it.quantity,
             totalAmount: it.totalAmount,
-            saleUnit: su,
           });
         }
       }
@@ -603,7 +584,7 @@ export default function POSPage() {
             productId: c.productId,
             quantity: c.quantity,
             unitPrice: c.sellingPrice,
-            saleUnit: c.saleUnit,
+            saleUnit: "pcs" as const,
           })),
           discount: editDiscountAmount,
           paymentMethod: editPaymentMethod,
@@ -642,17 +623,16 @@ export default function POSPage() {
     : products;
 
   const addToCart = useCallback((p: Product) => {
-    const saleUnit: SaleUnit = "pcs";
-    const maxU = maxWholeUnits(p.quantity, packOf(p), saleUnit);
+    const maxU = p.quantity;
     if (maxU <= 0) return;
     setCart((prev) => {
-      const existing = prev.find((c) => c.productId === p.id && c.saleUnit === saleUnit);
+      const existing = prev.find((c) => c.productId === p.id);
       const qty = (existing?.quantity || 0) + 1;
       if (qty > maxU) return prev;
       const totalAmount = qty * p.sellingPrice;
       if (existing) {
         return prev.map((c) =>
-          c.productId === p.id && c.saleUnit === saleUnit ? { ...c, quantity: qty, totalAmount } : c
+          c.productId === p.id ? { ...c, quantity: qty, totalAmount } : c
         );
       }
       return [
@@ -665,7 +645,6 @@ export default function POSPage() {
           sellingPrice: p.sellingPrice,
           quantity: 1,
           totalAmount: p.sellingPrice,
-          saleUnit,
         },
       ];
     });
@@ -674,7 +653,7 @@ export default function POSPage() {
   const applyBarcodeProduct = useCallback(
     (p: Product) => {
       setProducts((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]));
-      const maxU = maxWholeUnits(p.quantity, packOf(p), "pcs");
+      const maxU = p.quantity;
       if (maxU <= 0) {
         setScanMessage("Out of stock for this barcode.");
         window.setTimeout(() => setScanMessage(""), 4000);
@@ -739,39 +718,24 @@ export default function POSPage() {
     [search, branchId, products, applyBarcodeProduct, fetchAndApplyBarcode]
   );
 
-  const setCartSaleUnit = (productId: number, fromUnit: SaleUnit, toUnit: SaleUnit) => {
-    if (fromUnit === toUnit) return;
+  const updateCartQty = (productId: number, delta: number) => {
     setCart((prev) => {
-      const product = products.find((p) => p.id === productId);
-      if (!product) return prev;
-      const maxU = maxWholeUnits(product.quantity, packOf(product), toUnit);
-      if (maxU <= 0) return prev;
-      return prev.map((c) => {
-        if (c.productId !== productId || c.saleUnit !== fromUnit) return c;
-        const q = Math.max(1, Math.min(c.quantity, maxU));
-        return { ...c, saleUnit: toUnit, quantity: q, totalAmount: q * c.sellingPrice };
-      });
-    });
-  };
-
-  const updateCartQty = (productId: number, saleUnit: SaleUnit, delta: number) => {
-    setCart((prev) => {
-      const item = prev.find((c) => c.productId === productId && c.saleUnit === saleUnit);
+      const item = prev.find((c) => c.productId === productId);
       if (!item) return prev;
       const product = products.find((p) => p.id === productId);
       if (!product) return prev;
-      const maxQty = maxWholeUnits(product.quantity, packOf(product), saleUnit);
+      const maxQty = product.quantity;
       const newQty = Math.max(0, Math.min(maxQty, item.quantity + delta));
-      if (newQty === 0) return prev.filter((c) => !(c.productId === productId && c.saleUnit === saleUnit));
+      if (newQty === 0) return prev.filter((c) => c.productId !== productId);
       const totalAmount = newQty * item.sellingPrice;
       return prev.map((c) =>
-        c.productId === productId && c.saleUnit === saleUnit ? { ...c, quantity: newQty, totalAmount } : c
+        c.productId === productId ? { ...c, quantity: newQty, totalAmount } : c
       );
     });
   };
 
-  const removeFromCart = (productId: number, saleUnit: SaleUnit) => {
-    setCart((prev) => prev.filter((c) => !(c.productId === productId && c.saleUnit === saleUnit)));
+  const removeFromCart = (productId: number) => {
+    setCart((prev) => prev.filter((c) => c.productId !== productId));
   };
 
   const subtotal = cart.reduce((s, c) => s + c.totalAmount, 0);
@@ -817,7 +781,7 @@ export default function POSPage() {
           productId: c.productId,
           quantity: c.quantity,
           unitPrice: c.sellingPrice,
-          saleUnit: c.saleUnit,
+          saleUnit: "pcs" as const,
         })),
         discount: discountAmount,
       };
@@ -949,6 +913,7 @@ export default function POSPage() {
           mainTab={mainTab}
           checkoutModalOpen={checkoutModal}
           editOpen={editOpen}
+          viewSaleOpen={viewSaleOpen}
           onProduct={handleUrlBarcodeProduct}
           onNotFound={() => {
             setScanMessage("Barcode not found for this branch.");
@@ -957,7 +922,7 @@ export default function POSPage() {
         />
       </Suspense>
       <PosBarcodeKeyboardCapture
-        enabled={mainTab === "checkout" && !checkoutModal && !editOpen}
+        enabled={mainTab === "checkout" && !checkoutModal && !editOpen && !viewSaleOpen}
         onScan={fetchAndApplyBarcode}
       />
       <div className="mb-3 flex flex-col gap-3 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1355,12 +1320,9 @@ export default function POSPage() {
               <p className="py-8 text-center text-sm text-gray-500">Cart is empty. Tap products to add.</p>
             ) : (
               <div className="space-y-2.5">
-                {cart.map((c) => {
-                  const prod = products.find((p) => p.id === c.productId);
-                  const unitOpts = prod ? availableSaleUnits(packOf(prod)) : (["pcs"] as SaleUnit[]);
-                  return (
+                {cart.map((c) => (
                   <div
-                    key={`${c.productId}-${c.saleUnit}`}
+                    key={c.productId}
                     className="w-full min-w-0 rounded-lg border border-brand-200/80 bg-white p-2.5 shadow-sm dark:border-brand-500/25 dark:bg-gray-800"
                   >
                     <div className="flex min-w-0 gap-2">
@@ -1374,29 +1336,15 @@ export default function POSPage() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium leading-snug text-gray-900 dark:text-gray-100">{c.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          ${c.sellingPrice.toFixed(2)} / {unitLabel(c.saleUnit)} × {c.quantity}
+                          ${c.sellingPrice.toFixed(2)} / pcs × {c.quantity}
                         </p>
-                        <select
-                          value={c.saleUnit}
-                          onChange={(e) =>
-                            setCartSaleUnit(c.productId, c.saleUnit, parseSaleUnit(e.target.value))
-                          }
-                          className="mt-1 h-7 w-full rounded border border-gray-200 bg-white px-1.5 text-[10px] dark:border-gray-600 dark:bg-gray-900 dark:text-white"
-                          aria-label="Sale unit"
-                        >
-                          {unitOpts.map((u) => (
-                            <option key={u} value={u}>
-                              {unitLabel(u)}
-                            </option>
-                          ))}
-                        </select>
                       </div>
                     </div>
                     <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2 dark:border-gray-700">
                       <div className="flex shrink-0 items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => updateCartQty(c.productId, c.saleUnit, -1)}
+                          onClick={() => updateCartQty(c.productId, -1)}
                           className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
                         >
                           −
@@ -1404,7 +1352,7 @@ export default function POSPage() {
                         <span className="min-w-6 text-center text-sm font-medium">{c.quantity}</span>
                         <button
                           type="button"
-                          onClick={() => updateCartQty(c.productId, c.saleUnit, 1)}
+                          onClick={() => updateCartQty(c.productId, 1)}
                           className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
                         >
                           +
@@ -1414,7 +1362,7 @@ export default function POSPage() {
                         <span className="text-sm font-semibold">${c.totalAmount.toFixed(2)}</span>
                         <button
                           type="button"
-                          onClick={() => removeFromCart(c.productId, c.saleUnit)}
+                          onClick={() => removeFromCart(c.productId)}
                           className="rounded-lg p-1 text-gray-400 hover:bg-error-50 hover:text-error-500"
                         >
                           <TrashBinIcon className="h-4 w-4" />
@@ -1422,8 +1370,7 @@ export default function POSPage() {
                       </div>
                     </div>
                   </div>
-                );
-                })}
+                ))}
               </div>
             )}
           </div>
@@ -1539,13 +1486,16 @@ export default function POSPage() {
                               )}
                             </td>
                             <td className="py-2.5">
-                              {canEditSale ? (
-                                <Button size="sm" variant="outline" onClick={() => openEditSale(s.id)}>
-                                  Edit
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button size="sm" variant="outline" onClick={() => openViewSale(s.id)}>
+                                  View
                                 </Button>
-                              ) : (
-                                <span className="text-xs text-gray-400">—</span>
-                              )}
+                                {canEditSale ? (
+                                  <Button size="sm" variant="outline" onClick={() => openEditSale(s.id)}>
+                                    Edit
+                                  </Button>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1563,6 +1513,170 @@ export default function POSPage() {
                 />
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* View sale detail (read-only) */}
+      {viewSaleOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={closeViewSale}
+          role="presentation"
+        >
+          <div
+            className="flex max-h-[min(90dvh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="view-sale-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-700">
+              <h2 id="view-sale-title" className="text-lg font-semibold">
+                {viewSaleDetail ? `Sale #${viewSaleDetail.id}` : "Sale details"}
+              </h2>
+              <button
+                type="button"
+                onClick={closeViewSale}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {viewSaleLoading ? (
+                <div className="flex justify-center py-12">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-brand-500 dark:border-gray-700 dark:border-t-brand-400" />
+                </div>
+              ) : viewSaleError ? (
+                <p className="text-sm text-error-600 dark:text-error-400">{viewSaleError}</p>
+              ) : viewSaleDetail ? (
+                <div className="space-y-4 text-sm">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-gray-600 dark:text-gray-400">
+                    <span>
+                      <span className="font-medium text-gray-700 dark:text-gray-300">Date</span>{" "}
+                      {new Date(viewSaleDetail.saleDate).toLocaleString()}
+                    </span>
+                    {viewSaleDetail.branch?.name ? (
+                      <span>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">Branch</span>{" "}
+                        {viewSaleDetail.branch.name}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Customer
+                    </p>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {viewSaleDetail.customerType === "outreach" && viewSaleDetail.outreachTeam
+                        ? `Outreach — ${viewSaleDetail.outreachTeam.name}`
+                        : viewSaleDetail.customerType === "patient" && viewSaleDetail.patient
+                          ? `${viewSaleDetail.patient.name} (${viewSaleDetail.patient.patientCode})`
+                          : "Walking"}
+                    </p>
+                    {viewSaleDetail.customerType === "outreach" && viewSaleDetail.outreachOnCredit ? (
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">On credit</p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-4">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Payment</p>
+                      <p className="font-medium">
+                        {viewSaleDetail.paymentMethod}
+                        {viewSaleDetail.depositTransaction?.id ? (
+                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
+                            Deposited
+                          </span>
+                        ) : null}
+                      </p>
+                    </div>
+                    {viewSaleDetail.createdBy?.name ? (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Recorded by</p>
+                        <p className="font-medium">{viewSaleDetail.createdBy.name}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                  {viewSaleDetail.notes && String(viewSaleDetail.notes).trim() ? (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Notes</p>
+                      <p className="whitespace-pre-wrap text-gray-700 dark:text-gray-300">{viewSaleDetail.notes}</p>
+                    </div>
+                  ) : null}
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Line items
+                    </p>
+                    {viewSaleDetail.items && viewSaleDetail.items.length > 0 ? (
+                      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                        <table className="w-full min-w-[320px] text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/80">
+                              <th className="px-3 py-2 font-semibold">Product</th>
+                              <th className="px-3 py-2 font-semibold">Qty</th>
+                              <th className="px-3 py-2 text-right font-semibold">Price</th>
+                              <th className="px-3 py-2 text-right font-semibold">Line</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {viewSaleDetail.items.map((line, idx) => (
+                              <tr key={line.productId * 10000 + idx} className="border-b border-gray-100 dark:border-gray-800">
+                                <td className="px-3 py-2">
+                                  <span className="font-medium text-gray-900 dark:text-white">{line.product.name}</span>
+                                  <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400"> {line.product.code}</span>
+                                </td>
+                                <td className="px-3 py-2">
+                                  {line.quantity}{" "}
+                                  <span className="text-gray-500">{line.saleUnit || "pcs"}</span>
+                                </td>
+                                <td className="px-3 py-2 text-right">${line.unitPrice.toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right font-medium">${line.totalAmount.toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500">
+                        No line items on this sale (older records may omit details).
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1 border-t border-gray-200 pt-3 dark:border-gray-700">
+                    {viewSaleDetail.items && viewSaleDetail.items.length > 0 ? (
+                      <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                        <span>Subtotal</span>
+                        <span>
+                          $
+                          {viewSaleDetail.items
+                            .reduce((s, it) => s + it.totalAmount, 0)
+                            .toFixed(2)}
+                        </span>
+                      </div>
+                    ) : null}
+                    <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                      <span>Discount</span>
+                      <span>-${(viewSaleDetail.discount ?? 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-base font-semibold text-gray-900 dark:text-white">
+                      <span>Total</span>
+                      <span>${viewSaleDetail.totalAmount.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No data.</p>
+              )}
+            </div>
+            <div className="shrink-0 border-t border-gray-200 px-5 py-3 dark:border-gray-700">
+              <Button type="button" className="w-full" variant="outline" size="sm" onClick={closeViewSale}>
+                Close
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -1834,8 +1948,8 @@ export default function POSPage() {
                     <div className="min-h-[200px] flex-1 overflow-y-auto p-3 md:min-h-[320px]">
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {editFilteredProducts.map((p) => {
-                          const maxQ = getEditMaxQty(p.id, "pcs");
-                          const line = editCart.find((c) => c.productId === p.id && c.saleUnit === "pcs");
+                          const maxQ = getEditMaxQty(p.id);
+                          const line = editCart.find((c) => c.productId === p.id);
                           return (
                             <button
                               key={p.id}
@@ -1981,49 +2095,28 @@ export default function POSPage() {
                         <p className="text-sm text-gray-500">Add products from the left.</p>
                       ) : (
                         <div className="space-y-2">
-                          {editCart.map((c) => {
-                            const prod = products.find((p) => p.id === c.productId);
-                            const unitOpts = prod ? availableSaleUnits(packOf(prod)) : (["pcs"] as SaleUnit[]);
-                            return (
+                          {editCart.map((c) => (
                             <div
-                              key={`${c.productId}-${c.saleUnit}`}
+                              key={c.productId}
                               className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-2 gap-y-1 rounded-lg border border-gray-200 bg-white p-2 text-xs dark:border-gray-700 dark:bg-gray-800"
                             >
                               <div className="min-w-0">
                                 <p className="wrap-break-word font-medium leading-snug">{c.name}</p>
                                 <p className="text-gray-500">
-                                  ${c.sellingPrice.toFixed(2)} / {unitLabel(c.saleUnit)} × {c.quantity}
+                                  ${c.sellingPrice.toFixed(2)} / pcs × {c.quantity}
                                 </p>
-                                <select
-                                  value={c.saleUnit}
-                                  onChange={(e) =>
-                                    setEditCartSaleUnit(
-                                      c.productId,
-                                      c.saleUnit,
-                                      parseSaleUnit(e.target.value)
-                                    )
-                                  }
-                                  className="mt-1 h-7 w-full max-w-32 rounded border border-gray-200 bg-white px-1 text-[10px] dark:border-gray-600 dark:bg-gray-900 dark:text-white"
-                                  aria-label="Sale unit"
-                                >
-                                  {unitOpts.map((u) => (
-                                    <option key={u} value={u}>
-                                      {unitLabel(u)}
-                                    </option>
-                                  ))}
-                                </select>
                               </div>
                               <div className="flex shrink-0 items-center gap-1">
                                 <button
                                   type="button"
-                                  onClick={() => updateEditCartQty(c.productId, c.saleUnit, -1)}
+                                  onClick={() => updateEditCartQty(c.productId, -1)}
                                   className="flex h-7 w-7 items-center justify-center rounded bg-gray-200 dark:bg-gray-700"
                                 >
                                   −
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => updateEditCartQty(c.productId, c.saleUnit, 1)}
+                                  onClick={() => updateEditCartQty(c.productId, 1)}
                                   className="flex h-7 w-7 items-center justify-center rounded bg-gray-200 dark:bg-gray-700"
                                 >
                                   +
@@ -2032,14 +2125,13 @@ export default function POSPage() {
                               <span className="shrink-0 text-right font-semibold w-14">${c.totalAmount.toFixed(2)}</span>
                               <button
                                 type="button"
-                                onClick={() => removeFromEditCart(c.productId, c.saleUnit)}
+                                onClick={() => removeFromEditCart(c.productId)}
                                 className="shrink-0 text-gray-400 hover:text-error-500"
                               >
                                 <TrashBinIcon className="h-4 w-4" />
                               </button>
                             </div>
-                          );
-                          })}
+                          ))}
                         </div>
                       )}
                     </div>

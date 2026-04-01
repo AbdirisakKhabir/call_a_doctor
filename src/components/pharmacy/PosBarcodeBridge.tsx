@@ -12,8 +12,6 @@ export type PosProductPayload = {
   sellingPrice: number;
   quantity: number;
   unit: string;
-  boxesPerCarton: number | null;
-  pcsPerBox: number | null;
   expiryDate: string | null;
 };
 
@@ -25,6 +23,7 @@ export function PosBarcodeUrlHandler({
   mainTab,
   checkoutModalOpen,
   editOpen,
+  viewSaleOpen = false,
   onProduct,
   onNotFound,
 }: {
@@ -32,6 +31,8 @@ export function PosBarcodeUrlHandler({
   mainTab: "checkout" | "sales";
   checkoutModalOpen: boolean;
   editOpen: boolean;
+  /** When true, skip handling URL scan (e.g. sale detail modal open). */
+  viewSaleOpen?: boolean;
   onProduct: (p: PosProductPayload) => void;
   onNotFound?: () => void;
 }) {
@@ -46,7 +47,7 @@ export function PosBarcodeUrlHandler({
   }, [searchParams]);
 
   useEffect(() => {
-    if (mainTab !== "checkout" || checkoutModalOpen || editOpen || !branchId) return;
+    if (mainTab !== "checkout" || checkoutModalOpen || editOpen || viewSaleOpen || !branchId) return;
     const scan = searchParams.get("scan")?.trim();
     if (!scan) return;
     const key = `${branchId}:${scan}`;
@@ -71,7 +72,7 @@ export function PosBarcodeUrlHandler({
     return () => {
       cancelled = true;
     };
-  }, [branchId, mainTab, checkoutModalOpen, editOpen, searchParams, router, onProduct, onNotFound]);
+  }, [branchId, mainTab, checkoutModalOpen, editOpen, viewSaleOpen, searchParams, router, onProduct, onNotFound]);
 
   return null;
 }

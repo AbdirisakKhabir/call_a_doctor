@@ -3,7 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userCanAccessBranch } from "@/lib/branch-access";
 import { userHasPermission } from "@/lib/permissions";
-import { parseSaleUnit, quantityInUnitToPcs, type SaleUnit } from "@/lib/product-packaging";
+import { lineQuantityToPcs, parseSaleUnit, type SaleUnit } from "@/lib/product-packaging";
 
 export async function GET(
   req: NextRequest,
@@ -36,8 +36,6 @@ export async function GET(
                 name: true,
                 code: true,
                 imageUrl: true,
-                boxesPerCarton: true,
-                pcsPerBox: true,
               },
             },
           },
@@ -92,7 +90,7 @@ export async function PATCH(
       include: {
         items: {
           include: {
-            product: { select: { boxesPerCarton: true, pcsPerBox: true } },
+            product: true,
           },
         },
         depositTransaction: { select: { id: true } },
@@ -165,8 +163,6 @@ export async function PATCH(
         const prodRow = await prisma.product.findUnique({
           where: { id: productId },
           select: {
-            boxesPerCarton: true,
-            pcsPerBox: true,
             forSale: true,
             branchId: true,
           },
@@ -177,12 +173,7 @@ export async function PATCH(
         if (prodRow.branchId !== existing.branchId) {
           throw new Error("Product branch mismatch for this sale.");
         }
-        const pack = { boxesPerCarton: prodRow.boxesPerCarton, pcsPerBox: prodRow.pcsPerBox };
-        const conv = quantityInUnitToPcs(pack, quantity, saleUnit);
-        if ("error" in conv) {
-          throw new Error(conv.error);
-        }
-        const pcs = conv.pcs;
+        const pcs = lineQuantityToPcs(quantity);
         if (pcs <= 0) throw new Error("Invalid quantity for this unit.");
         if (!prodRow.forSale) {
           throw new Error(`NOT_FOR_SALE:${productId}`);
@@ -203,18 +194,10 @@ export async function PATCH(
 
       const updated = await prisma.$transaction(async (tx) => {
         for (const old of existing.items) {
-          const pack = {
-            boxesPerCarton: old.product.boxesPerCarton,
-            pcsPerBox: old.product.pcsPerBox,
-          };
-          const su = parseSaleUnit(old.saleUnit);
-          const conv = quantityInUnitToPcs(pack, old.quantity, su);
-          if ("error" in conv) {
-            throw new Error(conv.error);
-          }
+          const convPcs = lineQuantityToPcs(old.quantity);
           await tx.product.update({
             where: { id: old.productId },
-            data: { quantity: { increment: conv.pcs } },
+            data: { quantity: { increment: convPcs } },
           });
         }
 

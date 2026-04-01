@@ -38,8 +38,6 @@ export async function GET(req: NextRequest) {
         sellingPrice: true,
         quantity: true,
         unit: true,
-        boxesPerCarton: true,
-        pcsPerBox: true,
         expiryDate: true,
       },
     });

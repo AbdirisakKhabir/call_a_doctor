@@ -6,7 +6,7 @@ import {
   userCanTransactInventoryAtBranch,
 } from "@/lib/branch-access";
 import { userHasPermission } from "@/lib/permissions";
-import { parseSaleUnit, quantityInUnitToPcs } from "@/lib/product-packaging";
+import { lineQuantityToPcs } from "@/lib/product-packaging";
 
 /**
  * GET ?saleId= — quantities already returned per sale line (for UI limits).
@@ -142,8 +142,6 @@ export async function POST(req: NextRequest) {
                 id: true,
                 branchId: true,
                 forSale: true,
-                boxesPerCarton: true,
-                pcsPerBox: true,
               },
             },
           },
@@ -248,17 +246,10 @@ export async function POST(req: NextRequest) {
 
       for (const l of lines) {
         const saleItem = sale.items.find((i) => i.id === l.saleItemId)!;
-        const pack = {
-          boxesPerCarton: saleItem.product.boxesPerCarton,
-          pcsPerBox: saleItem.product.pcsPerBox,
-        };
-        const conv = quantityInUnitToPcs(pack, l.quantity, parseSaleUnit(saleItem.saleUnit));
-        if ("error" in conv) {
-          throw new Error(conv.error);
-        }
+        const pcs = lineQuantityToPcs(l.quantity);
         await tx.product.update({
           where: { id: saleItem.productId },
-          data: { quantity: { increment: conv.pcs } },
+          data: { quantity: { increment: pcs } },
         });
       }
 

@@ -51,15 +51,12 @@ type PurchaseLineForm = {
   newName: string;
   newCode: string;
   unit: string;
-  boxesPerCarton: string;
-  pcsPerBox: string;
   forSale: boolean;
   internalPurpose: "laboratory" | "cleaning" | "general";
   sellingPrice: string;
   categoryId: string;
   quantity: string;
   unitPrice: string;
-  purchaseUnit: "pcs" | "box" | "carton";
 };
 
 const emptyLine = (): PurchaseLineForm => ({
@@ -68,15 +65,12 @@ const emptyLine = (): PurchaseLineForm => ({
   newName: "",
   newCode: "",
   unit: "pcs",
-  boxesPerCarton: "",
-  pcsPerBox: "",
   forSale: true,
   internalPurpose: "general",
   sellingPrice: "",
   categoryId: "",
   quantity: "1",
   unitPrice: "",
-  purchaseUnit: "pcs",
 });
 
 type LedgerPaymentMethod = {
@@ -192,7 +186,7 @@ export default function PurchasesPage() {
   function updateItem(
     idx: number,
     field: keyof PurchaseLineForm,
-    value: string | boolean | PurchaseLineForm["purchaseUnit"]
+    value: string | boolean
   ) {
     setForm((f) => ({
       ...f,
@@ -210,7 +204,7 @@ export default function PurchasesPage() {
             productId: number;
             quantity: number;
             unitPrice: number;
-            purchaseUnit: "pcs" | "box" | "carton";
+            purchaseUnit: "pcs";
             sellingPrice?: number;
           }
         | {
@@ -218,8 +212,6 @@ export default function PurchasesPage() {
               name: string;
               code: string;
               unit: string;
-              boxesPerCarton?: number | null;
-              pcsPerBox?: number | null;
               forSale: boolean;
               internalPurpose?: string;
               sellingPrice: number;
@@ -227,7 +219,7 @@ export default function PurchasesPage() {
             };
             quantity: number;
             unitPrice: number;
-            purchaseUnit: "pcs" | "box" | "carton";
+            purchaseUnit: "pcs";
           }
       )[] = [];
 
@@ -236,20 +228,16 @@ export default function PurchasesPage() {
         const unitPrice = Number(it.unitPrice);
         if (!it.quantity?.trim() || Number.isNaN(unitPrice) || unitPrice < 0) continue;
 
-        const purchaseUnit = it.purchaseUnit ?? "pcs";
+        const purchaseUnit = "pcs" as const;
         if (it.isNewProduct) {
           const name = it.newName.trim();
           const code = it.newCode.trim();
           if (!name || !code) continue;
-          const bpc = it.boxesPerCarton.trim() === "" ? null : Number(it.boxesPerCarton);
-          const ppb = it.pcsPerBox.trim() === "" ? null : Number(it.pcsPerBox);
           validItems.push({
             newProduct: {
               name,
               code,
               unit: it.unit.trim() || "pcs",
-              ...(bpc != null && Number.isFinite(bpc) && bpc > 0 ? { boxesPerCarton: Math.floor(bpc) } : {}),
-              ...(ppb != null && Number.isFinite(ppb) && ppb > 0 ? { pcsPerBox: Math.floor(ppb) } : {}),
               forSale: it.forSale,
               ...(it.forSale ? {} : { internalPurpose: it.internalPurpose }),
               sellingPrice: it.forSale ? Math.max(0, Number(it.sellingPrice) || 0) : 0,
@@ -266,7 +254,7 @@ export default function PurchasesPage() {
             productId: number;
             quantity: number;
             unitPrice: number;
-            purchaseUnit: "pcs" | "box" | "carton";
+            purchaseUnit: "pcs";
             sellingPrice?: number;
           } = {
             productId: Number(it.productId),
@@ -540,7 +528,6 @@ export default function PurchasesPage() {
                                       isNewProduct: checked,
                                       quantity: row.quantity,
                                       unitPrice: row.unitPrice,
-                                      purchaseUnit: row.purchaseUnit,
                                     }
                                   : row
                               ),
@@ -643,30 +630,6 @@ export default function PurchasesPage() {
                               />
                             </div>
                           )}
-                          <div className="sm:col-span-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <div>
-                              <Label>Boxes per carton</Label>
-                              <input
-                                type="number"
-                                min="1"
-                                value={it.boxesPerCarton}
-                                onChange={(e) => updateItem(idx, "boxesPerCarton", e.target.value)}
-                                placeholder="Optional — for carton sales"
-                                className="mt-1 h-10 w-full rounded-lg border border-gray-200 bg-transparent px-3 text-sm dark:border-gray-700 dark:text-white"
-                              />
-                            </div>
-                            <div>
-                              <Label>Pieces per box</Label>
-                              <input
-                                type="number"
-                                min="1"
-                                value={it.pcsPerBox}
-                                onChange={(e) => updateItem(idx, "pcsPerBox", e.target.value)}
-                                placeholder="Optional — for box/carton"
-                                className="mt-1 h-10 w-full rounded-lg border border-gray-200 bg-transparent px-3 text-sm dark:border-gray-700 dark:text-white"
-                              />
-                            </div>
-                          </div>
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -716,25 +679,7 @@ export default function PurchasesPage() {
 
                       <div className="flex flex-wrap items-end gap-2">
                         <div>
-                          <Label>Unit *</Label>
-                          <select
-                            value={it.purchaseUnit}
-                            onChange={(e) =>
-                              updateItem(
-                                idx,
-                                "purchaseUnit",
-                                e.target.value as PurchaseLineForm["purchaseUnit"]
-                              )
-                            }
-                            className="mt-1 h-10 min-w-[7rem] rounded-lg border border-gray-200 bg-transparent px-2 text-sm dark:border-gray-700 dark:text-white"
-                          >
-                            <option value="pcs">pcs</option>
-                            <option value="box">Box</option>
-                            <option value="carton">Carton</option>
-                          </select>
-                        </div>
-                        <div>
-                          <Label>Qty *</Label>
+                          <Label>Qty (pcs) *</Label>
                           <input
                             type="number"
                             min="1"

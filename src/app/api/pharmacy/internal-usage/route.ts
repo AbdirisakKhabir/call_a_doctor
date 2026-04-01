@@ -5,7 +5,7 @@ import {
   getPharmacyReportListBranchScope,
   userCanTransactInventoryAtBranch,
 } from "@/lib/branch-access";
-import { parseSaleUnit, quantityInUnitToPcs } from "@/lib/product-packaging";
+import { lineQuantityToPcs } from "@/lib/product-packaging";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 
 const PURPOSES = ["laboratory", "cleaning", "general"] as const;
@@ -92,12 +92,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
-type LineIn = { productId: unknown; quantity: unknown; unit?: unknown };
+type LineIn = { productId: unknown; quantity: unknown };
 
-function mergeUsageLines(
-  items: LineIn[],
-  packagingById: Map<number, { boxesPerCarton: number | null; pcsPerBox: number | null }>
-): { merged: Map<number, number> } | { error: string } {
+function mergeUsageLines(items: LineIn[]): { merged: Map<number, number> } | { error: string } {
   const merged = new Map<number, number>();
   for (const it of items) {
     const pid = Number(it.productId);
@@ -105,15 +102,8 @@ function mergeUsageLines(
     if (!Number.isInteger(pid) || pid <= 0) {
       return { error: "Each line needs a valid product and quantity" };
     }
-    const pack = packagingById.get(pid);
-    if (!pack) {
-      return { error: `Product #${pid} not found` };
-    }
-    const conv = quantityInUnitToPcs(pack, q, parseSaleUnit(it.unit));
-    if ("error" in conv) {
-      return { error: conv.error };
-    }
-    merged.set(pid, (merged.get(pid) ?? 0) + conv.pcs);
+    const pcs = lineQuantityToPcs(q);
+    merged.set(pid, (merged.get(pid) ?? 0) + pcs);
   }
   return merged.size ? { merged } : { error: "Each line needs a valid product and quantity" };
 }
@@ -150,7 +140,7 @@ export async function POST(req: NextRequest) {
     const lines: LineIn[] =
       Array.isArray(itemsRaw) && itemsRaw.length > 0
         ? (itemsRaw as LineIn[])
-        : [{ productId, quantity, unit: (body as { unit?: unknown }).unit }];
+        : [{ productId, quantity }];
 
     const productIds = [
       ...new Set(
@@ -163,18 +153,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Each line needs a valid product and quantity" }, { status: 400 });
     }
 
-    const packagingRows = await prisma.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, boxesPerCarton: true, pcsPerBox: true },
-    });
-    const packagingById = new Map(
-      packagingRows.map((r) => [
-        r.id,
-        { boxesPerCarton: r.boxesPerCarton, pcsPerBox: r.pcsPerBox },
-      ])
-    );
-
-    const mergeResult = mergeUsageLines(lines, packagingById);
+    const mergeResult = mergeUsageLines(lines);
     if ("error" in mergeResult) {
       return NextResponse.json({ error: mergeResult.error }, { status: 400 });
     }
@@ -190,8 +169,6 @@ export async function POST(req: NextRequest) {
         forSale: true,
         isActive: true,
         branchId: true,
-        boxesPerCarton: true,
-        pcsPerBox: true,
       },
     });
     const byId = new Map(products.map((p) => [p.id, p]));

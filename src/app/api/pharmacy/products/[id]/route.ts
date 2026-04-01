@@ -79,15 +79,7 @@ export async function PATCH(
       forSale,
       internalPurpose,
       expiryDate,
-      boxesPerCarton,
-      pcsPerBox,
     } = body;
-
-    const optPositiveInt = (v: unknown): number | null => {
-      if (v === null || v === undefined || v === "") return null;
-      const n = Math.floor(Number(v));
-      return Number.isInteger(n) && n > 0 ? n : null;
-    };
 
     const data: Record<string, unknown> = {};
     if (typeof name === "string" && name.trim()) data.name = name.trim();
@@ -168,13 +160,6 @@ export async function PATCH(
         data.expiryDate = Number.isNaN(d.getTime()) ? null : d;
       }
     }
-    if (typeof boxesPerCarton !== "undefined") {
-      data.boxesPerCarton = optPositiveInt(boxesPerCarton);
-    }
-    if (typeof pcsPerBox !== "undefined") {
-      data.pcsPerBox = optPositiveInt(pcsPerBox);
-    }
-
     const product = await prisma.product.update({
       where: { id: parsedId },
       data,

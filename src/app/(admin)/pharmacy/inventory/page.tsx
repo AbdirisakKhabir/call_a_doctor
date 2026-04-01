@@ -32,6 +32,7 @@ import { useBranchScope } from "@/hooks/useBranchScope";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 import ProductBarcodeLabel from "@/components/pharmacy/ProductBarcodeLabel";
 import { suggestBarcodeValue } from "@/lib/barcode";
+import { printProductBarcodeLabel } from "@/lib/print-product-barcode";
 
 type Product = {
   id: number;
@@ -43,8 +44,6 @@ type Product = {
   sellingPrice: number;
   quantity: number;
   unit: string;
-  boxesPerCarton: number | null;
-  pcsPerBox: number | null;
   expiryDate: string | null;
   forSale: boolean;
   internalPurpose: string | null;
@@ -154,8 +153,6 @@ export default function InventoryPage() {
     sellingPrice: "",
     quantity: "",
     unit: "pcs",
-    boxesPerCarton: "",
-    pcsPerBox: "",
     categoryId: "",
     forSale: true,
     internalPurpose: "general" as "laboratory" | "cleaning" | "general",
@@ -263,8 +260,6 @@ export default function InventoryPage() {
       sellingPrice: String(p.sellingPrice),
       quantity: String(p.quantity),
       unit: p.unit,
-      boxesPerCarton: p.boxesPerCarton != null ? String(p.boxesPerCarton) : "",
-      pcsPerBox: p.pcsPerBox != null ? String(p.pcsPerBox) : "",
       categoryId: p.category?.id ? String(p.category.id) : "",
       forSale: p.forSale,
       internalPurpose: (p.internalPurpose === "laboratory" || p.internalPurpose === "cleaning" ? p.internalPurpose : "general") as
@@ -293,8 +288,6 @@ export default function InventoryPage() {
           sellingPrice: form.forSale ? Number(form.sellingPrice) || 0 : 0,
           quantity: Math.max(0, Math.floor(Number(form.quantity) || 0)),
           unit: form.unit,
-          boxesPerCarton: form.boxesPerCarton.trim() === "" ? null : Number(form.boxesPerCarton),
-          pcsPerBox: form.pcsPerBox.trim() === "" ? null : Number(form.pcsPerBox),
           categoryId: form.categoryId ? Number(form.categoryId) : null,
           forSale: form.forSale,
           internalPurpose: form.forSale ? null : form.internalPurpose,
@@ -615,15 +608,6 @@ export default function InventoryPage() {
                   <TableCell>{p.forSale ? `$${p.sellingPrice.toFixed(2)}` : "—"}</TableCell>
                   <TableCell>
                     <span className="font-medium">{(p.quantity).toLocaleString()} pcs</span>
-                    {p.pcsPerBox != null && p.pcsPerBox > 0 ? (
-                      <span className="ml-1 text-[10px] text-gray-500 dark:text-gray-400">
-                        ({p.pcsPerBox}/box
-                        {p.boxesPerCarton != null && p.boxesPerCarton > 0
-                          ? ` · ${p.boxesPerCarton} box/carton`
-                          : ""}
-                        )
-                      </span>
-                    ) : null}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
                     <ExpiryDateBadge expiryDate={p.expiryDate} />
@@ -635,6 +619,35 @@ export default function InventoryPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const branchName = branches.find((b) => String(b.id) === branchId)?.name;
+                          printProductBarcodeLabel({
+                            productName: p.name,
+                            code: p.code,
+                            branchName,
+                          });
+                        }}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-brand-50 hover:text-brand-500 dark:hover:bg-brand-500/10"
+                        title="Print barcode label"
+                        aria-label="Print barcode"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                          aria-hidden
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"
+                          />
+                        </svg>
+                      </button>
                       {canOpenPos && p.forSale && branchId ? (
                         <Link
                           href={`/pharmacy/pos?branchId=${encodeURIComponent(branchId)}&scan=${encodeURIComponent(p.code)}`}
@@ -777,32 +790,8 @@ export default function InventoryPage() {
                 <Label>Quantity (pieces on hand)</Label>
                 <input type="number" min="0" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Inventory is tracked in pieces (pcs). Optional packaging below is for selling or purchasing in cartons/boxes.
+                  Inventory is tracked in pieces (pcs).
                 </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Boxes per carton</Label>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="—"
-                    value={form.boxesPerCarton}
-                    onChange={(e) => setForm((f) => ({ ...f, boxesPerCarton: e.target.value }))}
-                    className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <Label>Pieces per box</Label>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="—"
-                    value={form.pcsPerBox}
-                    onChange={(e) => setForm((f) => ({ ...f, pcsPerBox: e.target.value }))}
-                    className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                  />
-                </div>
               </div>
               <div>
                 <Label>Category</Label>

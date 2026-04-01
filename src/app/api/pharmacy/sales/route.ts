@@ -5,11 +5,7 @@ import {
   getPharmacyReportListBranchScope,
   userCanTransactInventoryAtBranch,
 } from "@/lib/branch-access";
-import {
-  parseSaleUnit,
-  quantityInUnitToPcs,
-  type SaleUnit,
-} from "@/lib/product-packaging";
+import { lineQuantityToPcs, parseSaleUnit, type SaleUnit } from "@/lib/product-packaging";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 
 export async function GET(req: NextRequest) {
@@ -168,8 +164,6 @@ export async function POST(req: NextRequest) {
           quantity: true,
           forSale: true,
           branchId: true,
-          boxesPerCarton: true,
-          pcsPerBox: true,
         },
       });
       if (!product) {
@@ -178,12 +172,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const pack = { boxesPerCarton: product.boxesPerCarton, pcsPerBox: product.pcsPerBox };
-      const conv = quantityInUnitToPcs(pack, quantity, saleUnit);
-      if ("error" in conv) {
-        return NextResponse.json({ error: conv.error }, { status: 400 });
-      }
-      const pcs = conv.pcs;
+      const pcs = lineQuantityToPcs(quantity);
       if (pcs <= 0) {
         return NextResponse.json({ error: "Invalid quantity for this unit." }, { status: 400 });
       }

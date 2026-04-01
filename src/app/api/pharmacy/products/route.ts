@@ -92,15 +92,7 @@ export async function POST(req: NextRequest) {
       forSale,
       internalPurpose,
       expiryDate,
-      boxesPerCarton: bodyBoxesPerCarton,
-      pcsPerBox: bodyPcsPerBox,
     } = body;
-
-    const optPositiveInt = (v: unknown): number | null => {
-      if (v === null || v === undefined || v === "") return null;
-      const n = Math.floor(Number(v));
-      return Number.isInteger(n) && n > 0 ? n : null;
-    };
 
     const resolved = await requireActiveBranchAccess(auth.userId, bodyBranchId);
     if (resolved instanceof NextResponse) return resolved;
@@ -163,8 +155,6 @@ export async function POST(req: NextRequest) {
         sellingPrice: Number(sellingPrice) || 0,
         quantity: Math.max(0, Math.floor(Number(quantity) || 0)),
         unit: unit ? String(unit).trim() : "pcs",
-        boxesPerCarton: optPositiveInt(bodyBoxesPerCarton),
-        pcsPerBox: optPositiveInt(bodyPcsPerBox),
         expiryDate: expiryDateVal,
         categoryId: categoryIdVal,
         forSale: saleFlag,

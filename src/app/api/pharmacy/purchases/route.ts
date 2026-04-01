@@ -6,17 +6,11 @@ import {
   userCanTransactInventoryAtBranch,
 } from "@/lib/branch-access";
 import { getFinanceAccountBalance } from "@/lib/finance-balance";
-import { parseSaleUnit, quantityInUnitToPcs, type SaleUnit } from "@/lib/product-packaging";
+import { lineQuantityToPcs, type SaleUnit } from "@/lib/product-packaging";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-function optPositiveInt(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Math.floor(Number(v));
-  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 export async function GET(req: NextRequest) {
@@ -192,7 +186,7 @@ export async function POST(req: NextRequest) {
 
       for (const it of items) {
         const quantity = Math.max(1, Math.floor(Number(it.quantity) || 0));
-        const purchaseUnit = parseSaleUnit((it as { purchaseUnit?: unknown }).purchaseUnit);
+        const purchaseUnit: SaleUnit = "pcs";
         const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
         const lineTotal = quantity * unitPrice;
 
@@ -251,8 +245,6 @@ export async function POST(req: NextRequest) {
               sellingPrice: forSale ? sellingPrice : 0,
               quantity: 0,
               unit: unitStr,
-              boxesPerCarton: optPositiveInt(np?.boxesPerCarton),
-              pcsPerBox: optPositiveInt(np?.pcsPerBox),
               categoryId: categoryIdVal,
               forSale,
               internalPurpose: forSale ? null : purposeRaw,
@@ -278,24 +270,16 @@ export async function POST(req: NextRequest) {
           productId = pid;
         }
 
-        const prodPack = await tx.product.findUnique({
+        const existsProduct = await tx.product.findUnique({
           where: { id: productId },
-          select: { boxesPerCarton: true, pcsPerBox: true },
+          select: { id: true },
         });
-        if (!prodPack) {
+        if (!existsProduct) {
           throw new Error("BAD_REQUEST:Product not found.");
         }
-        const conv = quantityInUnitToPcs(
-          { boxesPerCarton: prodPack.boxesPerCarton, pcsPerBox: prodPack.pcsPerBox },
-          quantity,
-          purchaseUnit
-        );
-        if ("error" in conv) {
-          throw new Error(`BAD_REQUEST:${conv.error}`);
-        }
-        const pcs = conv.pcs;
+        const pcs = lineQuantityToPcs(quantity);
         if (pcs <= 0) {
-          throw new Error("BAD_REQUEST:Invalid quantity for the selected purchase unit.");
+          throw new Error("BAD_REQUEST:Invalid quantity.");
         }
 
         let sellingPriceLine: number | undefined;
