@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function PATCH(
   req: NextRequest,
@@ -34,6 +35,14 @@ export async function PATCH(
       where: { id: parsedId },
       data,
     });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "patient.update",
+      module: "patients",
+      resourceType: "Patient",
+      resourceId: parsedId,
+      metadata: { keys: Object.keys(data) },
+    });
     return NextResponse.json(patient);
   } catch (e) {
     console.error("Update patient error:", e);
@@ -57,6 +66,13 @@ export async function DELETE(
     }
 
     await prisma.patient.delete({ where: { id: parsedId } });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "patient.delete",
+      module: "patients",
+      resourceType: "Patient",
+      resourceId: parsedId,
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete patient error:", e);

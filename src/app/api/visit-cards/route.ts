@@ -9,6 +9,7 @@ import {
   getVisitCardAccess,
 } from "@/lib/visit-card-access";
 import { userHasPermission } from "@/lib/permissions";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 const visitInclude = {
   branch: { select: { id: true, name: true } },
@@ -240,6 +241,16 @@ export async function POST(req: NextRequest) {
       throw e;
     }
 
+    if (card) {
+      await logAuditFromRequest(req, {
+        userId: auth.userId,
+        action: "visit_card.create",
+        module: "visit_cards",
+        resourceType: "DoctorVisitCard",
+        resourceId: card.id,
+        metadata: { cardNumber: card.cardNumber, branchId: card.branchId },
+      });
+    }
     return NextResponse.json(card);
   } catch (e: unknown) {
     console.error("Visit card create error:", e);

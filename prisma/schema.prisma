@@ -34,6 +34,7 @@ model User {
   pharmacySaleReturnsCreated PharmacySaleReturn[] @relation("PharmacySaleReturnCreatedBy")
   doctorProfile    Doctor?
   visitCardsCreated DoctorVisitCard[] @relation("VisitCardCreatedBy")
+  auditLogs        AuditLog[]
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -807,4 +808,24 @@ model AccountTransaction {
 
   @@index([accountId, transactionDate])
   @@map("account_transactions")
+}
+
+/// User activity and security audit trail (logins, mutations, key transactions).
+model AuditLog {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action       String
+  module       String?
+  resourceType String?
+  resourceId   Int?
+  metadata     Json?
+  ipAddress    String?
+  userAgent    String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([module, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

@@ -7,6 +7,7 @@ import {
 } from "@/lib/branch-access";
 import { userHasPermission } from "@/lib/permissions";
 import { lineQuantityToPcs } from "@/lib/product-packaging";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 /**
  * GET ?saleId= — quantities already returned per sale line (for UI limits).
@@ -270,6 +271,16 @@ export async function POST(req: NextRequest) {
       });
     });
 
+    if (created) {
+      await logAuditFromRequest(req, {
+        userId: auth.userId,
+        action: "pharmacy.sale_return.create",
+        module: "pharmacy",
+        resourceType: "SaleReturn",
+        resourceId: created.id,
+        metadata: { saleId: sid },
+      });
+    }
     return NextResponse.json(created);
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("This product")) {

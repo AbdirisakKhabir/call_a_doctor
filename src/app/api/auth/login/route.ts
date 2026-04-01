@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { signToken } from "@/lib/jwt";
+import { getClientIp, getUserAgent, logAudit } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -58,6 +59,15 @@ export async function POST(req: NextRequest) {
     });
     const branchIds =
       branchRows.length === 0 ? null : branchRows.map((r) => r.branchId);
+
+    await logAudit({
+      userId: user.id,
+      action: "auth.login",
+      module: "auth",
+      metadata: { email: user.email },
+      ipAddress: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
 
     return NextResponse.json({
       token,

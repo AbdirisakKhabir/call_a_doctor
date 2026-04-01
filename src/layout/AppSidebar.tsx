@@ -229,12 +229,13 @@ const settingsItems: NavItem[] = [
     icon: <PlugInIcon />,
     name: "Settings",
     path: "/settings",
-    permissionAny: ["settings.view", "appointments.view"],
+    permissionAny: ["settings.view", "appointments.view", "audit.view"],
     subItems: [
       { name: "Overview", path: "/settings", permission: "settings.view" },
       { name: "Branches & access", path: "/settings/branches", permission: "settings.manage" },
       { name: "Doctors", path: "/settings/doctors", permission: "appointments.view" },
       { name: "Services", path: "/settings/services", permission: "appointments.view" },
+      { name: "Activity log", path: "/settings/activity", permission: "audit.view" },
     ],
   },
 ];

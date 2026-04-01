@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userCanTransactInventoryAtBranch } from "@/lib/branch-access";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(
   req: NextRequest,
@@ -167,6 +168,14 @@ export async function PATCH(
         category: { select: { id: true, name: true } },
       },
     });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "pharmacy.product.update",
+      module: "pharmacy",
+      resourceType: "Product",
+      resourceId: parsedId,
+      metadata: { keys: Object.keys(data) },
+    });
     return NextResponse.json(product);
   } catch (e) {
     console.error("Update product error:", e);
@@ -201,6 +210,13 @@ export async function DELETE(
     }
 
     await prisma.product.delete({ where: { id: parsedId } });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "pharmacy.product.delete",
+      module: "pharmacy",
+      resourceType: "Product",
+      resourceId: parsedId,
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete product error:", e);

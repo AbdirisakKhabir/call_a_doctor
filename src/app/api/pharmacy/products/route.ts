@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { requireActiveBranchAccess } from "@/lib/pharmacy-branch";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(req: NextRequest) {
   try {
@@ -163,6 +164,14 @@ export async function POST(req: NextRequest) {
       include: {
         category: { select: { id: true, name: true } },
       },
+    });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "pharmacy.product.create",
+      module: "pharmacy",
+      resourceType: "Product",
+      resourceId: product.id,
+      metadata: { branchId, code: product.code },
     });
     return NextResponse.json(product);
   } catch (e) {

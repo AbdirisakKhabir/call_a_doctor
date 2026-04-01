@@ -7,6 +7,7 @@ import {
 } from "@/lib/branch-access";
 import { lineQuantityToPcs, parseSaleUnit, type SaleUnit } from "@/lib/product-packaging";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(req: NextRequest) {
   try {
@@ -372,6 +373,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
     }
 
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "pharmacy.sale.create",
+      module: "pharmacy",
+      resourceType: "Sale",
+      resourceId: sale.id,
+      metadata: {
+        branchId: bid,
+        totalAmount: sale.totalAmount,
+        customerType: saleCustomerType,
+      },
+    });
     return NextResponse.json(sale);
   } catch (e) {
     console.error("Create sale error:", e);

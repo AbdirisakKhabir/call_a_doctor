@@ -8,6 +8,7 @@ import {
 import { getFinanceAccountBalance } from "@/lib/finance-balance";
 import { lineQuantityToPcs, type SaleUnit } from "@/lib/product-packaging";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -414,6 +415,14 @@ export async function POST(req: NextRequest) {
       });
     });
 
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "pharmacy.purchase.create",
+      module: "pharmacy",
+      resourceType: "Purchase",
+      resourceId: result.id,
+      metadata: { branchId: result.branchId },
+    });
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("BAD_REQUEST:")) {

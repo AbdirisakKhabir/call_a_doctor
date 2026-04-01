@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(req: NextRequest) {
   try {
@@ -77,6 +78,14 @@ export async function POST(req: NextRequest) {
         appointment: { select: { id: true, appointmentDate: true, startTime: true } },
         items: { include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true } } } },
       },
+    });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "lab.order.create",
+      module: "lab",
+      resourceType: "LabOrder",
+      resourceId: order.id,
+      metadata: { patientId: order.patientId, appointmentId: order.appointmentId },
     });
     return NextResponse.json(order);
   } catch (e) {

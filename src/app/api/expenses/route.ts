@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(req: NextRequest) {
   try {
@@ -85,6 +86,14 @@ export async function POST(req: NextRequest) {
         category: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
       },
+    });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "expense.create",
+      module: "expenses",
+      resourceType: "Expense",
+      resourceId: expense.id,
+      metadata: { amount: expense.amount, categoryId: expense.categoryId },
     });
     return NextResponse.json(expense);
   } catch (e) {

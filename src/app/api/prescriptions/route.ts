@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(req: NextRequest) {
   try {
@@ -163,6 +164,14 @@ export async function POST(req: NextRequest) {
         appointment: { select: { id: true, appointmentDate: true, startTime: true } },
         items: { include: { product: { select: { id: true, name: true, code: true } } } },
       },
+    });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "prescription.create",
+      module: "prescriptions",
+      resourceType: "Prescription",
+      resourceId: prescription.id,
+      metadata: { patientId: prescription.patientId, appointmentId: prescription.appointmentId },
     });
     return NextResponse.json(prescription);
   } catch (e) {

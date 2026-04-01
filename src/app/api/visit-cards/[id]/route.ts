@@ -8,6 +8,7 @@ import {
   getUserBranchIdFilter,
   getVisitCardAccess,
 } from "@/lib/visit-card-access";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 const visitInclude = {
   branch: { select: { id: true, name: true } },
@@ -223,6 +224,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       balanceAfter = await getFinanceAccountBalance(fresh.depositTransaction.accountId);
     }
 
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "visit_card.update",
+      module: "visit_cards",
+      resourceType: "DoctorVisitCard",
+      resourceId: cardId,
+      metadata: { depositCreated: needDeposit },
+    });
     return NextResponse.json({ ...fresh, balanceAfter });
   } catch (e) {
     console.error("Visit card PATCH error:", e);

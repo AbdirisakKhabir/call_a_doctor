@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(req: NextRequest) {
   try {
@@ -88,6 +89,14 @@ export async function POST(req: NextRequest) {
         patient: { select: { id: true, patientCode: true, name: true } },
         services: { include: { service: { select: { id: true, name: true } } } },
       },
+    });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "appointment.create",
+      module: "appointments",
+      resourceType: "Appointment",
+      resourceId: appointment.id,
+      metadata: { branchId: appointment.branchId, patientId: appointment.patientId },
     });
     return NextResponse.json(appointment);
   } catch (e) {

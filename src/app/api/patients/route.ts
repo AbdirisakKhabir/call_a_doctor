@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(req: NextRequest) {
   try {
@@ -79,6 +80,14 @@ export async function POST(req: NextRequest) {
         address: address ? String(address).trim() : null,
         notes: notes ? String(notes).trim() : null,
       },
+    });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "patient.create",
+      module: "patients",
+      resourceType: "Patient",
+      resourceId: patient.id,
+      metadata: { patientCode: patient.patientCode, name: patient.name },
     });
     return NextResponse.json(patient);
   } catch (e) {

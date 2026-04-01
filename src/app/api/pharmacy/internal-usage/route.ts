@@ -7,6 +7,7 @@ import {
 } from "@/lib/branch-access";
 import { lineQuantityToPcs } from "@/lib/product-packaging";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 const PURPOSES = ["laboratory", "cleaning", "general"] as const;
 
@@ -232,6 +233,14 @@ export async function POST(req: NextRequest) {
       return out;
     });
 
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "pharmacy.internal_usage.create",
+      module: "pharmacy",
+      resourceType: "InternalStockLog",
+      resourceId: logs[0]?.id ?? null,
+      metadata: { branchId: bid, lineCount: logs.length, purpose: purposeStr },
+    });
     return NextResponse.json({ logs });
   } catch (e) {
     console.error("Internal usage create error:", e);

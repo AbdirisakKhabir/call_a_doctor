@@ -4,6 +4,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(req: NextRequest) {
   try {
@@ -154,6 +155,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "user.create",
+      module: "users",
+      resourceType: "User",
+      resourceId: user.id,
+      metadata: { email: user.email },
+    });
     return NextResponse.json(user);
   } catch (e) {
     console.error("Create user error:", e);

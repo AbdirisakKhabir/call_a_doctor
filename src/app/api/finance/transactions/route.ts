@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { getFinanceAccountBalance } from "@/lib/finance-balance";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(req: NextRequest) {
   try {
@@ -142,6 +143,14 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await logAuditFromRequest(req, {
+        userId: auth.userId,
+        action: "finance.transaction.deposit",
+        module: "accounts",
+        resourceType: "AccountTransaction",
+        resourceId: tx.id,
+        metadata: { amount: tx.amount, saleId: sid ?? null, accountId: pm.accountId },
+      });
       return NextResponse.json({ ...tx, balanceAfter: await getFinanceAccountBalance(pm.accountId) });
     }
 
@@ -187,6 +196,14 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await logAuditFromRequest(req, {
+        userId: auth.userId,
+        action: "finance.transaction.withdrawal",
+        module: "accounts",
+        resourceType: "AccountTransaction",
+        resourceId: tx.id,
+        metadata: { amount: tx.amount, accountId: aid },
+      });
       return NextResponse.json({ ...tx, balanceAfter: await getFinanceAccountBalance(aid) });
     }
 

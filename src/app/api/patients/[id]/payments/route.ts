@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 const PAYMENT_CATEGORIES = new Set(["medication", "prescription", "pharmacy_credit"]);
 
@@ -143,6 +144,18 @@ export async function POST(
       return { payment: pp, patient: updated };
     });
 
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "patient_payment.record",
+      module: "payments",
+      resourceType: "PatientPayment",
+      resourceId: result.payment.id,
+      metadata: {
+        patientId,
+        amount: result.payment.amount,
+        category: result.payment.category,
+      },
+    });
     return NextResponse.json(result);
   } catch (e) {
     console.error("Patient payment error:", e);

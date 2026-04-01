@@ -26,11 +26,32 @@ const cards: Card[] = [
     href: "/settings/services",
     anyOf: ["appointments.view"],
   },
+  {
+    title: "Activity log",
+    description: "Sign-ins and user actions across the system (audit trail).",
+    href: "/settings/activity",
+    anyOf: ["audit.view"],
+  },
 ];
 
 export default function SettingsHubPage() {
   const { hasPermission } = useAuth();
   const visible = cards.filter((c) => c.anyOf.some((p) => hasPermission(p)));
+  const canSettingsHub =
+    hasPermission("settings.view") ||
+    hasPermission("appointments.view") ||
+    hasPermission("audit.view");
+
+  if (!canSettingsHub) {
+    return (
+      <div>
+        <PageBreadCrumb pageTitle="Settings" />
+        <div className="mt-6 rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center dark:border-gray-800 dark:bg-white/3">
+          <p className="text-sm text-gray-500 dark:text-gray-400">You do not have access to the settings area.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (visible.length === 0) {
     return (

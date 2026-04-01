@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -58,6 +59,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         services: { include: { service: { select: { id: true, name: true } } } },
       },
     });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "appointment.update",
+      module: "appointments",
+      resourceType: "Appointment",
+      resourceId: parsedId,
+      metadata: { keys: Object.keys(data) },
+    });
     return NextResponse.json(appointment);
   } catch (e) {
     console.error("Update appointment error:", e);
@@ -73,6 +82,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     await prisma.appointment.delete({ where: { id: parsedId } });
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "appointment.delete",
+      module: "appointments",
+      resourceType: "Appointment",
+      resourceId: parsedId,
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete appointment error:", e);

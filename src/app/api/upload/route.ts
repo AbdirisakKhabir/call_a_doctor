@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { uploadImage, uploadRaw } from "@/lib/cloudinary";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,6 +38,12 @@ export async function POST(req: NextRequest) {
       }
       const cvFolder = folder === "clinic/uploads" ? "clinic/cv" : folder;
       const result = await uploadRaw(buffer, cvFolder, "raw");
+      await logAuditFromRequest(req, {
+        userId: auth.userId,
+        action: "upload.file",
+        module: "system",
+        metadata: { type: "raw", folder: cvFolder },
+      });
       return NextResponse.json(result);
     }
 
@@ -55,6 +62,12 @@ export async function POST(req: NextRequest) {
       );
     }
     const result = await uploadImage(buffer, folder);
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "upload.file",
+      module: "system",
+      metadata: { type: "image", folder },
+    });
     return NextResponse.json(result);
   } catch (e) {
     console.error("Upload error:", e);

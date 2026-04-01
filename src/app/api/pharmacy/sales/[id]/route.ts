@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { userCanAccessBranch } from "@/lib/branch-access";
 import { userHasPermission } from "@/lib/permissions";
 import { lineQuantityToPcs, parseSaleUnit, type SaleUnit } from "@/lib/product-packaging";
+import { logAuditFromRequest } from "@/lib/audit-log";
 
 export async function GET(
   req: NextRequest,
@@ -256,6 +257,14 @@ export async function PATCH(
         });
       });
 
+      await logAuditFromRequest(req, {
+        userId: auth.userId,
+        action: "pharmacy.sale.update",
+        module: "pharmacy",
+        resourceType: "Sale",
+        resourceId: parsedId,
+        metadata: { lineItemsChanged: true },
+      });
       return NextResponse.json(updated);
     }
 
@@ -288,6 +297,14 @@ export async function PATCH(
       },
     });
 
+    await logAuditFromRequest(req, {
+      userId: auth.userId,
+      action: "pharmacy.sale.update",
+      module: "pharmacy",
+      resourceType: "Sale",
+      resourceId: parsedId,
+      metadata: { lineItemsChanged: false },
+    });
     return NextResponse.json(updated);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong";
