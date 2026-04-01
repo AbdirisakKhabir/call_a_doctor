@@ -53,6 +53,11 @@ const DEFAULT_PERMISSIONS = [
   { name: "visit_cards.create", description: "Create doctor visit cards (reception)", module: "visit_cards" },
   { name: "visit_cards.edit", description: "Edit visit card status and payment", module: "visit_cards" },
   { name: "audit.view", description: "View user activity and audit log", module: "audit" },
+  {
+    name: "audit.view_admins",
+    description: "View audit log for Administrator accounts only (oversight without full staff log)",
+    module: "audit",
+  },
 ];
 
 async function main() {

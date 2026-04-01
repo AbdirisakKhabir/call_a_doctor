@@ -32,6 +32,13 @@ const cards: Card[] = [
     href: "/settings/activity",
     anyOf: ["audit.view"],
   },
+  {
+    title: "Admin activity",
+    description:
+      "Track sign-ins and actions performed by Admin accounts so other admins and supervisors can review them.",
+    href: "/settings/admin-activity",
+    anyOf: ["audit.view", "audit.view_admins"],
+  },
 ];
 
 export default function SettingsHubPage() {
@@ -40,7 +47,8 @@ export default function SettingsHubPage() {
   const canSettingsHub =
     hasPermission("settings.view") ||
     hasPermission("appointments.view") ||
-    hasPermission("audit.view");
+    hasPermission("audit.view") ||
+    hasPermission("audit.view_admins");
 
   if (!canSettingsHub) {
     return (

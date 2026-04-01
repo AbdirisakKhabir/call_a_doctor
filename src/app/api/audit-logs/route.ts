@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+
+/** Admin role name in the database (seeded as "Admin"). */
+const ADMIN_ROLE_NAME = "Admin";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,7 +14,10 @@ export async function GET(req: NextRequest) {
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!(await userHasPermission(auth.userId, "audit.view"))) {
+
+    const hasFullAudit = await userHasPermission(auth.userId, "audit.view");
+    const hasAdminAuditOnly = await userHasPermission(auth.userId, "audit.view_admins");
+    if (!hasFullAudit && !hasAdminAuditOnly) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -20,14 +27,13 @@ export async function GET(req: NextRequest) {
     const from = searchParams.get("from");
     const to = searchParams.get("to");
     const actionSearch = searchParams.get("action");
+    const adminActorsOnlyParam = searchParams.get("adminActorsOnly") === "true";
     const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(searchParams);
 
-    const where: {
-      userId?: number;
-      module?: string;
-      action?: { contains: string };
-      createdAt?: { gte?: Date; lte?: Date };
-    } = {};
+    const restrictToAdminActors =
+      (!hasFullAudit && hasAdminAuditOnly) || (hasFullAudit && adminActorsOnlyParam);
+
+    const where: Prisma.AuditLogWhereInput = {};
 
     if (userIdParam && Number.isInteger(Number(userIdParam))) {
       where.userId = Number(userIdParam);
@@ -48,8 +54,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    if (restrictToAdminActors) {
+      where.user = {
+        is: {
+          role: { name: ADMIN_ROLE_NAME },
+        },
+      };
+    }
+
     const include = {
-      user: { select: { id: true, name: true, email: true } },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: { select: { name: true } },
+        },
+      },
     };
 
     if (paginate) {
