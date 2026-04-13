@@ -6,9 +6,14 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
-import { CalenderIcon, PencilIcon, PlusIcon, UserCircleIcon } from "@/icons";
+import { CalenderIcon, EyeIcon, PencilIcon, PlusIcon, UserCircleIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
-import { labelPaymentStatus, labelQueueStatus } from "@/lib/visit-card-labels";
+import {
+  labelPaymentStatus,
+  labelQueueStatus,
+  paymentStatusBadgeClass,
+  queueStatusBadgeClass,
+} from "@/lib/visit-card-labels";
 
 type PatientMini = { id: number; patientCode: string; name: string; phone: string | null };
 type DoctorMini = { id: number; name: string };
@@ -233,15 +238,25 @@ export default function VisitCardsPage() {
                         <p className="font-mono text-sm font-semibold text-brand-600 dark:text-brand-400">{row.cardNumber}</p>
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{row.branch.name}</p>
                       </div>
-                      {canEdit && (
+                      <div className="flex shrink-0 items-center gap-1">
                         <Link
-                          href={`/visit-cards/${row.id}/edit`}
-                          className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg px-3 text-sm font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                          href={`/visit-cards/${row.id}`}
+                          className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10"
+                          title="View visit card"
                         >
-                          <PencilIcon className="mr-1.5 h-4 w-4" />
-                          Edit
+                          <EyeIcon className="mr-1 h-4 w-4" />
+                          View
                         </Link>
-                      )}
+                        {canEdit && (
+                          <Link
+                            href={`/visit-cards/${row.id}/edit`}
+                            className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                          >
+                            <PencilIcon className="mr-1.5 h-4 w-4" />
+                            Edit
+                          </Link>
+                        )}
+                      </div>
                     </div>
                     <div className="mt-3 flex items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 dark:bg-brand-500/20">
@@ -263,10 +278,16 @@ export default function VisitCardsPage() {
                       <span className="font-medium text-gray-900 dark:text-white">{row.doctor.name}</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:bg-white/10 dark:text-gray-200">
+                      <span
+                        title="Visit status"
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${queueStatusBadgeClass(row.status)}`}
+                      >
                         {labelQueueStatus(row.status)}
                       </span>
-                      <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-800 dark:bg-brand-500/15 dark:text-brand-200">
+                      <span
+                        title="Payment status"
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${paymentStatusBadgeClass(row.paymentStatus)}`}
+                      >
                         {labelPaymentStatus(row.paymentStatus)}
                       </span>
                     </div>
