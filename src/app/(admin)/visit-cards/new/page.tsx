@@ -6,15 +6,25 @@ import { useRouter, useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
+import DateField from "@/components/form/DateField";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
 import { PAYMENT_STATUS_OPTIONS, type PaymentStatusValue } from "@/lib/visit-card-labels";
 
 type PatientMini = { id: number; patientCode: string; name: string; phone: string | null };
-type DoctorMini = { id: number; name: string };
+type DoctorMini = { id: number; name: string; specialty?: string | null; branch?: { id: number; name: string } | null };
 type BranchMini = { id: number; name: string };
-type PmMini = { id: number; name: string };
+type PmMini = {
+  id: number;
+  name: string;
+  accountBalance?: number;
+  account?: { id: number; name: string; type: string; isActive: boolean };
+};
+
+function formatMoney(n: number) {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 function NewVisitCardPage() {
   const router = useRouter();
@@ -33,7 +43,9 @@ function NewVisitCardPage() {
   const [newPatient, setNewPatient] = useState({ name: "", phone: "" });
   const [useNewPatient, setUseNewPatient] = useState(false);
   const [doctors, setDoctors] = useState<DoctorMini[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PmMini[]>([]);
+  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -81,25 +93,53 @@ function NewVisitCardPage() {
   }, [patientSearch]);
 
   useEffect(() => {
+    setForm((f) => ({ ...f, doctorId: "" }));
+  }, [branchId]);
+
+  useEffect(() => {
     const bid = branchId ? Number(branchId) : null;
     if (!bid || !Number.isInteger(bid)) {
       setDoctors([]);
       return;
     }
+    let cancelled = false;
+    setDoctorsLoading(true);
     authFetch(`/api/doctors?branchId=${bid}`)
-      .then((r) => r.json())
-      .then((data) => setDoctors(Array.isArray(data) ? data : data.data ?? []))
-      .catch(() => setDoctors([]));
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Failed to load doctors");
+        const data = await r.json();
+        if (!cancelled) setDoctors(Array.isArray(data) ? data : data.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setDoctors([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDoctorsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [branchId]);
 
   useEffect(() => {
+    let cancelled = false;
+    setPaymentMethodsLoading(true);
     authFetch("/api/finance/payment-methods")
-      .then((r) => r.json())
-      .then((data) => {
+      .then(async (r) => {
+        if (!r.ok) throw new Error("payment methods");
+        const data = await r.json();
         const arr = Array.isArray(data) ? data : data.data ?? [];
-        setPaymentMethods(arr.map((m: { id: number; name: string }) => ({ id: m.id, name: m.name })));
+        if (!cancelled) setPaymentMethods(arr as PmMini[]);
       })
-      .catch(() => setPaymentMethods([]));
+      .catch(() => {
+        if (!cancelled) setPaymentMethods([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPaymentMethodsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const branchFilterDisabled = !seesAllBranches && Array.isArray(assignedBranchIds) && assignedBranchIds.length === 1;
@@ -159,10 +199,20 @@ function NewVisitCardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = (await res.json()) as { error?: string; accountBalanceAfter?: number };
       if (!res.ok) {
         setError(data.error || "Failed");
         return;
+      }
+      if (typeof data.accountBalanceAfter === "number") {
+        try {
+          sessionStorage.setItem(
+            "visitCardDepositNotice",
+            JSON.stringify({ accountBalanceAfter: data.accountBalanceAfter })
+          );
+        } catch {
+          /* ignore quota / private mode */
+        }
       }
       router.push("/visit-cards");
       router.refresh();
@@ -286,19 +336,33 @@ function NewVisitCardPage() {
 
         <div>
           <Label>Doctor *</Label>
-          <select
-            required
-            value={form.doctorId}
-            onChange={(e) => setForm((f) => ({ ...f, doctorId: e.target.value }))}
-            className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-          >
-            <option value="">Select doctor</option>
-            {doctors.map((d) => (
-              <option key={d.id} value={String(d.id)}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+          {!branchId ? (
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Select a branch first.</p>
+          ) : (
+            <>
+              <select
+                required
+                disabled={doctorsLoading}
+                value={form.doctorId}
+                onChange={(e) => setForm((f) => ({ ...f, doctorId: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm disabled:opacity-60 dark:border-gray-700 dark:text-white"
+              >
+                <option value="">{doctorsLoading ? "Loading doctors…" : "Select doctor"}</option>
+                {!doctorsLoading &&
+                  doctors.map((d) => (
+                    <option key={d.id} value={String(d.id)}>
+                      {d.name}
+                      {d.specialty ? ` — ${d.specialty}` : ""}
+                    </option>
+                  ))}
+              </select>
+              {!doctorsLoading && doctors.length === 0 && (
+                <p className="mt-1 text-sm text-amber-700 dark:text-amber-400/90">
+                  No doctors for this branch. Add a doctor or pick another branch.
+                </p>
+              )}
+            </>
+          )}
         </div>
 
         <div>
@@ -312,16 +376,14 @@ function NewVisitCardPage() {
           />
         </div>
 
-        <div>
-          <Label>Visit date *</Label>
-          <input
-            type="date"
-            required
-            value={form.visitDate}
-            onChange={(e) => setForm((f) => ({ ...f, visitDate: e.target.value }))}
-            className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-          />
-        </div>
+        <DateField
+          id="visit-card-date"
+          label="Visit date *"
+          required
+          value={form.visitDate}
+          onChange={(v) => setForm((f) => ({ ...f, visitDate: v }))}
+          appendToBody
+        />
 
         <div>
           <Label>Visit fee</Label>
@@ -364,17 +426,29 @@ function NewVisitCardPage() {
             </p>
             <select
               required
+              disabled={paymentMethodsLoading}
               value={form.paymentMethodId}
               onChange={(e) => setForm((f) => ({ ...f, paymentMethodId: e.target.value }))}
-              className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+              className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm disabled:opacity-60 dark:border-gray-700 dark:text-white"
             >
-              <option value="">Select payment method</option>
-              {paymentMethods.map((m) => (
-                <option key={m.id} value={String(m.id)}>
-                  {m.name}
-                </option>
-              ))}
+              <option value="">{paymentMethodsLoading ? "Loading payment methods…" : "Select payment method"}</option>
+              {!paymentMethodsLoading &&
+                paymentMethods.map((m) => {
+                  const accName = m.account?.name ?? "Account";
+                  const bal = m.accountBalance;
+                  const balLabel = typeof bal === "number" ? ` — balance ${formatMoney(bal)}` : "";
+                  return (
+                    <option key={m.id} value={String(m.id)}>
+                      {m.name} ({accName}){balLabel}
+                    </option>
+                  );
+                })}
             </select>
+            {!paymentMethodsLoading && paymentMethods.length === 0 && (
+              <p className="mt-1 text-sm text-amber-700 dark:text-amber-400/90">
+                No active payment methods. Configure them under finance settings (requires accounts access).
+              </p>
+            )}
           </div>
         )}
 

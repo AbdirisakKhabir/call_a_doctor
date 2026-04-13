@@ -53,6 +53,21 @@ export default function VisitCardsPage() {
   const [branches, setBranches] = useState<BranchMini[]>([]);
   const [branchId, setBranchId] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [depositNotice, setDepositNotice] = useState<number | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("visitCardDepositNotice");
+      if (!raw) return;
+      sessionStorage.removeItem("visitCardDepositNotice");
+      const parsed = JSON.parse(raw) as { accountBalanceAfter?: unknown };
+      if (typeof parsed.accountBalanceAfter === "number" && Number.isFinite(parsed.accountBalanceAfter)) {
+        setDepositNotice(parsed.accountBalanceAfter);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const loadBranches = useCallback(async () => {
     const res = await authFetch("/api/branches");
@@ -166,6 +181,25 @@ export default function VisitCardsPage() {
         <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
           You are viewing visit cards assigned to your doctor profile only.
         </p>
+      )}
+
+      {depositNotice != null && (
+        <div
+          role="status"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
+        >
+          <span>
+            Deposit recorded. Linked account balance is now{" "}
+            <strong className="font-semibold">${depositNotice.toFixed(2)}</strong>.
+          </span>
+          <button
+            type="button"
+            onClick={() => setDepositNotice(null)}
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-emerald-800 underline hover:bg-emerald-100/80 dark:text-emerald-200 dark:hover:bg-emerald-500/20"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">

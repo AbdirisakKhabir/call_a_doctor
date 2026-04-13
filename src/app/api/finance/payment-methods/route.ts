@@ -3,12 +3,21 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { getFinanceAccountBalance } from "@/lib/finance-balance";
+
+async function canListPaymentMethods(userId: number): Promise<boolean> {
+  return (
+    (await userHasPermission(userId, "accounts.view")) ||
+    (await userHasPermission(userId, "accounts.deposit")) ||
+    (await userHasPermission(userId, "visit_cards.create"))
+  );
+}
 
 export async function GET(req: NextRequest) {
   try {
     const auth = await getAuthUser(req);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (!(await userHasPermission(auth.userId, "accounts.view"))) {
+    if (!(await canListPaymentMethods(auth.userId))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -20,24 +29,53 @@ export async function GET(req: NextRequest) {
       account: { select: { id: true, name: true, type: true, isActive: true } },
     };
 
+    const where = {
+      isActive: true,
+      account: { isActive: true },
+    };
+
     if (paginate) {
       const [methods, total] = await Promise.all([
         prisma.ledgerPaymentMethod.findMany({
+          where,
           include,
           orderBy: { name: "asc" },
           skip,
           take: pageSize,
         }),
-        prisma.ledgerPaymentMethod.count(),
+        prisma.ledgerPaymentMethod.count({ where }),
       ]);
-      return NextResponse.json({ data: methods, total, page, pageSize });
+      const accountIds = [...new Set(methods.map((m) => m.accountId))];
+      const balanceMap = new Map<number, number>();
+      await Promise.all(
+        accountIds.map(async (aid) => {
+          balanceMap.set(aid, await getFinanceAccountBalance(aid));
+        })
+      );
+      const data = methods.map((m) => ({
+        ...m,
+        accountBalance: balanceMap.get(m.accountId) ?? 0,
+      }));
+      return NextResponse.json({ data, total, page, pageSize });
     }
 
     const methods = await prisma.ledgerPaymentMethod.findMany({
+      where,
       include,
       orderBy: { name: "asc" },
     });
-    return NextResponse.json(methods);
+    const accountIds = [...new Set(methods.map((m) => m.accountId))];
+    const balanceMap = new Map<number, number>();
+    await Promise.all(
+      accountIds.map(async (aid) => {
+        balanceMap.set(aid, await getFinanceAccountBalance(aid));
+      })
+    );
+    const withBalance = methods.map((m) => ({
+      ...m,
+      accountBalance: balanceMap.get(m.accountId) ?? 0,
+    }));
+    return NextResponse.json(withBalance);
   } catch (e) {
     console.error("Payment methods list error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });

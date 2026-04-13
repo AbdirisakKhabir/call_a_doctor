@@ -10,6 +10,7 @@ import {
 } from "@/lib/visit-card-access";
 import { userHasPermission } from "@/lib/permissions";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { getFinanceAccountBalance } from "@/lib/finance-balance";
 
 const visitInclude = {
   branch: { select: { id: true, name: true } },
@@ -251,7 +252,14 @@ export async function POST(req: NextRequest) {
         metadata: { cardNumber: card.cardNumber, branchId: card.branchId },
       });
     }
-    return NextResponse.json(card);
+
+    let accountBalanceAfter: number | undefined;
+    if (card?.depositTransaction?.accountId != null) {
+      accountBalanceAfter = await getFinanceAccountBalance(card.depositTransaction.accountId);
+    }
+    return NextResponse.json(
+      accountBalanceAfter != null ? { ...card, accountBalanceAfter } : card
+    );
   } catch (e: unknown) {
     console.error("Visit card create error:", e);
     const msg = e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002";
