@@ -23,7 +23,9 @@ export async function GET(req: NextRequest) {
       patient: { select: { id: true, patientCode: true, name: true } },
       doctor: { select: { id: true, name: true } },
       appointment: { select: { id: true, appointmentDate: true, startTime: true } },
-      items: { include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true } } } },
+      items: {
+        include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true, price: true } } },
+      },
     };
 
     if (paginate) {
@@ -61,31 +63,86 @@ export async function POST(req: NextRequest) {
     if (!appointmentId || !patientId || !doctorId || !Array.isArray(testIds) || testIds.length === 0) {
       return NextResponse.json({ error: "Appointment, patient, doctor and at least one test are required" }, { status: 400 });
     }
-    const order = await prisma.labOrder.create({
-      data: {
-        appointmentId: Number(appointmentId),
-        patientId: Number(patientId),
-        doctorId: Number(doctorId),
-        orderedById: auth.userId,
-        notes: notes ? String(notes).trim() : null,
-        items: {
-          create: testIds.map((tid: number) => ({ labTestId: Number(tid) })),
-        },
-      },
-      include: {
-        patient: { select: { id: true, patientCode: true, name: true } },
-        doctor: { select: { id: true, name: true } },
-        appointment: { select: { id: true, appointmentDate: true, startTime: true } },
-        items: { include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true } } } },
-      },
+
+    const uniqueTestIds = [
+      ...new Set(
+        testIds
+          .map((x: unknown) => Number(x))
+          .filter((id: number) => Number.isInteger(id) && id > 0)
+      ),
+    ];
+    if (uniqueTestIds.length === 0) {
+      return NextResponse.json({ error: "At least one valid test is required" }, { status: 400 });
+    }
+
+    const labTests = await prisma.labTest.findMany({
+      where: { id: { in: uniqueTestIds }, isActive: true },
     });
+    if (labTests.length !== uniqueTestIds.length) {
+      return NextResponse.json(
+        { error: "One or more tests are invalid, inactive, or duplicated incorrectly" },
+        { status: 400 }
+      );
+    }
+
+    const testById = new Map(labTests.map((t) => [t.id, t] as const));
+    const totalAmount = uniqueTestIds.reduce((sum, id) => sum + (testById.get(id)?.price ?? 0), 0);
+    const patientIdNum = Number(patientId);
+
+    const include = {
+      patient: { select: { id: true, patientCode: true, name: true, accountBalance: true } },
+      doctor: { select: { id: true, name: true } },
+      appointment: { select: { id: true, appointmentDate: true, startTime: true } },
+      items: {
+        include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true, price: true } } },
+      },
+    };
+
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.labOrder.create({
+        data: {
+          appointmentId: Number(appointmentId),
+          patientId: patientIdNum,
+          doctorId: Number(doctorId),
+          orderedById: auth.userId,
+          notes: notes ? String(notes).trim() : null,
+          totalAmount,
+          items: {
+            create: uniqueTestIds.map((tid) => ({
+              labTestId: tid,
+              unitPrice: testById.get(tid)?.price ?? 0,
+            })),
+          },
+        },
+      });
+      if (totalAmount > 0) {
+        await tx.patient.update({
+          where: { id: patientIdNum },
+          data: { accountBalance: { increment: totalAmount } },
+        });
+      }
+      return tx.labOrder.findUnique({
+        where: { id: created.id },
+        include,
+      });
+    });
+
+    if (!order) {
+      return NextResponse.json({ error: "Failed to create lab order" }, { status: 500 });
+    }
+
     await logAuditFromRequest(req, {
       userId: auth.userId,
       action: "lab.order.create",
       module: "lab",
       resourceType: "LabOrder",
       resourceId: order.id,
-      metadata: { patientId: order.patientId, appointmentId: order.appointmentId },
+      metadata: {
+        patientId: order.patientId,
+        appointmentId: order.appointmentId,
+        totalAmount,
+        patientCharged: totalAmount > 0,
+      },
     });
     return NextResponse.json(order);
   } catch (e) {

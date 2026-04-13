@@ -10,8 +10,43 @@ import DateField from "@/components/form/DateField";
 
 type Branch = { id: number; name: string };
 type Doctor = { id: number; name: string; specialty: string | null; branch: { id: number } | null };
-type Service = { id: number; name: string; price: number };
+type Service = { id: number; name: string; price: number; durationMinutes: number | null };
 type Patient = { id: number; patientCode: string; name: string };
+
+type PatientDetail = Patient & {
+  notes: string | null;
+  accountBalance: number;
+  appointmentStats: { completed: number; cancelled: number; noShow: number };
+  recentAppointments: {
+    id: number;
+    appointmentDate: string;
+    startTime: string;
+    services: {
+      service: { id: number; name: string; durationMinutes: number | null; price: number };
+    }[];
+  }[];
+};
+
+function addMinutesToTime(start: string, minutes: number): string {
+  const [h, m] = start.split(":").map(Number);
+  const total = h * 60 + m + minutes;
+  const nh = Math.floor(total / 60) % 24;
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
+function totalDurationMinutes(
+  lines: { serviceId: number; quantity: number }[],
+  catalog: Service[]
+): number {
+  let sum = 0;
+  for (const line of lines) {
+    const s = catalog.find((c) => c.id === line.serviceId);
+    const d = s?.durationMinutes ?? 30;
+    sum += d * line.quantity;
+  }
+  return sum || 30;
+}
 
 const TIME_SLOTS = [
   "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
@@ -43,6 +78,8 @@ export default function NewAppointmentForm() {
   const [searchingPatients, setSearchingPatients] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [patientDetail, setPatientDetail] = useState<PatientDetail | null>(null);
+  const [loadingPatient, setLoadingPatient] = useState(false);
 
   const canCreate = hasPermission("appointments.create") || hasPermission("appointments.view");
 
@@ -97,24 +134,66 @@ export default function NewAppointmentForm() {
     return () => clearTimeout(t);
   }, [patientSearch]);
 
+  useEffect(() => {
+    if (!form.patientId) {
+      setPatientDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingPatient(true);
+    authFetch(`/api/patients/${form.patientId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: PatientDetail | null) => {
+        if (!cancelled && data) setPatientDetail(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPatientDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPatient(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.patientId]);
+
+  function applyEndTimeFromServices(
+    next: typeof form.services,
+    startTime: string,
+    catalog: Service[]
+  ) {
+    if (next.length === 0) return undefined;
+    const mins = totalDurationMinutes(
+      next.map((x) => ({ serviceId: x.serviceId, quantity: x.quantity })),
+      catalog
+    );
+    return addMinutesToTime(startTime, mins);
+  }
+
   function addService(s: Service) {
     const existing = form.services.find((x) => x.serviceId === s.id);
     if (existing) return;
-    setForm((f) => ({
-      ...f,
-      services: [...f.services, { serviceId: s.id, name: s.name, quantity: 1, unitPrice: s.price }],
-    }));
+    setForm((f) => {
+      const next = [...f.services, { serviceId: s.id, name: s.name, quantity: 1, unitPrice: s.price }];
+      const end = applyEndTimeFromServices(next, f.startTime, services);
+      return { ...f, services: next, ...(end ? { endTime: end } : {}) };
+    });
   }
 
   function removeService(serviceId: number) {
-    setForm((f) => ({ ...f, services: f.services.filter((x) => x.serviceId !== serviceId) }));
+    setForm((f) => {
+      const next = f.services.filter((x) => x.serviceId !== serviceId);
+      const end = applyEndTimeFromServices(next, f.startTime, services);
+      return { ...f, services: next, ...(next.length && end ? { endTime: end } : {}) };
+    });
   }
 
   function updateServiceQty(serviceId: number, quantity: number) {
-    setForm((f) => ({
-      ...f,
-      services: f.services.map((s) => (s.serviceId === serviceId ? { ...s, quantity: Math.max(1, quantity) } : s)),
-    }));
+    setForm((f) => {
+      const next = f.services.map((s) => (s.serviceId === serviceId ? { ...s, quantity: Math.max(1, quantity) } : s));
+      const end = applyEndTimeFromServices(next, f.startTime, services);
+      return { ...f, services: next, ...(end ? { endTime: end } : {}) };
+    });
   }
 
   function updateServicePrice(serviceId: number, unitPrice: number) {
@@ -215,7 +294,7 @@ export default function NewAppointmentForm() {
           {error && <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600">{error}</div>}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Branch *</label>
+              <label className="mb-1 block text-sm font-medium">Location (branch) *</label>
               <select
                 required
                 value={form.branchId}
@@ -231,7 +310,7 @@ export default function NewAppointmentForm() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Doctor *</label>
+              <label className="mb-1 block text-sm font-medium">Practitioner (doctor) *</label>
               <select
                 required
                 value={form.doctorId}
@@ -249,7 +328,7 @@ export default function NewAppointmentForm() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Patient *</label>
+            <label className="mb-1 block text-sm font-medium">Patient (client) *</label>
             <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Search by name, patient code, phone, or email — at least 2 characters.</p>
             <input
               type="text"
@@ -290,6 +369,71 @@ export default function NewAppointmentForm() {
             {form.patientId && selectedPatientLabel && (
               <p className="mt-1 text-xs text-green-600 dark:text-green-400">Selected: {selectedPatientLabel}</p>
             )}
+
+            {form.patientId && (
+              <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Patient context</p>
+                {loadingPatient ? (
+                  <p className="text-sm text-gray-500">Loading patient details…</p>
+                ) : patientDetail ? (
+                  <div className="space-y-3 text-sm">
+                    <div className="flex flex-wrap gap-3 text-xs">
+                      <span title="Completed visits">
+                        Completed: <strong>{patientDetail.appointmentStats.completed}</strong>
+                      </span>
+                      <span title="Cancelled">
+                        Cancelled: <strong>{patientDetail.appointmentStats.cancelled}</strong>
+                      </span>
+                      <span title="No-shows">
+                        No-show: <strong>{patientDetail.appointmentStats.noShow}</strong>
+                      </span>
+                      <span title="Account balance">
+                        Balance: <strong>${patientDetail.accountBalance.toFixed(2)}</strong>
+                      </span>
+                    </div>
+                    {patientDetail.notes?.trim() ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                        <span className="font-medium">Alerts &amp; notes on file: </span>
+                        {patientDetail.notes}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">No general alerts/notes on file — add allergies or alerts in the patient record.</p>
+                    )}
+                    {patientDetail.recentAppointments.length > 0 && (
+                      <div>
+                        <p className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">Recently booked services (quick add)</p>
+                        <div className="flex flex-wrap gap-2">
+                          {Array.from(
+                            new Map(
+                              patientDetail.recentAppointments.flatMap((a) =>
+                                a.services.map((x) => [x.service.id, x.service] as const)
+                              )
+                            ).values()
+                          )
+                            .slice(0, 3)
+                            .map((svc) => {
+                              const full = services.find((s) => s.id === svc.id);
+                              if (!full) return null;
+                              return (
+                                <button
+                                  key={svc.id}
+                                  type="button"
+                                  onClick={() => addService(full)}
+                                  className="rounded-lg border border-brand-200 bg-white px-2 py-1 text-xs font-medium text-brand-800 hover:bg-brand-50 dark:border-brand-800 dark:bg-gray-900 dark:text-brand-200 dark:hover:bg-brand-900/30"
+                                >
+                                  + {svc.name}
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">Could not load patient context.</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -305,7 +449,13 @@ export default function NewAppointmentForm() {
               <label className="mb-1 block text-sm font-medium">Start time *</label>
               <select
                 value={form.startTime}
-                onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm((f) => {
+                    const end = applyEndTimeFromServices(f.services, v, services);
+                    return { ...f, startTime: v, ...(f.services.length && end ? { endTime: end } : {}) };
+                  });
+                }}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               >
                 {TIME_SLOTS.map((t) => (
@@ -316,7 +466,7 @@ export default function NewAppointmentForm() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">End time</label>
+              <label className="mb-1 block text-sm font-medium">End time (from service duration)</label>
               <select
                 value={form.endTime}
                 onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
@@ -332,7 +482,10 @@ export default function NewAppointmentForm() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Services (charge patient)</label>
+            <label className="mb-1 block text-sm font-medium">Services / treatments (charge)</label>
+            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+              Each service uses its catalog duration to set length. Quantity multiplies duration.
+            </p>
             <div className="mb-2 flex flex-wrap gap-2">
               {services
                 .filter((s) => !form.services.some((x) => x.serviceId === s.id))
@@ -367,12 +520,20 @@ export default function NewAppointmentForm() {
                   </button>
                 </div>
               ))}
-              {form.services.length > 0 && <div className="border-t pt-2 font-semibold">Total: ${totalCharge.toFixed(2)}</div>}
+              {form.services.length > 0 && (
+                <div className="border-t pt-2">
+                  <div className="font-semibold">Total: ${totalCharge.toFixed(2)}</div>
+                  {totalCharge > 0 && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">This total is charged to the patient&apos;s account balance when the appointment is saved.</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Notes</label>
+            <label className="mb-1 block text-sm font-medium">Appointment notes</label>
+            <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Visible on this visit only (patient chart notes are stored separately on the patient record).</p>
             <textarea
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
@@ -386,7 +547,7 @@ export default function NewAppointmentForm() {
               Cancel
             </Button>
             <Button type="submit" disabled={submitting} size="sm">
-              {submitting ? "Creating…" : "Create appointment"}
+              {submitting ? "Booking…" : "Book appointment"}
             </Button>
           </div>
         </form>

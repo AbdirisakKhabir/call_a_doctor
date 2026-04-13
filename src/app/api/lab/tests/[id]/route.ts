@@ -10,7 +10,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     const body = await req.json();
-    const { categoryId, name, code, unit, normalRange, isActive } = body;
+    const { categoryId, name, code, unit, normalRange, isActive, price } = body;
     const data: Record<string, unknown> = {};
     if (categoryId != null) data.categoryId = Number(categoryId);
     if (typeof name === "string" && name.trim()) data.name = name.trim();
@@ -18,6 +18,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (typeof unit !== "undefined") data.unit = unit ? String(unit).trim() : null;
     if (typeof normalRange !== "undefined") data.normalRange = normalRange ? String(normalRange).trim() : null;
     if (typeof isActive === "boolean") data.isActive = isActive;
+    if (typeof price !== "undefined") {
+      const p = Math.max(0, Number(price));
+      data.price = Number.isFinite(p) ? p : 0;
+    }
     const test = await prisma.labTest.update({ where: { id: parsedId }, data });
     return NextResponse.json(test);
   } catch (e) {

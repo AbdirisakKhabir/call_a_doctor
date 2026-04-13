@@ -67,36 +67,56 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const appointment = await prisma.appointment.create({
-      data: {
-        branchId: Number(branchId),
-        doctorId: Number(doctorId),
-        patientId: Number(patientId),
-        appointmentDate: new Date(appointmentDate),
-        startTime: String(startTime),
-        endTime: endTime ? String(endTime) : null,
-        notes: notes ? String(notes).trim() : null,
-        totalAmount,
-        status: "scheduled",
-        createdById: auth.userId,
-        services: appointmentServices.length
-          ? { create: appointmentServices }
-          : undefined,
-      },
-      include: {
-        branch: { select: { id: true, name: true } },
-        doctor: { select: { id: true, name: true } },
-        patient: { select: { id: true, patientCode: true, name: true } },
-        services: { include: { service: { select: { id: true, name: true } } } },
-      },
+    const patientIdNum = Number(patientId);
+    const appointment = await prisma.$transaction(async (tx) => {
+      const apt = await tx.appointment.create({
+        data: {
+          branchId: Number(branchId),
+          doctorId: Number(doctorId),
+          patientId: patientIdNum,
+          appointmentDate: new Date(appointmentDate),
+          startTime: String(startTime),
+          endTime: endTime ? String(endTime) : null,
+          notes: notes ? String(notes).trim() : null,
+          totalAmount,
+          status: "scheduled",
+          createdById: auth.userId,
+          services: appointmentServices.length
+            ? { create: appointmentServices }
+            : undefined,
+        },
+      });
+      if (totalAmount > 0) {
+        await tx.patient.update({
+          where: { id: patientIdNum },
+          data: { accountBalance: { increment: totalAmount } },
+        });
+      }
+      return tx.appointment.findUnique({
+        where: { id: apt.id },
+        include: {
+          branch: { select: { id: true, name: true } },
+          doctor: { select: { id: true, name: true } },
+          patient: { select: { id: true, patientCode: true, name: true, accountBalance: true } },
+          services: { include: { service: { select: { id: true, name: true } } } },
+        },
+      });
     });
+    if (!appointment) {
+      return NextResponse.json({ error: "Failed to create appointment" }, { status: 500 });
+    }
     await logAuditFromRequest(req, {
       userId: auth.userId,
       action: "appointment.create",
       module: "appointments",
       resourceType: "Appointment",
       resourceId: appointment.id,
-      metadata: { branchId: appointment.branchId, patientId: appointment.patientId },
+      metadata: {
+        branchId: appointment.branchId,
+        patientId: appointment.patientId,
+        totalAmount,
+        patientCharged: totalAmount > 0,
+      },
     });
     return NextResponse.json(appointment);
   } catch (e) {

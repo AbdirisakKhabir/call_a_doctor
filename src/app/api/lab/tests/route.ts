@@ -45,10 +45,11 @@ export async function POST(req: NextRequest) {
     const auth = await getAuthUser(req);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
-    const { categoryId, name, code, unit, normalRange } = body;
+    const { categoryId, name, code, unit, normalRange, price } = body;
     if (!categoryId || !name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Category and name are required" }, { status: 400 });
     }
+    const priceNum = price != null ? Math.max(0, Number(price)) : 0;
     const test = await prisma.labTest.create({
       data: {
         categoryId: Number(categoryId),
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
         code: code ? String(code).trim() : null,
         unit: unit ? String(unit).trim() : null,
         normalRange: normalRange ? String(normalRange).trim() : null,
+        price: Number.isFinite(priceNum) ? priceNum : 0,
       },
       include: { category: { select: { id: true, name: true } } },
     });

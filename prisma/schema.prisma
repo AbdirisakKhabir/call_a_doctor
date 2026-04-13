@@ -642,6 +642,8 @@ model LabTest {
   code        String?
   unit        String?
   normalRange String?       // e.g. "70-100 mg/dL"
+  /// Fee charged to the patient when this test is ordered (snapshot copied to order lines).
+  price       Float         @default(0)
   isActive    Boolean       @default(true)
   orderItems  LabOrderItem[]
   createdAt   DateTime      @default(now())
@@ -662,6 +664,8 @@ model LabOrder {
   orderedBy      User?        @relation("LabOrderCreatedBy", fields: [orderedById], references: [id], onDelete: SetNull)
   status         String       @default("pending") // pending, completed, cancelled
   notes          String?
+  /// Sum of line unit prices at order time (lab fee charged to patient).
+  totalAmount    Float         @default(0)
   items          LabOrderItem[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -675,6 +679,8 @@ model LabOrderItem {
   labOrder       LabOrder  @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
   labTestId      Int
   labTest        LabTest   @relation(fields: [labTestId], references: [id], onDelete: Restrict)
+  /// Test fee at time of order (from LabTest.price).
+  unitPrice      Float     @default(0)
   resultValue    String?   @db.Text
   resultUnit     String?
   status         String    @default("pending") // pending, completed

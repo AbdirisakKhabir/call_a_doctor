@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
@@ -30,6 +30,13 @@ type Prescription = {
 };
 
 type Product = { id: number; name: string; code: string; quantity: number };
+
+type PatientBrief = {
+  id: number;
+  name: string;
+  patientCode: string;
+  notes: string | null;
+};
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr);
@@ -63,8 +70,55 @@ export default function PrescriptionsPage() {
     items: [] as { productId: number; name: string; quantity: number; dosage: string; instructions: string }[],
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [prescribePatient, setPrescribePatient] = useState<PatientBrief | null>(null);
+  const [rxViewMode, setRxViewMode] = useState<"prescriptions" | "medications">("prescriptions");
 
   const canCreate = hasPermission("prescriptions.create");
+
+  const medicationLines = useMemo(() => {
+    const rows: {
+      lineKey: string;
+      rxId: number;
+      status: string;
+      patient: Prescription["patient"];
+      doctor: Prescription["doctor"];
+      appointment: Prescription["appointment"];
+      item: Prescription["items"][0];
+    }[] = [];
+    for (const rx of prescriptions) {
+      for (const item of rx.items) {
+        rows.push({
+          lineKey: `${rx.id}-${item.id}`,
+          rxId: rx.id,
+          status: rx.status,
+          patient: rx.patient,
+          doctor: rx.doctor,
+          appointment: rx.appointment,
+          item,
+        });
+      }
+    }
+    return rows;
+  }, [prescriptions]);
+
+  useEffect(() => {
+    if (!createModal || !createFrom?.patientId) {
+      setPrescribePatient(null);
+      return;
+    }
+    let cancelled = false;
+    authFetch(`/api/patients/${createFrom.patientId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: PatientBrief | null) => {
+        if (!cancelled && data) setPrescribePatient(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPrescribePatient(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [createModal, createFrom?.patientId]);
 
   async function fetchPrescriptionsPage(page: number) {
     const params = new URLSearchParams({
@@ -170,8 +224,22 @@ export default function PrescriptionsPage() {
   return (
     <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <PageBreadCrumb pageTitle="Prescriptions" />
+        <div>
+          <PageBreadCrumb pageTitle="Prescriptions & medications" />
+          <p className="mt-1 max-w-2xl text-xs text-gray-500 dark:text-gray-400">
+            Prescriptions live on the patient chart (from a visit). Each line is one medication with dose and instructions for pharmacy and audits.
+          </p>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={rxViewMode}
+            onChange={(e) => setRxViewMode(e.target.value as "prescriptions" | "medications")}
+            className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            aria-label="View mode"
+          >
+            <option value="prescriptions">By prescription</option>
+            <option value="medications">By medication line</option>
+          </select>
           <select
             value={rxListFilter}
             onChange={(e) => {
@@ -203,12 +271,29 @@ export default function PrescriptionsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
           <div className="w-full max-w-2xl my-8 rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">New Prescription</h2>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">New prescription (medications)</h2>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  Add lines from branch retail stock. Pharmacy notes apply to the whole script; dose and SIG are per line.
+                </p>
+              </div>
               <button type="button" onClick={() => { setCreateModal(false); window.history.replaceState({}, "", "/prescriptions"); }} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
               >×</button>
             </div>
             <div className="px-6 py-5 space-y-5">
-              <p className="text-sm text-gray-600 dark:text-gray-400">Select products from inventory to prescribe.</p>
+              {prescribePatient && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800/50">
+                  <span className="text-gray-500">Patient: </span>
+                  <span className="font-medium">{prescribePatient.name}</span>
+                  <span className="ml-1 font-mono text-xs text-gray-500">({prescribePatient.patientCode})</span>
+                </div>
+              )}
+              {prescribePatient?.notes?.trim() && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                  <span className="font-medium">Chart alerts / allergies (check before prescribing): </span>
+                  {prescribePatient.notes}
+                </div>
+              )}
               <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
                 <input
                   type="checkbox"
@@ -219,7 +304,7 @@ export default function PrescriptionsPage() {
                 <span>Emergency prescription (multiple allowed per patient; filter on Patient invoice)</span>
               </label>
               <div>
-                <Label>Add Product</Label>
+                <Label>Add medication (inventory product)</Label>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {products.filter((p) => !createForm.items.some((i) => i.productId === p.id)).map((p) => (
                     <button key={p.id} type="button" onClick={() => addProduct(p)} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 ring-1 ring-transparent transition-all hover:border-brand-500/50 hover:bg-brand-50/50 hover:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-500/50 dark:hover:bg-brand-500/10">
@@ -229,16 +314,16 @@ export default function PrescriptionsPage() {
                 </div>
               </div>
               <div>
-                <Label>Prescribed Items ({createForm.items.length})</Label>
+                <Label>Medication lines ({createForm.items.length})</Label>
                 <div className="mt-2 space-y-3">
                   {createForm.items.map((item) => (
                     <div key={item.productId} className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/30">
                       <div className="flex flex-wrap items-center gap-3">
                         <span className="flex-1 font-medium text-gray-900 dark:text-white">{item.name}</span>
-                        <div className="flex items-center gap-2">
-                          <input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(item.productId, "quantity", Number(e.target.value))} className="h-9 w-16 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-                          <input placeholder="Dosage" value={item.dosage} onChange={(e) => updateItem(item.productId, "dosage", e.target.value)} className="h-9 w-32 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-                          <input placeholder="Instructions" value={item.instructions} onChange={(e) => updateItem(item.productId, "instructions", e.target.value)} className="h-9 min-w-[140px] flex-1 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(item.productId, "quantity", Number(e.target.value))} className="h-9 w-16 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" title="Quantity (units)" />
+                          <input placeholder="Dose (e.g. 500mg)" value={item.dosage} onChange={(e) => updateItem(item.productId, "dosage", e.target.value)} className="h-9 w-36 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+                          <input placeholder="SIG / patient instructions" value={item.instructions} onChange={(e) => updateItem(item.productId, "instructions", e.target.value)} className="h-9 min-w-[160px] flex-1 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
                           <button type="button" onClick={() => removeProduct(item.productId)} className="rounded-lg p-2 text-error-500 hover:bg-error-50 dark:hover:bg-error-500/10">
                             <TrashBinIcon className="h-4 w-4" />
                           </button>
@@ -249,12 +334,13 @@ export default function PrescriptionsPage() {
                 </div>
               </div>
               <div>
-                <Label>Notes</Label>
-                <textarea value={createForm.notes} onChange={(e) => setCreateForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" placeholder="Optional notes..." />
+                <Label>Prescription / pharmacy notes</Label>
+                <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Optional directions for the pharmacy or audit trail (whole script).</p>
+                <textarea value={createForm.notes} onChange={(e) => setCreateForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" placeholder="e.g. generic substitution allowed…" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="outline" size="sm" onClick={() => { setCreateModal(false); window.history.replaceState({}, "", "/prescriptions"); }}>Cancel</Button>
-                <Button size="sm" disabled={createSubmitting || createForm.items.length === 0} onClick={handleCreatePrescription}>{createSubmitting ? "Creating..." : "Create Prescription"}</Button>
+                <Button size="sm" disabled={createSubmitting || createForm.items.length === 0} onClick={handleCreatePrescription}>{createSubmitting ? "Saving…" : "Save prescription"}</Button>
               </div>
             </div>
           </div>
@@ -276,9 +362,65 @@ export default function PrescriptionsPage() {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">No prescriptions yet</h3>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Prescriptions are created from appointments. Click an appointment to prescribe medications from inventory.</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Open an appointment and choose Create prescription, or use the quick link from the appointment detail. Medications are added as lines with dose and SIG.
+              </p>
             </div>
           </div>
+        </div>
+      ) : rxViewMode === "medications" ? (
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-800/50">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Patient</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Medication</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Qty</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Dose</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">SIG</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Rx #</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {medicationLines.map((row) => (
+                  <tr key={row.lineKey} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/30">
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span className="font-medium">{row.patient.name}</span>
+                      <span className="ml-1 font-mono text-xs text-gray-500">{row.patient.patientCode}</span>
+                    </td>
+                    <td className="px-4 py-3">{row.item.product.name}</td>
+                    <td className="px-4 py-3">{row.item.quantity}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{row.item.dosage || "—"}</td>
+                    <td className="max-w-[220px] truncate px-4 py-3 text-gray-600 dark:text-gray-400" title={row.item.instructions || undefined}>
+                      {row.item.instructions || "—"}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">{row.rxId}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          row.status === "dispensed"
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400"
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ListPaginationFooter
+            loading={loading}
+            total={rxTotal}
+            page={rxPage}
+            pageSize={rxPageSize}
+            noun="prescriptions"
+            onPageChange={setRxPage}
+          />
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">

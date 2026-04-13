@@ -10,7 +10,16 @@ import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 
-type LabTest = { id: number; name: string; code: string | null; unit: string | null; normalRange: string | null; isActive: boolean; category: { id: number; name: string } };
+type LabTest = {
+  id: number;
+  name: string;
+  code: string | null;
+  unit: string | null;
+  normalRange: string | null;
+  price: number;
+  isActive: boolean;
+  category: { id: number; name: string };
+};
 type LabCategory = { id: number; name: string };
 
 export default function LabTestsPage() {
@@ -23,7 +32,7 @@ export default function LabTestsPage() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ categoryId: "", name: "", code: "", unit: "", normalRange: "" });
+  const [form, setForm] = useState({ categoryId: "", name: "", code: "", unit: "", normalRange: "", price: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -61,14 +70,21 @@ export default function LabTestsPage() {
   function openAdd() {
     setModal("add");
     setEditingId(null);
-    setForm({ categoryId: categories[0] ? String(categories[0].id) : "", name: "", code: "", unit: "", normalRange: "" });
+    setForm({ categoryId: categories[0] ? String(categories[0].id) : "", name: "", code: "", unit: "", normalRange: "", price: "" });
     setError("");
   }
 
   function openEdit(t: LabTest) {
     setModal("edit");
     setEditingId(t.id);
-    setForm({ categoryId: String(t.category.id), name: t.name, code: t.code ?? "", unit: t.unit ?? "", normalRange: t.normalRange ?? "" });
+    setForm({
+      categoryId: String(t.category.id),
+      name: t.name,
+      code: t.code ?? "",
+      unit: t.unit ?? "",
+      normalRange: t.normalRange ?? "",
+      price: String(t.price ?? 0),
+    });
     setError("");
   }
 
@@ -78,13 +94,29 @@ export default function LabTestsPage() {
     setSubmitting(true);
     try {
       if (modal === "add") {
-        const res = await authFetch("/api/lab/tests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, categoryId: Number(form.categoryId) }) });
+        const res = await authFetch("/api/lab/tests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...form,
+            categoryId: Number(form.categoryId),
+            price: form.price === "" ? 0 : Number(form.price),
+          }),
+        });
         const data = await res.json();
         if (!res.ok) { setError(data.error || "Failed"); return; }
         await loadTests();
         setModal(null);
       } else if (modal === "edit" && editingId) {
-        const res = await authFetch(`/api/lab/tests/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, categoryId: Number(form.categoryId) }) });
+        const res = await authFetch(`/api/lab/tests/${editingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...form,
+            categoryId: Number(form.categoryId),
+            price: form.price === "" ? 0 : Number(form.price),
+          }),
+        });
         const data = await res.json();
         if (!res.ok) { setError(data.error || "Failed"); return; }
         await loadTests();
@@ -134,6 +166,7 @@ export default function LabTestsPage() {
                 <TableCell isHeader>Code</TableCell>
                 <TableCell isHeader>Unit</TableCell>
                 <TableCell isHeader>Normal Range</TableCell>
+                <TableCell isHeader className="text-right">Test price</TableCell>
                 {(canEdit || canDelete) && <TableCell isHeader>Actions</TableCell>}
               </TableRow>
             </TableHeader>
@@ -145,6 +178,7 @@ export default function LabTestsPage() {
                   <TableCell>{t.code || "—"}</TableCell>
                   <TableCell>{t.unit || "—"}</TableCell>
                   <TableCell>{t.normalRange || "—"}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">${(t.price ?? 0).toFixed(2)}</TableCell>
                   {(canEdit || canDelete) && (
                     <TableCell>
                       <div className="flex gap-2">
@@ -197,6 +231,20 @@ export default function LabTestsPage() {
               <div>
                 <Label htmlFor="range">Normal Range</Label>
                 <input id="range" value={form.normalRange} onChange={(e) => setForm((f) => ({ ...f, normalRange: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" placeholder="e.g. 70-100" />
+              </div>
+              <div>
+                <Label htmlFor="price">Test price ($)</Label>
+                <input
+                  id="price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.price}
+                  onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                  placeholder="0.00"
+                />
+                <p className="mt-1 text-xs text-gray-500">Charged to the patient when this test is ordered.</p>
               </div>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setModal(null)} size="sm">Cancel</Button>

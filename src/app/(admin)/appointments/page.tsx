@@ -130,7 +130,7 @@ export default function AppointmentsPage() {
   return (
     <div>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <PageBreadCrumb pageTitle="All Appointments" />
+        <PageBreadCrumb pageTitle="Appointments (calendar)" />
         <div className="flex flex-wrap items-center gap-2">
           {canCreate && (
             <Link
@@ -250,7 +250,7 @@ export default function AppointmentsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-              <h2 className="text-lg font-semibold">Appointment Details</h2>
+              <h2 className="text-lg font-semibold">Appointment summary</h2>
               <button type="button" onClick={() => setModal(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">
                 ×
               </button>
@@ -260,23 +260,25 @@ export default function AppointmentsPage() {
                 <span className="text-gray-500">Date:</span> {selectedAppointment.appointmentDate.slice(0, 10)}
               </p>
               <p>
-                <span className="text-gray-500">Time:</span> {selectedAppointment.startTime} - {selectedAppointment.endTime || "—"}
+                <span className="text-gray-500">Time &amp; duration:</span> {selectedAppointment.startTime}
+                {selectedAppointment.endTime ? ` – ${selectedAppointment.endTime}` : ""}
               </p>
               <p>
-                <span className="text-gray-500">Branch:</span> {selectedAppointment.branch.name}
+                <span className="text-gray-500">Location (branch):</span> {selectedAppointment.branch.name}
               </p>
               <p>
-                <span className="text-gray-500">Doctor:</span> {selectedAppointment.doctor.name}
+                <span className="text-gray-500">Practitioner:</span> {selectedAppointment.doctor.name}
+                {selectedAppointment.doctor.specialty ? ` · ${selectedAppointment.doctor.specialty}` : ""}
               </p>
               <p>
-                <span className="text-gray-500">Patient:</span> {selectedAppointment.patient.name} ({selectedAppointment.patient.patientCode})
+                <span className="text-gray-500">Patient (client):</span> {selectedAppointment.patient.name} ({selectedAppointment.patient.patientCode})
               </p>
               <p>
                 <span className="text-gray-500">Status:</span> {selectedAppointment.status}
               </p>
               {selectedAppointment.services.length > 0 && (
                 <div>
-                  <p className="mb-1 text-gray-500">Services:</p>
+                  <p className="mb-1 text-gray-500">Service(s) booked:</p>
                   <ul className="list-inside list-disc text-sm">
                     {selectedAppointment.services.map((s, i) => (
                       <li key={i}>
@@ -293,7 +295,7 @@ export default function AppointmentsPage() {
                     href={`/patients?history=1&patientId=${selectedAppointment.patient.id}&appointmentId=${selectedAppointment.id}`}
                     className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm text-white hover:bg-brand-600"
                   >
-                    Record History
+                    Clinical note
                   </Link>
                 )}
                 {(hasPermission("lab.create") || hasPermission("lab.view")) && (

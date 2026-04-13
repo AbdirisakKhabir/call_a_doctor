@@ -19,9 +19,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (typeof endTime !== "undefined") data.endTime = endTime ? String(endTime) : null;
     if (typeof notes !== "undefined") data.notes = notes ? String(notes).trim() : null;
 
+    let balanceDelta: number | null = null;
     if (Array.isArray(services)) {
+      const existing = await prisma.appointment.findUnique({
+        where: { id: parsedId },
+        select: { totalAmount: true, patientId: true },
+      });
+      if (!existing) {
+        return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
+      }
       await prisma.appointmentService.deleteMany({ where: { appointmentId: parsedId } });
-      let totalAmount = 0;
+      let newTotal = 0;
       const appointmentServices: { serviceId: number; quantity: number; unitPrice: number; totalAmount: number }[] = [];
       for (const s of services) {
         const serviceId = Number(s.serviceId);
@@ -30,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const lineTotal = quantity * unitPrice;
         if (Number.isInteger(serviceId) && serviceId > 0) {
           appointmentServices.push({ serviceId, quantity, unitPrice, totalAmount: lineTotal });
-          totalAmount += lineTotal;
+          newTotal += lineTotal;
         }
       }
       if (appointmentServices.length > 0) {
@@ -47,6 +55,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       } else {
         data.totalAmount = 0;
       }
+      balanceDelta = Number(data.totalAmount) - existing.totalAmount;
+      if (balanceDelta !== 0) {
+        await prisma.patient.update({
+          where: { id: existing.patientId },
+          data: { accountBalance: { increment: balanceDelta } },
+        });
+      }
     }
 
     const appointment = await prisma.appointment.update({
@@ -55,7 +70,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       include: {
         branch: { select: { id: true, name: true } },
         doctor: { select: { id: true, name: true } },
-        patient: { select: { id: true, patientCode: true, name: true } },
+        patient: { select: { id: true, patientCode: true, name: true, accountBalance: true } },
         services: { include: { service: { select: { id: true, name: true } } } },
       },
     });
@@ -65,7 +80,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       module: "appointments",
       resourceType: "Appointment",
       resourceId: parsedId,
-      metadata: { keys: Object.keys(data) },
+      metadata: { keys: Object.keys(data), balanceDelta },
     });
     return NextResponse.json(appointment);
   } catch (e) {
@@ -81,7 +96,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params;
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    await prisma.appointment.delete({ where: { id: parsedId } });
+    const existing = await prisma.appointment.findUnique({
+      where: { id: parsedId },
+      select: { patientId: true, totalAmount: true },
+    });
+    await prisma.$transaction(async (tx) => {
+      if (existing && existing.totalAmount > 0) {
+        await tx.patient.update({
+          where: { id: existing.patientId },
+          data: { accountBalance: { decrement: existing.totalAmount } },
+        });
+      }
+      await tx.appointment.delete({ where: { id: parsedId } });
+    });
     await logAuditFromRequest(req, {
       userId: auth.userId,
       action: "appointment.delete",

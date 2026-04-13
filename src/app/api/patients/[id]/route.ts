@@ -3,6 +3,55 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAuditFromRequest } from "@/lib/audit-log";
 
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await getAuthUser(_req);
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id } = await params;
+    const parsedId = Number(id);
+    if (!Number.isInteger(parsedId)) {
+      return NextResponse.json({ error: "Invalid patient id" }, { status: 400 });
+    }
+
+    const patient = await prisma.patient.findUnique({
+      where: { id: parsedId },
+    });
+    if (!patient) {
+      return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+    }
+
+    const [completed, cancelled, noShow, recentAppointments] = await Promise.all([
+      prisma.appointment.count({ where: { patientId: parsedId, status: "completed" } }),
+      prisma.appointment.count({ where: { patientId: parsedId, status: "cancelled" } }),
+      prisma.appointment.count({ where: { patientId: parsedId, status: "no-show" } }),
+      prisma.appointment.findMany({
+        where: { patientId: parsedId },
+        orderBy: [{ appointmentDate: "desc" }, { startTime: "desc" }],
+        take: 3,
+        include: {
+          services: {
+            include: { service: { select: { id: true, name: true, durationMinutes: true, price: true } } },
+          },
+        },
+      }),
+    ]);
+
+    return NextResponse.json({
+      ...patient,
+      appointmentStats: { completed, cancelled, noShow },
+      recentAppointments,
+    });
+  } catch (e) {
+    console.error("Get patient error:", e);
+    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
@@ -34,15 +35,45 @@ type Patient = {
 
 type Doctor = { id: number; name: string };
 
+type HistoryEntry = {
+  id: number;
+  type: string;
+  notes: string;
+  createdAt: string;
+  doctor: { id: number; name: string };
+  appointment: { id: number; appointmentDate: string; startTime: string } | null;
+};
+
+function historyTypeLabel(t: string) {
+  const map: Record<string, string> = {
+    chief_complaint: "Chief complaint",
+    history: "History",
+    examination: "Examination",
+    diagnosis: "Diagnosis",
+    notes: "Notes",
+  };
+  return map[t] || t;
+}
+
 export default function PatientsPage() {
   const { hasPermission } = useAuth();
   const searchParams = useSearchParams();
-  const historyParams = searchParams.get("history") === "1" ? { patientId: searchParams.get("patientId"), appointmentId: searchParams.get("appointmentId") } : null;
+  const historyParams = useMemo(
+    () =>
+      searchParams.get("history") === "1"
+        ? { patientId: searchParams.get("patientId"), appointmentId: searchParams.get("appointmentId") }
+        : null,
+    [searchParams]
+  );
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [historyModal, setHistoryModal] = useState(!!historyParams);
+  const [historyModal, setHistoryModal] = useState(false);
   const [historyForm, setHistoryForm] = useState({ type: "notes", notes: "" });
+  const [historyDoctorId, setHistoryDoctorId] = useState("");
+  const [historyPatient, setHistoryPatient] = useState<Patient | null>(null);
+  const [historyPrior, setHistoryPrior] = useState<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [historySubmitting, setHistorySubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -69,6 +100,8 @@ export default function PatientsPage() {
   const canDelete = hasPermission("patients.delete") || hasPermission("pharmacy.delete");
   const canRecordPayment =
     hasPermission("accounts.deposit") || hasPermission("pharmacy.pos");
+  const canClinicalNote =
+    hasPermission("patient_history.create") || hasPermission("patient_history.view");
 
   async function loadPatients() {
     const params = new URLSearchParams();
@@ -84,8 +117,44 @@ export default function PatientsPage() {
   }
 
   useEffect(() => {
-    if (historyParams) authFetch("/api/doctors").then((r) => r.ok && r.json()).then((d) => setDoctors(d || []));
+    setHistoryModal(!!historyParams);
   }, [historyParams]);
+
+  useEffect(() => {
+    const pid = historyParams?.patientId;
+    if (!pid) return;
+    let cancelled = false;
+    setHistoryLoading(true);
+    (async () => {
+      const [drRes, ptRes, hiRes] = await Promise.all([
+        authFetch("/api/doctors"),
+        authFetch(`/api/patients/${pid}`),
+        authFetch(`/api/patient-history?patientId=${encodeURIComponent(pid)}`),
+      ]);
+      if (cancelled) return;
+      if (drRes.ok) {
+        const d = await drRes.json();
+        setDoctors(Array.isArray(d) ? d : []);
+      }
+      if (ptRes.ok) {
+        const p = await ptRes.json();
+        setHistoryPatient(p);
+      } else {
+        setHistoryPatient(null);
+      }
+      if (hiRes.ok) {
+        const list = await hiRes.json();
+        setHistoryPrior(Array.isArray(list) ? list : []);
+      } else {
+        setHistoryPrior([]);
+      }
+    })().finally(() => {
+      if (!cancelled) setHistoryLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [historyParams?.patientId]);
 
   useEffect(() => {
     setPage(1);
@@ -100,10 +169,21 @@ export default function PatientsPage() {
     setPaymentPatient(p);
   }
 
+  function closeHistoryModal() {
+    setHistoryModal(false);
+    setHistoryForm({ type: "notes", notes: "" });
+    setHistoryDoctorId("");
+    setHistoryPatient(null);
+    setHistoryPrior([]);
+    if (typeof window !== "undefined") window.history.replaceState({}, "", "/patients");
+  }
+
   async function handleRecordHistory() {
     if (!historyParams?.patientId || !historyForm.notes.trim()) return;
-    const doctorId = (document.getElementById("history-doctor") as HTMLSelectElement)?.value;
-    if (!doctorId) { alert("Select a doctor"); return; }
+    if (!historyDoctorId) {
+      alert("Select a practitioner");
+      return;
+    }
     setHistorySubmitting(true);
     try {
       const res = await authFetch("/api/patient-history", {
@@ -112,15 +192,13 @@ export default function PatientsPage() {
         body: JSON.stringify({
           patientId: Number(historyParams.patientId),
           appointmentId: historyParams.appointmentId ? Number(historyParams.appointmentId) : null,
-          doctorId: Number(doctorId),
+          doctorId: Number(historyDoctorId),
           type: historyForm.type,
           notes: historyForm.notes.trim(),
         }),
       });
       if (res.ok) {
-        setHistoryModal(false);
-        setHistoryForm({ type: "notes", notes: "" });
-        if (typeof window !== "undefined") window.history.replaceState({}, "", "/patients");
+        closeHistoryModal();
       } else {
         alert((await res.json()).error || "Failed");
       }
@@ -256,6 +334,22 @@ export default function PatientsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex gap-1">
+                      {hasPermission("patients.view") && (
+                        <Link
+                          href={`/patients/${p.id}/history`}
+                          className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                        >
+                          History
+                        </Link>
+                      )}
+                      {canClinicalNote && (
+                        <Link
+                          href={`/patients?history=1&patientId=${p.id}`}
+                          className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                        >
+                          Clinical note
+                        </Link>
+                      )}
                       {canRecordPayment && (p.accountBalance ?? 0) > 0 && (
                         <button
                           type="button"
@@ -340,8 +434,9 @@ export default function PatientsPage() {
                 <textarea value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} rows={2} className="h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="Full address" />
               </div>
               <div>
-                <Label>Notes</Label>
-                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="Medical notes, etc." />
+                <Label>Patient chart notes (alerts / allergies)</Label>
+                <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Shown when booking and prescribing.</p>
+                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="Allergies, warnings, demographics…" />
               </div>
               <div className="mt-6 flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={() => setModal(null)} size="sm">Cancel</Button>
@@ -360,38 +455,113 @@ export default function PatientsPage() {
         />
       )}
 
-      {historyModal && historyParams && (hasPermission("patient_history.create") || hasPermission("patient_history.view")) && (
+      {historyModal && historyParams && canClinicalNote && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-              <h2 className="text-lg font-semibold">Record Patient History</h2>
-              <button type="button" onClick={() => { setHistoryModal(false); window.history.replaceState({}, "", "/patients"); }} className="text-gray-400 hover:bg-gray-100 rounded-lg p-1">×</button>
+              <div>
+                <h2 className="text-lg font-semibold">Clinical note (treatment history)</h2>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  Document this encounter for the chart. When opened from the calendar, the note can be linked to that appointment.
+                </p>
+              </div>
+              <button type="button" onClick={closeHistoryModal} className="shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+                ×
+              </button>
             </div>
-            <div className="px-6 py-5 space-y-4">
-              <div>
-                <Label>Type</Label>
-                <select id="history-type" value={historyForm.type} onChange={(e) => setHistoryForm((f) => ({ ...f, type: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white">
-                  <option value="chief_complaint">Chief Complaint</option>
-                  <option value="history">History</option>
-                  <option value="examination">Examination</option>
-                  <option value="diagnosis">Diagnosis</option>
-                  <option value="notes">Notes</option>
-                </select>
-              </div>
-              <div>
-                <Label>Doctor *</Label>
-                <select id="history-doctor" required className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white">
-                  <option value="">Select doctor</option>
-                  {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <Label>Notes *</Label>
-                <textarea required value={historyForm.notes} onChange={(e) => setHistoryForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="mt-1 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" placeholder="Enter clinical notes..." />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setHistoryModal(false); window.history.replaceState({}, "", "/patients"); }}>Cancel</Button>
-                <Button size="sm" disabled={historySubmitting} onClick={handleRecordHistory}>{historySubmitting ? "Saving..." : "Save"}</Button>
+            <div className="space-y-4 px-6 py-5">
+              {historyLoading ? (
+                <p className="text-sm text-gray-500">Loading…</p>
+              ) : (
+                <>
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-800/40">
+                    <p>
+                      <span className="text-gray-500">Patient: </span>
+                      <span className="font-medium">{historyPatient?.name ?? "—"}</span>
+                      {historyPatient?.patientCode && (
+                        <span className="ml-1 font-mono text-xs text-gray-500">({historyPatient.patientCode})</span>
+                      )}
+                    </p>
+                    {historyParams.appointmentId && historyPatient && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Linked to appointment #{historyParams.appointmentId} (visit documentation).
+                      </p>
+                    )}
+                    {historyPatient?.notes?.trim() && (
+                      <p className="mt-2 border-t border-amber-200/80 pt-2 text-xs text-amber-950 dark:border-amber-900 dark:text-amber-100">
+                        <span className="font-medium">Chart alerts on file: </span>
+                        {historyPatient.notes}
+                      </p>
+                    )}
+                  </div>
+                  {historyPrior.length > 0 && (
+                    <div>
+                      <Label>Previous entries on chart</Label>
+                      <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Review past notes before adding a new one.</p>
+                      <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 text-xs dark:border-gray-700 dark:bg-gray-900/50">
+                        {historyPrior.slice(0, 8).map((h) => (
+                          <div key={h.id} className="rounded border border-gray-100 px-2 py-1.5 dark:border-gray-800">
+                            <span className="font-medium text-gray-700 dark:text-gray-200">{historyTypeLabel(h.type)}</span>
+                            <span className="text-gray-400"> · {h.doctor.name} · </span>
+                            <span className="text-gray-400">{new Date(h.createdAt).toLocaleString()}</span>
+                            <p className="mt-0.5 line-clamp-3 text-gray-600 dark:text-gray-400">{h.notes}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <Label>Section</Label>
+                    <select
+                      value={historyForm.type}
+                      onChange={(e) => setHistoryForm((f) => ({ ...f, type: e.target.value }))}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                    >
+                      <option value="chief_complaint">Chief complaint</option>
+                      <option value="history">History</option>
+                      <option value="examination">Examination</option>
+                      <option value="diagnosis">Diagnosis</option>
+                      <option value="notes">Clinical notes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Practitioner *</Label>
+                    <select
+                      required
+                      value={historyDoctorId}
+                      onChange={(e) => setHistoryDoctorId(e.target.value)}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                    >
+                      <option value="">Select practitioner</option>
+                      {doctors.map((d) => (
+                        <option key={d.id} value={String(d.id)}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Note text *</Label>
+                    <textarea
+                      required
+                      value={historyForm.notes}
+                      onChange={(e) => setHistoryForm((f) => ({ ...f, notes: e.target.value }))}
+                      rows={5}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      placeholder="SOAP-style detail: subjective, objective, assessment, plan…"
+                    />
+                  </div>
+                </>
+              )}
+              <div className="flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+                <Button variant="outline" size="sm" onClick={closeHistoryModal}>
+                  Cancel
+                </Button>
+                {hasPermission("patient_history.create") && (
+                  <Button size="sm" disabled={historySubmitting || historyLoading} onClick={handleRecordHistory}>
+                    {historySubmitting ? "Saving…" : "Save to chart"}
+                  </Button>
+                )}
               </div>
             </div>
           </div>

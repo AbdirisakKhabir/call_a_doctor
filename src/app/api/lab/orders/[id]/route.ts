@@ -15,7 +15,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         patient: { select: { id: true, patientCode: true, name: true } },
         doctor: { select: { id: true, name: true } },
         appointment: { select: { id: true, appointmentDate: true, startTime: true } },
-        items: { include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true } } } },
+        items: {
+          include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true, price: true } } },
+        },
       },
     });
     if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });

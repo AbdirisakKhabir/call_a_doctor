@@ -123,7 +123,7 @@ const labItems: NavItem[] = [
 const prescriptionsItems: NavItem[] = [
   {
     icon: <ListIcon />,
-    name: "Prescriptions",
+    name: "Prescriptions & meds",
     path: "/prescriptions",
     permission: "prescriptions.view",
   },
@@ -619,7 +619,7 @@ const AppSidebar: React.FC = () => {
                 <h2
                   className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Prescriptions" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Prescriptions & meds" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(prescriptionsNav, "prescriptions")}
               </div>
