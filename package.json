@@ -1,5 +1,5 @@
 {
-  "name": "free-nextjs-admin-dashboard",
+  "name": "call-a-doctor",
   "version": "2.2.2",
   "private": true,
   "scripts": {
@@ -22,7 +22,6 @@
     "@fullcalendar/list": "^6.1.19",
     "@fullcalendar/react": "^6.1.19",
     "@fullcalendar/timegrid": "^6.1.19",
-    "@next/swc-darwin-arm64": "^16.2.3",
     "@prisma/adapter-mariadb": "^7.3.0",
     "@prisma/client": "^6.19.2",
     "@react-jvectormap/core": "^1.0.4",
