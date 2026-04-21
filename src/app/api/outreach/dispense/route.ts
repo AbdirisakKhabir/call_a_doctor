@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { serializePatient } from "@/lib/patient-name";
 import { userCanTransactInventoryAtBranch } from "@/lib/branch-access";
 import { userHasPermission } from "@/lib/permissions";
 
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
       where: { id: pid, isActive: true },
     });
     if (!patient) {
-      return NextResponse.json({ error: "Patient not found" }, { status: 400 });
+      return NextResponse.json({ error: "Client not found" }, { status: 400 });
     }
 
     type Line = { productId: number; quantity: number; unitPrice: number; totalAmount: number };
@@ -133,13 +134,20 @@ export async function POST(req: NextRequest) {
         where: { id: disp.id },
         include: {
           items: { include: { product: { select: { id: true, name: true, code: true } } } },
-          patient: { select: { id: true, patientCode: true, name: true, accountBalance: true } },
+          patient: { select: { id: true, patientCode: true, firstName: true, lastName: true, accountBalance: true } },
           team: { select: { id: true, name: true } },
         },
       });
     });
 
-    return NextResponse.json(created);
+    return NextResponse.json(
+      created
+        ? {
+            ...created,
+            patient: created.patient ? serializePatient(created.patient) : created.patient,
+          }
+        : created
+    );
   } catch (e) {
     console.error("Outreach dispense error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });

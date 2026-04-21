@@ -1,30 +1,30 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import DateField from "@/components/form/DateField";
+import { contrastingForeground, hexWithAlpha, normalizeServiceColor } from "@/lib/service-color";
+import {
+  buildDayTimeSlots,
+  snapTimeToSlotList,
+  type AppointmentCalendarSlotMinutes,
+} from "@/lib/appointment-calendar-time";
 
 type Branch = { id: number; name: string };
 type Doctor = { id: number; name: string; specialty: string | null; branch: { id: number } | null };
-type Service = { id: number; name: string; price: number; durationMinutes: number | null };
+type Service = { id: number; name: string; price: number; durationMinutes: number | null; color: string | null };
 type Patient = { id: number; patientCode: string; name: string };
 
-type PatientDetail = Patient & {
-  notes: string | null;
-  accountBalance: number;
-  appointmentStats: { completed: number; cancelled: number; noShow: number };
-  recentAppointments: {
-    id: number;
-    appointmentDate: string;
-    startTime: string;
-    services: {
-      service: { id: number; name: string; durationMinutes: number | null; price: number };
-    }[];
-  }[];
+type FormServiceLine = {
+  serviceId: number;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  color: string | null;
 };
 
 function addMinutesToTime(start: string, minutes: number): string {
@@ -48,15 +48,31 @@ function totalDurationMinutes(
   return sum || 30;
 }
 
-const TIME_SLOTS = [
-  "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
-  "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00",
+const REMINDER_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "No reminder" },
+  { value: "5", label: "5 minutes before" },
+  { value: "15", label: "15 minutes before" },
+  { value: "30", label: "30 minutes before" },
+  { value: "60", label: "1 hour before" },
+  { value: "120", label: "2 hours before" },
+  { value: "1440", label: "1 day before" },
 ];
+
+function buildNewClientRegistrationHref(appointmentDate: string): string {
+  const next = "/appointments/new";
+  const qs = new URLSearchParams();
+  qs.set("next", next);
+  if (appointmentDate && /^\d{4}-\d{2}-\d{2}$/.test(appointmentDate)) {
+    qs.set("apptDate", appointmentDate);
+  }
+  return `/patients/new?${qs.toString()}`;
+}
 
 export default function NewAppointmentForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dateParam = searchParams.get("date");
+  const patientIdFromUrl = searchParams.get("patientId");
   const { hasPermission } = useAuth();
 
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -71,17 +87,22 @@ export default function NewAppointmentForm() {
     startTime: "09:00",
     endTime: "09:30",
     notes: "",
-    services: [] as { serviceId: number; name: string; quantity: number; unitPrice: number }[],
+    reminderMinutesBefore: "",
+    services: [] as FormServiceLine[],
   });
   const [patientSearch, setPatientSearch] = useState("");
   const [patientSearchResults, setPatientSearchResults] = useState<Patient[]>([]);
   const [searchingPatients, setSearchingPatients] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [patientDetail, setPatientDetail] = useState<PatientDetail | null>(null);
-  const [loadingPatient, setLoadingPatient] = useState(false);
+  const [calendarSlotMinutes, setCalendarSlotMinutes] = useState<AppointmentCalendarSlotMinutes>(15);
+  const [openCareFileLabel, setOpenCareFileLabel] = useState<string | null>(null);
+  const [startNewCareFile, setStartNewCareFile] = useState(false);
 
   const canCreate = hasPermission("appointments.create") || hasPermission("appointments.view");
+  const canCreatePatient = hasPermission("patients.create") || hasPermission("pharmacy.create");
+
+  const timeSlots = useMemo(() => buildDayTimeSlots(calendarSlotMinutes), [calendarSlotMinutes]);
 
   useEffect(() => {
     const initialDate =
@@ -92,12 +113,56 @@ export default function NewAppointmentForm() {
   }, [dateParam]);
 
   useEffect(() => {
+    if (!patientIdFromUrl) return;
+    const idNum = Number(patientIdFromUrl);
+    if (!Number.isInteger(idNum) || idNum <= 0) return;
+    const idStr = String(idNum);
+    setForm((f) => (f.patientId === idStr ? f : { ...f, patientId: idStr }));
+    let cancelled = false;
+    authFetch(`/api/patients/${idNum}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: Patient | null) => {
+        if (cancelled || !data) return;
+        setPatientSearch(`${data.name} (${data.patientCode})`);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [patientIdFromUrl]);
+
+  useEffect(() => {
+    if (!form.patientId) {
+      setOpenCareFileLabel(null);
+      setStartNewCareFile(false);
+      return;
+    }
+    const idNum = Number(form.patientId);
+    if (!Number.isInteger(idNum) || idNum <= 0) return;
+    let cancelled = false;
+    authFetch(`/api/patients/${idNum}/care-files?status=open`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { files?: { fileCode?: string }[] } | null) => {
+        if (cancelled) return;
+        const first = data?.files?.[0];
+        setOpenCareFileLabel(first?.fileCode ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setOpenCareFileLabel(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.patientId]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [brRes, drRes, svcRes] = await Promise.all([
+      const [brRes, drRes, svcRes, calRes] = await Promise.all([
         authFetch("/api/branches"),
         authFetch("/api/doctors"),
         authFetch("/api/services"),
+        authFetch("/api/settings/appointment-calendar"),
       ]);
       if (cancelled) return;
       if (brRes.ok) {
@@ -107,12 +172,26 @@ export default function NewAppointmentForm() {
       }
       if (drRes.ok) setDoctors(await drRes.json());
       if (svcRes.ok) setServices(await svcRes.json());
+      if (calRes.ok) {
+        const cal = (await calRes.json()) as { slotMinutes?: number };
+        if (cal.slotMinutes === 15 || cal.slotMinutes === 30) setCalendarSlotMinutes(cal.slotMinutes);
+      }
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (timeSlots.length === 0) return;
+    setForm((f) => {
+      const start = snapTimeToSlotList(f.startTime, timeSlots);
+      const end = snapTimeToSlotList(f.endTime, timeSlots);
+      if (start === f.startTime && end === f.endTime) return f;
+      return { ...f, startTime: start, endTime: end };
+    });
+  }, [calendarSlotMinutes, timeSlots]);
 
   useEffect(() => {
     const q = patientSearch.trim();
@@ -134,31 +213,8 @@ export default function NewAppointmentForm() {
     return () => clearTimeout(t);
   }, [patientSearch]);
 
-  useEffect(() => {
-    if (!form.patientId) {
-      setPatientDetail(null);
-      return;
-    }
-    let cancelled = false;
-    setLoadingPatient(true);
-    authFetch(`/api/patients/${form.patientId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: PatientDetail | null) => {
-        if (!cancelled && data) setPatientDetail(data);
-      })
-      .catch(() => {
-        if (!cancelled) setPatientDetail(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingPatient(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [form.patientId]);
-
   function applyEndTimeFromServices(
-    next: typeof form.services,
+    next: FormServiceLine[],
     startTime: string,
     catalog: Service[]
   ) {
@@ -174,7 +230,16 @@ export default function NewAppointmentForm() {
     const existing = form.services.find((x) => x.serviceId === s.id);
     if (existing) return;
     setForm((f) => {
-      const next = [...f.services, { serviceId: s.id, name: s.name, quantity: 1, unitPrice: s.price }];
+      const next = [
+        ...f.services,
+        {
+          serviceId: s.id,
+          name: s.name,
+          quantity: 1,
+          unitPrice: s.price,
+          color: normalizeServiceColor(s.color),
+        },
+      ];
       const end = applyEndTimeFromServices(next, f.startTime, services);
       return { ...f, services: next, ...(end ? { endTime: end } : {}) };
     });
@@ -219,7 +284,7 @@ export default function NewAppointmentForm() {
     setError("");
     if (!canCreate) return;
     if (!form.branchId || !form.doctorId || !form.patientId) {
-      setError("Branch, doctor and patient are required");
+      setError("Branch, doctor and client are required");
       return;
     }
     setSubmitting(true);
@@ -235,7 +300,9 @@ export default function NewAppointmentForm() {
           startTime: form.startTime,
           endTime: form.endTime,
           notes: form.notes || null,
+          reminderMinutesBefore: form.reminderMinutesBefore ? Number(form.reminderMinutesBefore) : null,
           services: form.services.map((s) => ({ serviceId: s.serviceId, quantity: s.quantity, unitPrice: s.unitPrice })),
+          ...(startNewCareFile ? { startNewCareFile: true } : {}),
         }),
       });
       const data = await res.json();
@@ -328,11 +395,24 @@ export default function NewAppointmentForm() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Patient (client) *</label>
-            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Search by name, patient code, phone, or email — at least 2 characters.</p>
+            <div className="mb-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <label className="block text-sm font-medium">Client *</label>
+              {canCreatePatient && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 self-start sm:self-auto"
+                  onClick={() => router.push(buildNewClientRegistrationHref(form.appointmentDate))}
+                >
+                  New client
+                </Button>
+              )}
+            </div>
+            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Search by name, client code, phone, or email — at least 2 characters.</p>
             <input
               type="text"
-              placeholder="Search patient…"
+              placeholder="Search client…"
               value={patientSearch}
               onChange={(e) => {
                 setPatientSearch(e.target.value);
@@ -346,7 +426,7 @@ export default function NewAppointmentForm() {
               ) : searchingPatients ? (
                 <p className="px-4 py-3 text-sm text-gray-500">Searching…</p>
               ) : patientSearchResults.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-gray-500">No patients found.</p>
+                <p className="px-4 py-3 text-sm text-gray-500">No clients found.</p>
               ) : (
                 patientSearchResults.slice(0, 15).map((p) => (
                   <button
@@ -369,70 +449,28 @@ export default function NewAppointmentForm() {
             {form.patientId && selectedPatientLabel && (
               <p className="mt-1 text-xs text-green-600 dark:text-green-400">Selected: {selectedPatientLabel}</p>
             )}
-
+            {form.patientId && openCareFileLabel && !startNewCareFile && (
+              <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                Active client file: <span className="font-mono font-medium">{openCareFileLabel}</span>
+              </p>
+            )}
+            {form.patientId && !openCareFileLabel && !startNewCareFile && (
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                No open file yet — a client file will be created when you save this appointment.
+              </p>
+            )}
             {form.patientId && (
-              <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/40">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Patient context</p>
-                {loadingPatient ? (
-                  <p className="text-sm text-gray-500">Loading patient details…</p>
-                ) : patientDetail ? (
-                  <div className="space-y-3 text-sm">
-                    <div className="flex flex-wrap gap-3 text-xs">
-                      <span title="Completed visits">
-                        Completed: <strong>{patientDetail.appointmentStats.completed}</strong>
-                      </span>
-                      <span title="Cancelled">
-                        Cancelled: <strong>{patientDetail.appointmentStats.cancelled}</strong>
-                      </span>
-                      <span title="No-shows">
-                        No-show: <strong>{patientDetail.appointmentStats.noShow}</strong>
-                      </span>
-                      <span title="Account balance">
-                        Balance: <strong>${patientDetail.accountBalance.toFixed(2)}</strong>
-                      </span>
-                    </div>
-                    {patientDetail.notes?.trim() ? (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-                        <span className="font-medium">Alerts &amp; notes on file: </span>
-                        {patientDetail.notes}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">No general alerts/notes on file — add allergies or alerts in the patient record.</p>
-                    )}
-                    {patientDetail.recentAppointments.length > 0 && (
-                      <div>
-                        <p className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">Recently booked services (quick add)</p>
-                        <div className="flex flex-wrap gap-2">
-                          {Array.from(
-                            new Map(
-                              patientDetail.recentAppointments.flatMap((a) =>
-                                a.services.map((x) => [x.service.id, x.service] as const)
-                              )
-                            ).values()
-                          )
-                            .slice(0, 3)
-                            .map((svc) => {
-                              const full = services.find((s) => s.id === svc.id);
-                              if (!full) return null;
-                              return (
-                                <button
-                                  key={svc.id}
-                                  type="button"
-                                  onClick={() => addService(full)}
-                                  className="rounded-lg border border-brand-200 bg-white px-2 py-1 text-xs font-medium text-brand-800 hover:bg-brand-50 dark:border-brand-800 dark:bg-gray-900 dark:text-brand-200 dark:hover:bg-brand-900/30"
-                                >
-                                  + {svc.name}
-                                </button>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">Could not load patient context.</p>
-                )}
-              </div>
+              <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 rounded border-gray-300 text-brand-600"
+                  checked={startNewCareFile}
+                  onChange={(e) => setStartNewCareFile(e.target.checked)}
+                />
+                <span>
+                  Start a new client file (closes any other open file). This visit and related charges use the new file.
+                </span>
+              </label>
             )}
           </div>
 
@@ -458,7 +496,7 @@ export default function NewAppointmentForm() {
                 }}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               >
-                {TIME_SLOTS.map((t) => (
+                {timeSlots.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
@@ -472,7 +510,7 @@ export default function NewAppointmentForm() {
                 onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               >
-                {TIME_SLOTS.map((t) => (
+                {timeSlots.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
@@ -481,23 +519,59 @@ export default function NewAppointmentForm() {
             </div>
           </div>
 
+          <div className="max-w-md">
+            <label className="mb-1 block text-sm font-medium">Reminder</label>
+            <select
+              value={form.reminderMinutesBefore}
+              onChange={(e) => setForm((f) => ({ ...f, reminderMinutesBefore: e.target.value }))}
+              className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+            >
+              {REMINDER_OPTIONS.map((o) => (
+                <option key={o.value || "none"} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="mb-1 block text-sm font-medium">Services / treatments (charge)</label>
-            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-              Each service uses its catalog duration to set length. Quantity multiplies duration.
-            </p>
             <div className="mb-2 flex flex-wrap gap-2">
               {services
                 .filter((s) => !form.services.some((x) => x.serviceId === s.id))
-                .map((s) => (
-                  <Button key={s.id} type="button" variant="outline" size="sm" onClick={() => addService(s)}>
-                    + {s.name} (${s.price})
-                  </Button>
-                ))}
+                .map((s) =>
+                  s.color ? (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => addService(s)}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border-2 px-4 py-2.5 text-sm font-medium transition hover:opacity-90"
+                      style={{
+                        borderColor: s.color,
+                        color: contrastingForeground(hexWithAlpha(s.color, "ff")),
+                        backgroundColor: hexWithAlpha(s.color, "18"),
+                      }}
+                    >
+                      + {s.name} (${s.price})
+                    </button>
+                  ) : (
+                    <Button key={s.id} type="button" variant="outline" size="sm" onClick={() => addService(s)}>
+                      + {s.name} (${s.price})
+                    </Button>
+                  )
+                )}
             </div>
             <div className="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
               {form.services.map((s) => (
-                <div key={s.serviceId} className="flex flex-wrap items-center gap-2">
+                <div
+                  key={s.serviceId}
+                  className="flex flex-wrap items-center gap-2 rounded-md py-0.5 pl-2"
+                  style={
+                    s.color
+                      ? { borderLeftWidth: 4, borderLeftColor: s.color, borderLeftStyle: "solid" }
+                      : undefined
+                  }
+                >
                   <span className="min-w-0 flex-1 text-sm">{s.name}</span>
                   <input
                     type="number"
@@ -524,7 +598,7 @@ export default function NewAppointmentForm() {
                 <div className="border-t pt-2">
                   <div className="font-semibold">Total: ${totalCharge.toFixed(2)}</div>
                   {totalCharge > 0 && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">This total is charged to the patient&apos;s account balance when the appointment is saved.</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">This total is charged to the client&apos;s account balance when the appointment is saved.</p>
                   )}
                 </div>
               )}
@@ -533,7 +607,6 @@ export default function NewAppointmentForm() {
 
           <div>
             <label className="mb-1 block text-sm font-medium">Appointment notes</label>
-            <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Visible on this visit only (patient chart notes are stored separately on the patient record).</p>
             <textarea
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}

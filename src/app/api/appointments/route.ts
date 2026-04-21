@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { serializePatient } from "@/lib/patient-name";
+import {
+  assertOpenCareFileForPatient,
+  closeOpenCareFilesAndCreateNew,
+  ensureOpenCareFile,
+} from "@/lib/care-file";
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,14 +32,16 @@ export async function GET(req: NextRequest) {
       include: {
         branch: { select: { id: true, name: true } },
         doctor: { select: { id: true, name: true, specialty: true } },
-        patient: { select: { id: true, patientCode: true, name: true } },
+        patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
         services: {
-          include: { service: { select: { id: true, name: true } } },
+          include: { service: { select: { id: true, name: true, color: true } } },
         },
       },
       orderBy: [{ appointmentDate: "asc" }, { startTime: "asc" }],
     });
-    return NextResponse.json(appointments);
+    return NextResponse.json(
+      appointments.map((a) => ({ ...a, patient: serializePatient(a.patient) }))
+    );
   } catch (e) {
     console.error("Appointments list error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -45,10 +53,22 @@ export async function POST(req: NextRequest) {
     const auth = await getAuthUser(req);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
-    const { branchId, doctorId, patientId, appointmentDate, startTime, endTime, notes, services } = body;
+    const {
+      branchId,
+      doctorId,
+      patientId,
+      appointmentDate,
+      startTime,
+      endTime,
+      notes,
+      services,
+      reminderMinutesBefore,
+      careFileId: bodyCareFileId,
+      startNewCareFile,
+    } = body;
 
     if (!branchId || !doctorId || !patientId || !appointmentDate || !startTime) {
-      return NextResponse.json({ error: "Branch, doctor, patient, date and start time are required" }, { status: 400 });
+      return NextResponse.json({ error: "Branch, doctor, client, date and start time are required" }, { status: 400 });
     }
 
     let totalAmount = 0;
@@ -68,7 +88,25 @@ export async function POST(req: NextRequest) {
     }
 
     const patientIdNum = Number(patientId);
+    let reminder: number | null = null;
+    if (reminderMinutesBefore != null && reminderMinutesBefore !== "") {
+      const r = Number(reminderMinutesBefore);
+      if (Number.isFinite(r) && r > 0 && r <= 10080) reminder = Math.floor(r);
+    }
+
     const appointment = await prisma.$transaction(async (tx) => {
+      let resolvedCareFileId: number | null = null;
+      if (startNewCareFile === true) {
+        const nf = await closeOpenCareFilesAndCreateNew(tx, patientIdNum, null);
+        resolvedCareFileId = nf.id;
+      } else if (bodyCareFileId != null && bodyCareFileId !== "") {
+        const cf = await assertOpenCareFileForPatient(tx, patientIdNum, Number(bodyCareFileId));
+        resolvedCareFileId = cf.id;
+      } else {
+        const ensured = await ensureOpenCareFile(tx, patientIdNum);
+        resolvedCareFileId = ensured.id;
+      }
+
       const apt = await tx.appointment.create({
         data: {
           branchId: Number(branchId),
@@ -78,9 +116,11 @@ export async function POST(req: NextRequest) {
           startTime: String(startTime),
           endTime: endTime ? String(endTime) : null,
           notes: notes ? String(notes).trim() : null,
+          reminderMinutesBefore: reminder,
           totalAmount,
           status: "scheduled",
           createdById: auth.userId,
+          careFileId: resolvedCareFileId,
           services: appointmentServices.length
             ? { create: appointmentServices }
             : undefined,
@@ -97,8 +137,9 @@ export async function POST(req: NextRequest) {
         include: {
           branch: { select: { id: true, name: true } },
           doctor: { select: { id: true, name: true } },
-          patient: { select: { id: true, patientCode: true, name: true, accountBalance: true } },
-          services: { include: { service: { select: { id: true, name: true } } } },
+          patient: { select: { id: true, patientCode: true, firstName: true, lastName: true, accountBalance: true } },
+          careFile: { select: { id: true, fileCode: true, status: true } },
+          services: { include: { service: { select: { id: true, name: true, color: true } } } },
         },
       });
     });
@@ -118,8 +159,11 @@ export async function POST(req: NextRequest) {
         patientCharged: totalAmount > 0,
       },
     });
-    return NextResponse.json(appointment);
+    return NextResponse.json({ ...appointment, patient: serializePatient(appointment.patient) });
   } catch (e) {
+    if (e instanceof Error && e.message.startsWith("BAD_REQUEST:")) {
+      return NextResponse.json({ error: e.message.replace(/^BAD_REQUEST:/, "").trim() }, { status: 400 });
+    }
     console.error("Create appointment error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }

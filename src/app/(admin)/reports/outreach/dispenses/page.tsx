@@ -25,7 +25,7 @@ export default function OutreachDispensesReportPage() {
       <PageBreadCrumb pageTitle="Emergency medication" />
       <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-gray-400">
         Emergency medication given from outreach bags during home visits. Amounts are charged to the
-        patient&apos;s account balance.
+        client&apos;s account balance.
       </p>
 
       {loading && !data ? (
@@ -46,7 +46,7 @@ export default function OutreachDispensesReportPage() {
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Record #</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Date</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Team</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Patient</th>
+                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Client</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">Amount</th>
                 </tr>
               </thead>

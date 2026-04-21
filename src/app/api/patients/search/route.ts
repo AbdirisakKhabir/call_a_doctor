@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { serializePatient } from "@/lib/patient-name";
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,7 +19,8 @@ export async function GET(req: NextRequest) {
         ? {
             isActive: true,
             OR: [
-              { name: { contains: q } },
+              { firstName: { contains: q } },
+              { lastName: { contains: q } },
               { patientCode: { contains: q } },
               { phone: { contains: q } },
             ],
@@ -27,13 +29,14 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         patientCode: true,
-        name: true,
+        firstName: true,
+        lastName: true,
         phone: true,
       },
-      orderBy: { name: "asc" },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
       take: limit,
     });
-    return NextResponse.json(patients);
+    return NextResponse.json(patients.map((p) => serializePatient(p)));
   } catch (e) {
     console.error("Patient search error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });

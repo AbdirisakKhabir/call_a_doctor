@@ -22,6 +22,10 @@ type PmMini = {
   account?: { id: number; name: string; type: string; isActive: boolean };
 };
 
+type ReferralOption = { id: number; name: string };
+type CityRow = { id: number; name: string };
+type VillageRow = { id: number; name: string };
+
 function formatMoney(n: number) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -40,7 +44,18 @@ function NewVisitCardPage() {
   const [patientSearch, setPatientSearch] = useState("");
   const [patientHits, setPatientHits] = useState<PatientMini[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<PatientMini | null>(null);
-  const [newPatient, setNewPatient] = useState({ name: "", phone: "" });
+  const [newPatient, setNewPatient] = useState({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    referralSourceId: "",
+    cityId: "",
+    villageId: "",
+    address: "",
+  });
+  const [cities, setCities] = useState<CityRow[]>([]);
+  const [villages, setVillages] = useState<VillageRow[]>([]);
+  const [referralOptions, setReferralOptions] = useState<ReferralOption[]>([]);
   const [useNewPatient, setUseNewPatient] = useState(false);
   const [doctors, setDoctors] = useState<DoctorMini[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
@@ -69,6 +84,53 @@ function NewVisitCardPage() {
   useEffect(() => {
     loadBranches();
   }, [loadBranches]);
+
+  useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/cities")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled && Array.isArray(data)) setCities(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const cid = newPatient.cityId ? Number(newPatient.cityId) : null;
+    if (!cid || !Number.isInteger(cid)) {
+      setVillages([]);
+      return;
+    }
+    let cancelled = false;
+    authFetch(`/api/villages?cityId=${cid}`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled && Array.isArray(data)) setVillages(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [newPatient.cityId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/referral-sources")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled && Array.isArray(data)) setReferralOptions(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const q = searchParams.get("branchId");
@@ -161,11 +223,15 @@ function NewVisitCardPage() {
       return;
     }
     if (!useNewPatient && !selectedPatient) {
-      setError("Select a patient or enter a new patient name");
+      setError("Select a client or enter a new client name");
       return;
     }
-    if (useNewPatient && !newPatient.name.trim()) {
-      setError("New patient name is required");
+    if (useNewPatient && (!newPatient.firstName.trim() || !newPatient.lastName.trim())) {
+      setError("New client first and last name are required");
+      return;
+    }
+    if (useNewPatient && (!newPatient.cityId || !newPatient.villageId)) {
+      setError("City and village are required for a new client");
       return;
     }
     const fee = form.visitFee === "" ? 0 : Number(form.visitFee);
@@ -190,7 +256,18 @@ function NewVisitCardPage() {
       };
       if (form.paymentMethodId) body.paymentMethodId = Number(form.paymentMethodId);
       if (useNewPatient) {
-        body.newPatient = { name: newPatient.name.trim(), phone: newPatient.phone.trim() || undefined };
+        body.newPatient = {
+          firstName: newPatient.firstName.trim(),
+          lastName: newPatient.lastName.trim(),
+          phone: newPatient.phone.trim() || undefined,
+          registeredBranchId: bid,
+          cityId: Number(newPatient.cityId),
+          villageId: Number(newPatient.villageId),
+          ...(newPatient.address.trim() ? { address: newPatient.address.trim() } : {}),
+          ...(newPatient.referralSourceId
+            ? { referralSourceId: Number(newPatient.referralSourceId) }
+            : {}),
+        };
       } else if (selectedPatient) {
         body.patientId = selectedPatient.id;
       }
@@ -273,17 +350,17 @@ function NewVisitCardPage() {
         <div className="flex flex-wrap gap-6 rounded-xl border border-gray-100 p-4 dark:border-gray-800">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
             <input type="radio" checked={!useNewPatient} onChange={() => setUseNewPatient(false)} />
-            Existing patient
+            Existing client
           </label>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
             <input type="radio" checked={useNewPatient} onChange={() => setUseNewPatient(true)} />
-            New patient
+            New client
           </label>
         </div>
 
         {!useNewPatient ? (
           <div>
-            <Label>Find patient</Label>
+            <Label>Find client</Label>
             <input
               value={patientSearch}
               onChange={(e) => setPatientSearch(e.target.value)}
@@ -314,14 +391,27 @@ function NewVisitCardPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div>
-              <Label>Name *</Label>
-              <input
-                required
-                value={newPatient.name}
-                onChange={(e) => setNewPatient((n) => ({ ...n, name: e.target.value }))}
-                className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-              />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label>First name *</Label>
+                <input
+                  required
+                  value={newPatient.firstName}
+                  onChange={(e) => setNewPatient((n) => ({ ...n, firstName: e.target.value }))}
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                  autoComplete="given-name"
+                />
+              </div>
+              <div>
+                <Label>Last name *</Label>
+                <input
+                  required
+                  value={newPatient.lastName}
+                  onChange={(e) => setNewPatient((n) => ({ ...n, lastName: e.target.value }))}
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                  autoComplete="family-name"
+                />
+              </div>
             </div>
             <div>
               <Label>Phone</Label>
@@ -330,6 +420,70 @@ function NewVisitCardPage() {
                 onChange={(e) => setNewPatient((n) => ({ ...n, phone: e.target.value }))}
                 className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
               />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label>City *</Label>
+                <select
+                  required
+                  value={newPatient.cityId}
+                  onChange={(e) =>
+                    setNewPatient((n) => ({ ...n, cityId: e.target.value, villageId: "" }))
+                  }
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                >
+                  <option value="">Select city</option>
+                  {cities.map((c) => (
+                    <option key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Village *</Label>
+                <select
+                  required
+                  value={newPatient.villageId}
+                  onChange={(e) => setNewPatient((n) => ({ ...n, villageId: e.target.value }))}
+                  disabled={!newPatient.cityId}
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                >
+                  <option value="">{newPatient.cityId ? "Select village" : "Select city first"}</option>
+                  {villages.map((v) => (
+                    <option key={v.id} value={String(v.id)}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <Label>Street / additional detail</Label>
+              <input
+                value={newPatient.address}
+                onChange={(e) => setNewPatient((n) => ({ ...n, address: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                placeholder="Optional"
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Registration branch matches the visit branch selected above.
+            </p>
+            <div>
+              <Label>Referred from</Label>
+              <select
+                value={newPatient.referralSourceId}
+                onChange={(e) => setNewPatient((n) => ({ ...n, referralSourceId: e.target.value }))}
+                className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+              >
+                <option value="">— Not specified —</option>
+                {referralOptions.map((o) => (
+                  <option key={o.id} value={String(o.id)}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         )}

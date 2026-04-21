@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { serializePatient } from "@/lib/patient-name";
 
 export type ConsolidatedInvoiceLine = {
   prescriptionId: number;
@@ -46,7 +47,8 @@ export async function POST(req: NextRequest) {
           select: {
             id: true,
             patientCode: true,
-            name: true,
+            firstName: true,
+            lastName: true,
             phone: true,
             email: true,
             address: true,
@@ -84,7 +86,7 @@ export async function POST(req: NextRequest) {
     const patientIds = new Set(prescriptions.map((p) => p.patientId));
     if (patientIds.size !== 1) {
       return NextResponse.json(
-        { error: "All selected prescriptions must be for the same patient." },
+        { error: "All selected prescriptions must be for the same client." },
         { status: 400 }
       );
     }
@@ -143,7 +145,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({
-      patient,
+      patient: serializePatient(patient),
       generatedAt: new Date().toISOString(),
       prescriptions: prescriptionSummaries,
       lines,

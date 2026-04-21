@@ -39,6 +39,10 @@ export async function GET(req: NextRequest) {
         quantity: true,
         unit: true,
         expiryDate: true,
+        saleUnits: {
+          orderBy: { sortOrder: "asc" },
+          select: { unitKey: true, label: true, baseUnitsEach: true, sortOrder: true },
+        },
       },
     });
 

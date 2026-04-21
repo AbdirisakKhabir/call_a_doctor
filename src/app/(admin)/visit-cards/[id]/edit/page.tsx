@@ -189,7 +189,7 @@ export default function EditVisitCardPage() {
 
       <div className="mb-6 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-sm dark:border-gray-800 dark:bg-gray-900/40">
         <p>
-          <span className="text-gray-500 dark:text-gray-400">Patient: </span>
+          <span className="text-gray-500 dark:text-gray-400">Client: </span>
           <span className="font-medium text-gray-900 dark:text-white">{card.patient.name}</span> ({card.patient.patientCode})
         </p>
         <p className="mt-1">

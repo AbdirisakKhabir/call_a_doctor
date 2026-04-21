@@ -3,8 +3,10 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userCanAccessBranch } from "@/lib/branch-access";
 import { userHasPermission } from "@/lib/permissions";
-import { lineQuantityToPcs, parseSaleUnit, type SaleUnit } from "@/lib/product-packaging";
+import { lineQuantityToBaseUnits, parseSaleUnit } from "@/lib/product-packaging";
+import { getSaleUnitForProduct } from "@/lib/product-sale-units";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { serializePatient } from "@/lib/patient-name";
 
 export async function GET(
   req: NextRequest,
@@ -27,7 +29,7 @@ export async function GET(
       include: {
         branch: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
-        patient: { select: { id: true, patientCode: true, name: true } },
+        patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
         outreachTeam: { select: { id: true, name: true, creditBalance: true } },
         items: {
           include: {
@@ -37,6 +39,13 @@ export async function GET(
                 name: true,
                 code: true,
                 imageUrl: true,
+                unit: true,
+                sellingPrice: true,
+                quantity: true,
+                saleUnits: {
+                  orderBy: { sortOrder: "asc" },
+                  select: { unitKey: true, label: true, baseUnitsEach: true },
+                },
               },
             },
           },
@@ -53,7 +62,10 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    return NextResponse.json(sale);
+    return NextResponse.json({
+      ...sale,
+      patient: sale.patient ? serializePatient(sale.patient) : null,
+    });
   } catch (e) {
     console.error("Get sale error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -147,17 +159,17 @@ export async function PATCH(
       const newLines: {
         productId: number;
         quantity: number;
-        saleUnit: SaleUnit;
+        saleUnit: string;
         unitPrice: number;
         totalAmount: number;
-        pcs: number;
+        baseUnits: number;
       }[] = [];
       let subtotal = 0;
       for (const it of items) {
         const productId = Number(it.productId);
         const quantity = Math.max(1, Math.floor(Number(it.quantity) || 0));
         const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
-        const saleUnit = parseSaleUnit((it as { saleUnit?: unknown }).saleUnit);
+        const saleUnitKey = parseSaleUnit((it as { saleUnit?: unknown }).saleUnit);
         const lineTotal = quantity * unitPrice;
         if (!Number.isInteger(productId) || productId <= 0) continue;
 
@@ -174,13 +186,17 @@ export async function PATCH(
         if (prodRow.branchId !== existing.branchId) {
           throw new Error("Product branch mismatch for this sale.");
         }
-        const pcs = lineQuantityToPcs(quantity);
-        if (pcs <= 0) throw new Error("Invalid quantity for this unit.");
+        const su = await getSaleUnitForProduct(prisma, productId, saleUnitKey);
+        if (!su) {
+          throw new Error(`INVALID_UNIT:${productId}:${saleUnitKey}`);
+        }
+        const baseUnits = lineQuantityToBaseUnits(quantity, su.baseUnitsEach);
+        if (baseUnits <= 0) throw new Error("Invalid quantity for this unit.");
         if (!prodRow.forSale) {
           throw new Error(`NOT_FOR_SALE:${productId}`);
         }
 
-        newLines.push({ productId, quantity, saleUnit, unitPrice, totalAmount: lineTotal, pcs });
+        newLines.push({ productId, quantity, saleUnit: saleUnitKey, unitPrice, totalAmount: lineTotal, baseUnits });
         subtotal += lineTotal;
       }
       if (newLines.length === 0) {
@@ -195,10 +211,12 @@ export async function PATCH(
 
       const updated = await prisma.$transaction(async (tx) => {
         for (const old of existing.items) {
-          const convPcs = lineQuantityToPcs(old.quantity);
+          const suOld = await getSaleUnitForProduct(tx, old.productId, old.saleUnit);
+          const baseEach = suOld?.baseUnitsEach ?? 1;
+          const convBase = lineQuantityToBaseUnits(old.quantity, baseEach);
           await tx.product.update({
             where: { id: old.productId },
-            data: { quantity: { increment: convPcs } },
+            data: { quantity: { increment: convBase } },
           });
         }
 
@@ -212,7 +230,7 @@ export async function PATCH(
           if (!product || !product.forSale) {
             throw new Error(`NOT_FOR_SALE:${line.productId}`);
           }
-          if (product.quantity < line.pcs) {
+          if (product.quantity < line.baseUnits) {
             throw new Error(`INSUFFICIENT:${line.productId}`);
           }
         }
@@ -230,7 +248,7 @@ export async function PATCH(
           });
           await tx.product.update({
             where: { id: line.productId },
-            data: { quantity: { decrement: line.pcs } },
+            data: { quantity: { decrement: line.baseUnits } },
           });
         }
 
@@ -247,7 +265,7 @@ export async function PATCH(
           },
           include: {
             branch: { select: { id: true, name: true } },
-            patient: { select: { id: true, patientCode: true, name: true } },
+            patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
             items: {
               include: {
                 product: { select: { id: true, name: true, code: true } },
@@ -265,7 +283,10 @@ export async function PATCH(
         resourceId: parsedId,
         metadata: { lineItemsChanged: true },
       });
-      return NextResponse.json(updated);
+      return NextResponse.json({
+        ...updated,
+        patient: updated.patient ? serializePatient(updated.patient) : null,
+      });
     }
 
     const subtotal = existing.items.reduce((s, i) => s + i.totalAmount, 0);
@@ -288,7 +309,7 @@ export async function PATCH(
       },
       include: {
         branch: { select: { id: true, name: true } },
-        patient: { select: { id: true, patientCode: true, name: true } },
+        patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
         items: {
           include: {
             product: { select: { id: true, name: true, code: true } },
@@ -305,7 +326,10 @@ export async function PATCH(
       resourceId: parsedId,
       metadata: { lineItemsChanged: false },
     });
-    return NextResponse.json(updated);
+    return NextResponse.json({
+      ...updated,
+      patient: updated.patient ? serializePatient(updated.patient) : null,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Something went wrong";
     if (msg.startsWith("NOT_FOR_SALE:")) {
@@ -315,6 +339,12 @@ export async function PATCH(
           error:
             `Product ${id} is internal stock (not for sale). Use internal usage to adjust stock.`,
         },
+        { status: 400 }
+      );
+    }
+    if (msg.startsWith("INVALID_UNIT:")) {
+      return NextResponse.json(
+        { error: "Invalid sale unit for a product. Configure units on the inventory item or pick a valid unit." },
         { status: 400 }
       );
     }

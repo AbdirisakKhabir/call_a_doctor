@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
+import { serializePatient } from "@/lib/patient-name";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,7 +12,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     const patientId = Number(id);
     if (!Number.isInteger(patientId) || patientId <= 0) {
-      return NextResponse.json({ error: "Invalid patient id" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid client id" }, { status: 400 });
     }
 
     const canPatients = await userHasPermission(auth.userId, "patients.view");
@@ -24,7 +25,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       select: {
         id: true,
         patientCode: true,
-        name: true,
+        firstName: true,
+        lastName: true,
         phone: true,
         email: true,
         dateOfBirth: true,
@@ -36,7 +38,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
     if (!patient) {
-      return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
     const [canNotes, canLabs, canRx] = await Promise.all([
@@ -111,7 +113,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     ]);
 
     return NextResponse.json({
-      patient,
+      patient: serializePatient(patient),
       clinicalNotes,
       labOrders,
       prescriptions,

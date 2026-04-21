@@ -178,7 +178,7 @@ export default function VisitCardViewPage() {
 
             <dl className="mt-6 grid gap-4 sm:grid-cols-2">
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Patient</dt>
+                <dt className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Client</dt>
                 <dd className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
                   {card.patient.name}{" "}
                   <span className="font-normal text-gray-500 dark:text-gray-400">({card.patient.patientCode})</span>

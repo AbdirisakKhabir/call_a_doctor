@@ -13,6 +13,7 @@ export type PosProductPayload = {
   quantity: number;
   unit: string;
   expiryDate: string | null;
+  saleUnits?: { unitKey: string; label: string; baseUnitsEach: number; sortOrder: number }[];
 };
 
 /**

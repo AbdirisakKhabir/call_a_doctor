@@ -6,7 +6,14 @@ import {
   userCanTransactInventoryAtBranch,
 } from "@/lib/branch-access";
 import { getFinanceAccountBalance } from "@/lib/finance-balance";
-import { lineQuantityToPcs, type SaleUnit } from "@/lib/product-packaging";
+import { lineQuantityToBaseUnits } from "@/lib/product-packaging";
+import {
+  getSaleUnitForProduct,
+  normalizeSaleUnitKey,
+  replaceProductSaleUnits,
+  validateSaleUnitsPayload,
+  type SaleUnitInput,
+} from "@/lib/product-sale-units";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { logAuditFromRequest } from "@/lib/audit-log";
 
@@ -152,18 +159,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!supplierId || !Number.isInteger(Number(supplierId))) {
-      return NextResponse.json({ error: "Supplier is required" }, { status: 400 });
-    }
-
-    const supplierRow = await prisma.supplier.findFirst({
-      where: { id: Number(supplierId), branchId: bid, isActive: true },
-    });
-    if (!supplierRow) {
-      return NextResponse.json(
-        { error: "Supplier not found for this branch or inactive. Pick a supplier linked to the selected branch." },
-        { status: 400 }
-      );
+    let supplierIdVal: number | null = null;
+    if (supplierId != null && supplierId !== "") {
+      const sid = Number(supplierId);
+      if (!Number.isInteger(sid) || sid <= 0) {
+        return NextResponse.json({ error: "Invalid supplier" }, { status: 400 });
+      }
+      const supplierRow = await prisma.supplier.findFirst({
+        where: { id: sid, branchId: bid, isActive: true },
+      });
+      if (!supplierRow) {
+        return NextResponse.json(
+          { error: "Supplier not found for this branch or inactive. Pick a supplier linked to the selected branch." },
+          { status: 400 }
+        );
+      }
+      supplierIdVal = sid;
     }
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "At least one item is required" }, { status: 400 });
@@ -177,17 +188,20 @@ export async function POST(req: NextRequest) {
       const purchaseItems: {
         productId: number;
         quantity: number;
-        purchaseUnit: SaleUnit;
+        purchaseUnit: string;
         unitPrice: number;
         totalAmount: number;
-        pcs: number;
+        baseUnits: number;
         /** Optional retail price for this line (weighted into product.sellingPrice when forSale). */
         sellingPriceLine?: number;
       }[] = [];
 
       for (const it of items) {
         const quantity = Math.max(1, Math.floor(Number(it.quantity) || 0));
-        const purchaseUnit: SaleUnit = "pcs";
+        const purchaseUnitKey = normalizeSaleUnitKey(
+          ((it as { purchaseUnit?: unknown; purchaseUnitKey?: unknown }).purchaseUnitKey ??
+            (it as { purchaseUnit?: unknown }).purchaseUnit) as string | null | undefined
+        );
         const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
         const lineTotal = quantity * unitPrice;
 
@@ -252,6 +266,26 @@ export async function POST(req: NextRequest) {
             },
           });
           productId = created.id;
+          const saleUnitsFromClient = (np as { saleUnits?: unknown }).saleUnits;
+          if (Array.isArray(saleUnitsFromClient) && saleUnitsFromClient.length > 0) {
+            const v = validateSaleUnitsPayload(saleUnitsFromClient as SaleUnitInput[]);
+            if (!v.ok) {
+              throw new Error(`BAD_REQUEST:${v.error}`);
+            }
+            await replaceProductSaleUnits(tx, created.id, v.rows);
+          } else {
+            const baseLabel =
+              unitStr && unitStr !== "pcs" ? unitStr.slice(0, 191) : "Unit";
+            await tx.productSaleUnit.create({
+              data: {
+                productId: created.id,
+                unitKey: "base",
+                label: baseLabel,
+                baseUnitsEach: 1,
+                sortOrder: 0,
+              },
+            });
+          }
         } else {
           const pid = Number(it.productId);
           if (!Number.isInteger(pid) || pid <= 0) {
@@ -278,8 +312,14 @@ export async function POST(req: NextRequest) {
         if (!existsProduct) {
           throw new Error("BAD_REQUEST:Product not found.");
         }
-        const pcs = lineQuantityToPcs(quantity);
-        if (pcs <= 0) {
+        const su = await getSaleUnitForProduct(tx, productId, purchaseUnitKey);
+        if (!su) {
+          throw new Error(
+            `BAD_REQUEST:Unknown purchase unit "${purchaseUnitKey}" for this product. Configure sale units on the product.`
+          );
+        }
+        const baseUnits = lineQuantityToBaseUnits(quantity, su.baseUnitsEach);
+        if (baseUnits <= 0) {
           throw new Error("BAD_REQUEST:Invalid quantity.");
         }
 
@@ -295,10 +335,10 @@ export async function POST(req: NextRequest) {
         purchaseItems.push({
           productId,
           quantity,
-          purchaseUnit,
+          purchaseUnit: purchaseUnitKey,
           unitPrice,
           totalAmount: lineTotal,
-          pcs,
+          baseUnits,
           ...(sellingPriceLine !== undefined ? { sellingPriceLine } : {}),
         });
         totalAmount += lineTotal;
@@ -319,7 +359,7 @@ export async function POST(req: NextRequest) {
       const purchase = await tx.purchase.create({
         data: {
           branchId: bid,
-          supplierId: Number(supplierId),
+          supplierId: supplierIdVal,
           purchaseDate: purchaseDateVal,
           totalAmount,
           notes: notes ? String(notes).trim() : null,
@@ -337,12 +377,17 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      const ledgerNote =
+        supplierIdVal != null
+          ? `Pharmacy purchase #${purchase.id} (supplier)`
+          : `Pharmacy purchase #${purchase.id} (no supplier)`;
+
       await tx.accountTransaction.create({
         data: {
           accountId,
           kind: "withdrawal",
           amount: totalAmount,
-          description: `Pharmacy purchase #${purchase.id} (supplier)`,
+          description: ledgerNote,
           purchaseId: purchase.id,
           paymentMethodId: pmid,
           transactionDate: purchaseDateVal,
@@ -359,14 +404,14 @@ export async function POST(req: NextRequest) {
           throw new Error("BAD_REQUEST:Product not found after purchase.");
         }
         const oldPcs = prod.quantity;
-        const { pcs } = it;
+        const { baseUnits } = it;
         const lineCostTotal = it.quantity * it.unitPrice;
-        const batchCostPerPcs = pcs > 0 ? lineCostTotal / pcs : 0;
-        const denom = oldPcs + pcs;
+        const batchCostPerPcs = baseUnits > 0 ? lineCostTotal / baseUnits : 0;
+        const denom = oldPcs + baseUnits;
 
         const newCost =
           denom > 0
-            ? (oldPcs * prod.costPrice + pcs * batchCostPerPcs) / denom
+            ? (oldPcs * prod.costPrice + baseUnits * batchCostPerPcs) / denom
             : batchCostPerPcs;
 
         let newSelling = prod.sellingPrice;
@@ -375,13 +420,13 @@ export async function POST(req: NextRequest) {
             it.sellingPriceLine !== undefined && it.sellingPriceLine !== null
               ? it.sellingPriceLine
               : prod.sellingPrice;
-          newSelling = (oldPcs * prod.sellingPrice + pcs * lineSell) / denom;
+          newSelling = (oldPcs * prod.sellingPrice + baseUnits * lineSell) / denom;
         }
 
         await tx.product.update({
           where: { id: it.productId },
           data: {
-            quantity: { increment: pcs },
+            quantity: { increment: baseUnits },
             costPrice: roundMoney(newCost),
             sellingPrice: prod.forSale ? roundMoney(newSelling) : prod.sellingPrice,
           },

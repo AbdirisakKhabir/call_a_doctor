@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { serializePatient } from "@/lib/patient-name";
 
 export async function GET(req: NextRequest) {
   try {
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
     };
 
     const include = {
-      patient: { select: { id: true, patientCode: true, name: true } },
+      patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
       doctor: { select: { id: true, name: true } },
       appointment: {
         select: {
@@ -85,7 +86,12 @@ export async function GET(req: NextRequest) {
         }),
         prisma.prescription.count({ where }),
       ]);
-      return NextResponse.json({ data: prescriptions, total, page, pageSize });
+      return NextResponse.json({
+        data: prescriptions.map((rx) => ({ ...rx, patient: serializePatient(rx.patient) })),
+        total,
+        page,
+        pageSize,
+      });
     }
 
     const prescriptions = await prisma.prescription.findMany({
@@ -93,7 +99,7 @@ export async function GET(req: NextRequest) {
       include,
       orderBy: { createdAt: "desc" },
     });
-    return NextResponse.json(prescriptions);
+    return NextResponse.json(prescriptions.map((rx) => ({ ...rx, patient: serializePatient(rx.patient) })));
   } catch (e) {
     console.error("Prescriptions error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -107,12 +113,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { appointmentId, patientId, doctorId, notes, items, isEmergency } = body;
     if (!appointmentId || !patientId || !doctorId || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: "Appointment, patient, doctor and at least one item are required" }, { status: 400 });
+      return NextResponse.json({ error: "Appointment, client, doctor and at least one item are required" }, { status: 400 });
     }
 
     const appt = await prisma.appointment.findUnique({
       where: { id: Number(appointmentId) },
-      select: { branchId: true },
+      select: { branchId: true, careFileId: true },
     });
     if (!appt) {
       return NextResponse.json({ error: "Appointment not found" }, { status: 400 });
@@ -149,6 +155,7 @@ export async function POST(req: NextRequest) {
         createdById: auth.userId,
         isEmergency: Boolean(isEmergency),
         notes: notes ? String(notes).trim() : null,
+        careFileId: appt.careFileId,
         items: {
           create: items.map((i: { productId: number; quantity: number; dosage?: string; instructions?: string }) => ({
             productId: Number(i.productId),
@@ -159,7 +166,7 @@ export async function POST(req: NextRequest) {
         },
       },
       include: {
-        patient: { select: { id: true, patientCode: true, name: true } },
+        patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
         doctor: { select: { id: true, name: true } },
         appointment: { select: { id: true, appointmentDate: true, startTime: true } },
         items: { include: { product: { select: { id: true, name: true, code: true } } } },
@@ -173,7 +180,7 @@ export async function POST(req: NextRequest) {
       resourceId: prescription.id,
       metadata: { patientId: prescription.patientId, appointmentId: prescription.appointmentId },
     });
-    return NextResponse.json(prescription);
+    return NextResponse.json({ ...prescription, patient: serializePatient(prescription.patient) });
   } catch (e) {
     console.error("Create prescription error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });

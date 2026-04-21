@@ -5,6 +5,8 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import DateField from "@/components/form/DateField";
+import AgeReadonlyInput from "@/components/form/AgeReadonlyInput";
+import ClientFormCard from "@/components/patients/ClientFormCard";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
@@ -18,14 +20,22 @@ import {
   PosBarcodeKeyboardCapture,
   type PosProductPayload,
 } from "@/components/pharmacy/PosBarcodeBridge";
+type SaleUnitRow = { unitKey: string; label: string; baseUnitsEach: number };
+
 type CartItem = {
+  /** Stable key: `sale:<id>` when editing an existing line, else `product:<id>:<unitKey>`. */
+  cartKey: string;
   productId: number;
   name: string;
   code: string;
   imageUrl: string | null;
+  /** Price per selected sale unit (catalog base price × baseUnitsEach for that unit). */
   sellingPrice: number;
   quantity: number;
   totalAmount: number;
+  saleUnitKey: string;
+  saleUnitLabel: string;
+  baseUnitsEach: number;
 };
 
 type Product = {
@@ -37,9 +47,12 @@ type Product = {
   quantity: number;
   unit: string;
   expiryDate: string | null;
+  saleUnits?: SaleUnitRow[];
 };
 
 type Branch = { id: number; name: string };
+type CityRow = { id: number; name: string };
+type VillageRow = { id: number; name: string };
 
 type LedgerPaymentMethod = {
   id: number;
@@ -64,6 +77,7 @@ type SaleRow = {
   createdBy?: { id: number; name: string | null } | null;
   /** Present on full sale fetch; omitted on paginated list API. */
   items?: {
+    id: number;
     productId: number;
     quantity: number;
     saleUnit: string;
@@ -74,9 +88,41 @@ type SaleRow = {
       name: string;
       code: string;
       imageUrl: string | null;
+      unit?: string;
+      sellingPrice?: number;
+      quantity?: number;
+      saleUnits?: SaleUnitRow[];
     };
   }[];
 };
+
+function normalizePosUnitKey(raw: string | null | undefined): string {
+  if (raw == null || !String(raw).trim()) return "base";
+  const s = String(raw).trim();
+  if (s === "pcs") return "base";
+  return s;
+}
+
+function defaultSaleUnit(p: Product): SaleUnitRow {
+  const rows =
+    p.saleUnits && p.saleUnits.length > 0
+      ? p.saleUnits
+      : [{ unitKey: "base", label: p.unit || "Unit", baseUnitsEach: 1 }];
+  return rows.find((u) => u.unitKey === "base") ?? rows[0];
+}
+
+function getSaleUnitRow(p: Product, unitKey: string): SaleUnitRow {
+  const k = normalizePosUnitKey(unitKey);
+  const hit = p.saleUnits?.find((u) => u.unitKey === k);
+  if (hit) return hit;
+  return defaultSaleUnit(p);
+}
+
+/** Catalog `sellingPrice` is per base (smallest) unit; this is price per chosen sale unit. */
+function unitSellingPrice(p: Product, unitKey: string): number {
+  const u = getSaleUnitRow(p, unitKey);
+  return p.sellingPrice * u.baseUnitsEach;
+}
 
 export default function POSPage() {
   const { hasPermission } = useAuth();
@@ -134,8 +180,8 @@ export default function POSPage() {
   const [editHasDeposit, setEditHasDeposit] = useState(false);
   const [editSearch, setEditSearch] = useState("");
 
-  // Customer: walking | patient | outreach (home clinic bag stock on credit or paid at counter)
-  const [customerType, setCustomerType] = useState<"walking" | "patient" | "outreach">("walking");
+  // Customer: walking | patient | outreach | lab (lab = transfer pharmacy stock into lab inventory; not a separate lab register)
+  const [customerType, setCustomerType] = useState<"walking" | "patient" | "outreach" | "lab">("walking");
   const [selectedPatient, setSelectedPatient] = useState<{ id: number; patientCode: string; name: string } | null>(null);
   const [outreachTeams, setOutreachTeams] = useState<{ id: number; name: string; creditBalance: number }[]>([]);
   const [outreachTeamId, setOutreachTeamId] = useState("");
@@ -143,35 +189,61 @@ export default function POSPage() {
   const [patientSearch, setPatientSearch] = useState("");
   const [patientSearchResults, setPatientSearchResults] = useState<{ id: number; patientCode: string; name: string; phone: string | null }[]>([]);
   const [patientSearchOpen, setPatientSearchOpen] = useState(false);
+  const [referralSourceOptions, setReferralSourceOptions] = useState<{ id: number; name: string }[]>([]);
 
   const [createPatientOpen, setCreatePatientOpen] = useState(false);
   const [createPatientContext, setCreatePatientContext] = useState<"checkout" | "edit">("checkout");
   const [createPatientSubmitting, setCreatePatientSubmitting] = useState(false);
   const [createPatientError, setCreatePatientError] = useState("");
+  const [cities, setCities] = useState<CityRow[]>([]);
+  const [villages, setVillages] = useState<VillageRow[]>([]);
   const [createPatientForm, setCreatePatientForm] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     phone: "",
     email: "",
     dateOfBirth: "",
     gender: "",
     address: "",
+    referralSourceId: "",
+    registeredBranchId: "",
+    cityId: "",
+    villageId: "",
   });
 
   function resetCreatePatientForm() {
     setCreatePatientForm({
-      name: "",
+      firstName: "",
+      lastName: "",
       phone: "",
       email: "",
       dateOfBirth: "",
       gender: "",
       address: "",
+      referralSourceId: "",
+      registeredBranchId: "",
+      cityId: "",
+      villageId: "",
     });
     setCreatePatientError("");
   }
 
   function openCreatePatientModal(ctx: "checkout" | "edit") {
     setCreatePatientContext(ctx);
-    resetCreatePatientForm();
+    setCreatePatientError("");
+    setCreatePatientForm({
+      firstName: "",
+      lastName: "",
+      phone: "",
+      email: "",
+      dateOfBirth: "",
+      gender: "",
+      address: "",
+      referralSourceId: "",
+      registeredBranchId: branchId || "",
+      cityId: "",
+      villageId: "",
+    });
     setCreatePatientOpen(true);
   }
 
@@ -183,8 +255,16 @@ export default function POSPage() {
   async function handleCreatePatientSubmit(e: React.FormEvent) {
     e.preventDefault();
     setCreatePatientError("");
-    if (!createPatientForm.name.trim()) {
-      setCreatePatientError("Name is required");
+    if (!createPatientForm.firstName.trim() || !createPatientForm.lastName.trim()) {
+      setCreatePatientError("First name and last name are required");
+      return;
+    }
+    if (
+      !createPatientForm.registeredBranchId ||
+      !createPatientForm.cityId ||
+      !createPatientForm.villageId
+    ) {
+      setCreatePatientError("Registration branch, city, and village are required");
       return;
     }
     setCreatePatientSubmitting(true);
@@ -193,17 +273,24 @@ export default function POSPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: createPatientForm.name.trim(),
+          firstName: createPatientForm.firstName.trim(),
+          lastName: createPatientForm.lastName.trim(),
           phone: createPatientForm.phone.trim() || null,
           email: createPatientForm.email.trim() || null,
           dateOfBirth: createPatientForm.dateOfBirth.trim() || null,
           gender: createPatientForm.gender.trim() || null,
           address: createPatientForm.address.trim() || null,
+          referralSourceId: createPatientForm.referralSourceId
+            ? Number(createPatientForm.referralSourceId)
+            : null,
+          registeredBranchId: Number(createPatientForm.registeredBranchId),
+          cityId: Number(createPatientForm.cityId),
+          villageId: Number(createPatientForm.villageId),
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setCreatePatientError(data.error || "Failed to create patient");
+        setCreatePatientError(data.error || "Failed to create client");
         return;
       }
       const next = {
@@ -267,6 +354,53 @@ export default function POSPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/referral-sources")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled && Array.isArray(data)) setReferralSourceOptions(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/cities")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled && Array.isArray(data)) setCities(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const cid = createPatientForm.cityId ? Number(createPatientForm.cityId) : null;
+    if (!cid || !Number.isInteger(cid)) {
+      setVillages([]);
+      return;
+    }
+    let cancelled = false;
+    authFetch(`/api/villages?cityId=${cid}`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled && Array.isArray(data)) setVillages(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [createPatientForm.cityId]);
+
+  useEffect(() => {
     if (branchId) loadProducts();
   }, [branchId]);
 
@@ -296,7 +430,7 @@ export default function POSPage() {
     loadOutreachTeams();
   }, [branchId]);
 
-  // Patient search debounce
+  // Client search debounce
   useEffect(() => {
     if (customerType !== "patient" || !patientSearch.trim()) {
       setPatientSearchResults([]);
@@ -409,40 +543,46 @@ export default function POSPage() {
   }
 
   const getEditMaxQty = useCallback(
-    (productId: number) => {
+    (productId: number, baseUnitsEach: number) => {
       const p = products.find((x) => x.id === productId);
-      const base = p?.quantity ?? 0;
-      const sold = editReturnedQtyByProduct[productId] ?? 0;
-      return base + sold;
+      const base = (p?.quantity ?? 0) + (editReturnedQtyByProduct[productId] ?? 0);
+      const each = Math.max(1, Math.floor(baseUnitsEach || 1));
+      return Math.floor(base / each);
     },
     [products, editReturnedQtyByProduct]
   );
 
   const addToEditCart = useCallback(
     (p: Product) => {
-      const max = getEditMaxQty(p.id);
+      const su = defaultSaleUnit(p);
+      const cartKey = `product:${p.id}:${su.unitKey}`;
+      const max = getEditMaxQty(p.id, su.baseUnitsEach);
       if (max <= 0) return;
       setEditCart((prev) => {
-        const existing = prev.find((c) => c.productId === p.id);
+        const existing = prev.find((c) => c.cartKey === cartKey);
+        const price = unitSellingPrice(p, su.unitKey);
         const qty = (existing?.quantity || 0) + 1;
         if (qty > max) return prev;
-        const price = existing?.sellingPrice ?? p.sellingPrice;
         const totalAmount = qty * price;
         if (existing) {
           return prev.map((c) =>
-            c.productId === p.id ? { ...c, quantity: qty, totalAmount } : c
+            c.cartKey === cartKey ? { ...c, quantity: qty, sellingPrice: price, totalAmount } : c
           );
         }
         return [
           ...prev,
           {
+            cartKey,
             productId: p.id,
             name: p.name,
             code: p.code,
             imageUrl: p.imageUrl,
-            sellingPrice: p.sellingPrice,
+            sellingPrice: price,
             quantity: 1,
-            totalAmount: p.sellingPrice,
+            totalAmount: price,
+            saleUnitKey: su.unitKey,
+            saleUnitLabel: su.label,
+            baseUnitsEach: su.baseUnitsEach,
           },
         ];
       });
@@ -450,22 +590,22 @@ export default function POSPage() {
     [getEditMaxQty]
   );
 
-  const updateEditCartQty = (productId: number, delta: number) => {
+  const updateEditCartQty = (cartKey: string, delta: number) => {
     setEditCart((prev) => {
-      const item = prev.find((c) => c.productId === productId);
+      const item = prev.find((c) => c.cartKey === cartKey);
       if (!item) return prev;
-      const max = getEditMaxQty(productId);
+      const max = getEditMaxQty(item.productId, item.baseUnitsEach);
       const newQty = Math.max(0, Math.min(max, item.quantity + delta));
-      if (newQty === 0) return prev.filter((c) => c.productId !== productId);
+      if (newQty === 0) return prev.filter((c) => c.cartKey !== cartKey);
       const totalAmount = newQty * item.sellingPrice;
       return prev.map((c) =>
-        c.productId === productId ? { ...c, quantity: newQty, totalAmount } : c
+        c.cartKey === cartKey ? { ...c, quantity: newQty, totalAmount } : c
       );
     });
   };
 
-  const removeFromEditCart = (productId: number) => {
-    setEditCart((prev) => prev.filter((c) => c.productId !== productId));
+  const removeFromEditCart = (cartKey: string) => {
+    setEditCart((prev) => prev.filter((c) => c.cartKey !== cartKey));
   };
 
   function closeEditModal() {
@@ -514,37 +654,57 @@ export default function POSPage() {
       }
       setEditSaleId(data.id);
       const saleItems = data.items ?? [];
-      const soldPcs: Record<number, number> = {};
-      for (const it of saleItems) {
-        soldPcs[it.productId] = (soldPcs[it.productId] || 0) + it.quantity;
-      }
-      setEditReturnedQtyByProduct(soldPcs);
 
-      const merged = new Map<number, CartItem>();
+      const returnedBase: Record<number, number> = {};
       for (const it of saleItems) {
-        const prev = merged.get(it.productId);
-        if (prev) {
-          const q = prev.quantity + it.quantity;
-          const totalAmt = prev.totalAmount + it.totalAmount;
-          merged.set(it.productId, {
-            ...prev,
-            quantity: q,
-            sellingPrice: totalAmt / q,
-            totalAmount: totalAmt,
-          });
-        } else {
-          merged.set(it.productId, {
-            productId: it.productId,
-            name: it.product.name,
-            code: it.product.code,
-            imageUrl: it.product.imageUrl,
-            sellingPrice: it.unitPrice,
-            quantity: it.quantity,
-            totalAmount: it.totalAmount,
-          });
-        }
+        const fromList = products.find((pr) => pr.id === it.productId);
+        const prProduct: Product = fromList ?? {
+          id: it.product.id,
+          name: it.product.name,
+          code: it.product.code,
+          imageUrl: it.product.imageUrl,
+          sellingPrice: it.product.sellingPrice ?? 0,
+          quantity: it.product.quantity ?? 0,
+          unit: it.product.unit ?? "Unit",
+          expiryDate: null,
+          saleUnits: it.product.saleUnits,
+        };
+        const uk = normalizePosUnitKey(it.saleUnit);
+        const each = getSaleUnitRow(prProduct, uk).baseUnitsEach;
+        returnedBase[it.productId] = (returnedBase[it.productId] ?? 0) + it.quantity * each;
       }
-      setEditCart(Array.from(merged.values()));
+      setEditReturnedQtyByProduct(returnedBase);
+
+      const lines: CartItem[] = saleItems.map((it) => {
+        const fromList = products.find((pr) => pr.id === it.productId);
+        const prProduct: Product = fromList ?? {
+          id: it.product.id,
+          name: it.product.name,
+          code: it.product.code,
+          imageUrl: it.product.imageUrl,
+          sellingPrice: it.product.sellingPrice ?? 0,
+          quantity: it.product.quantity ?? 0,
+          unit: it.product.unit ?? "Unit",
+          expiryDate: null,
+          saleUnits: it.product.saleUnits,
+        };
+        const uk = normalizePosUnitKey(it.saleUnit);
+        const su = getSaleUnitRow(prProduct, uk);
+        return {
+          cartKey: `sale:${it.id}`,
+          productId: it.productId,
+          name: it.product.name,
+          code: it.product.code,
+          imageUrl: it.product.imageUrl,
+          sellingPrice: it.unitPrice,
+          quantity: it.quantity,
+          totalAmount: it.totalAmount,
+          saleUnitKey: su.unitKey,
+          saleUnitLabel: su.label,
+          baseUnitsEach: su.baseUnitsEach,
+        };
+      });
+      setEditCart(lines);
       setEditDiscountValue(String(data.discount ?? 0));
       setEditPaymentMethod(data.paymentMethod || "cash");
       setEditCustomerType(data.customerType === "patient" && data.patient ? "patient" : "walking");
@@ -570,7 +730,7 @@ export default function POSPage() {
       return;
     }
     if (editCustomerType === "patient" && !editSelectedPatient) {
-      setEditError("Select a patient");
+      setEditError("Select a client");
       return;
     }
     setEditError("");
@@ -584,7 +744,7 @@ export default function POSPage() {
             productId: c.productId,
             quantity: c.quantity,
             unitPrice: c.sellingPrice,
-            saleUnit: "pcs" as const,
+            saleUnit: c.saleUnitKey,
           })),
           discount: editDiscountAmount,
           paymentMethod: editPaymentMethod,
@@ -623,38 +783,126 @@ export default function POSPage() {
     : products;
 
   const addToCart = useCallback((p: Product) => {
-    const maxU = p.quantity;
-    if (maxU <= 0) return;
+    const su = defaultSaleUnit(p);
+    const cartKey = `product:${p.id}:${su.unitKey}`;
+    const maxInUnit = Math.floor(p.quantity / su.baseUnitsEach);
+    if (maxInUnit <= 0) return;
+    const price = unitSellingPrice(p, su.unitKey);
     setCart((prev) => {
-      const existing = prev.find((c) => c.productId === p.id);
+      const existing = prev.find((c) => c.cartKey === cartKey);
       const qty = (existing?.quantity || 0) + 1;
-      if (qty > maxU) return prev;
-      const totalAmount = qty * p.sellingPrice;
+      if (qty > maxInUnit) return prev;
+      const totalAmount = qty * price;
       if (existing) {
         return prev.map((c) =>
-          c.productId === p.id ? { ...c, quantity: qty, totalAmount } : c
+          c.cartKey === cartKey ? { ...c, quantity: qty, sellingPrice: price, totalAmount } : c
         );
       }
       return [
         ...prev,
         {
+          cartKey,
           productId: p.id,
           name: p.name,
           code: p.code,
           imageUrl: p.imageUrl,
-          sellingPrice: p.sellingPrice,
+          sellingPrice: price,
           quantity: 1,
-          totalAmount: p.sellingPrice,
+          totalAmount: price,
+          saleUnitKey: su.unitKey,
+          saleUnitLabel: su.label,
+          baseUnitsEach: su.baseUnitsEach,
         },
       ];
     });
   }, []);
 
+  const setCartSaleUnit = useCallback(
+    (cartKey: string, newUnitKey: string) => {
+      setCart((prev) => {
+        const line = prev.find((c) => c.cartKey === cartKey);
+        if (!line) return prev;
+        const p = products.find((x) => x.id === line.productId);
+        if (!p) return prev;
+        const su = getSaleUnitRow(p, newUnitKey);
+        const newKey = `product:${line.productId}:${su.unitKey}`;
+        const price = unitSellingPrice(p, newUnitKey);
+        const maxInUnit = Math.floor(p.quantity / su.baseUnitsEach);
+        if (maxInUnit < 1) return prev.filter((c) => c.cartKey !== cartKey);
+        const qty = Math.min(line.quantity, maxInUnit);
+        const without = prev.filter((c) => c.cartKey !== cartKey);
+        const dup = without.find((c) => c.cartKey === newKey);
+        if (dup) {
+          const sum = Math.min(dup.quantity + qty, maxInUnit);
+          return without
+            .filter((c) => c.cartKey !== newKey)
+            .concat({
+              ...dup,
+              quantity: sum,
+              sellingPrice: price,
+              saleUnitKey: su.unitKey,
+              saleUnitLabel: su.label,
+              baseUnitsEach: su.baseUnitsEach,
+              totalAmount: sum * price,
+            });
+        }
+        return prev.map((c) =>
+          c.cartKey === cartKey
+            ? {
+                ...c,
+                cartKey: newKey,
+                saleUnitKey: su.unitKey,
+                saleUnitLabel: su.label,
+                baseUnitsEach: su.baseUnitsEach,
+                sellingPrice: price,
+                quantity: qty,
+                totalAmount: qty * price,
+              }
+            : c
+        );
+      });
+    },
+    [products]
+  );
+
+  const setEditCartSaleUnit = useCallback(
+    (cartKey: string, newUnitKey: string) => {
+      setEditCart((prev) => {
+        const line = prev.find((c) => c.cartKey === cartKey);
+        if (!line) return prev;
+        const p = products.find((x) => x.id === line.productId);
+        if (!p) return prev;
+        const su = getSaleUnitRow(p, newUnitKey);
+        const price = unitSellingPrice(p, newUnitKey);
+        const maxQty = Math.floor(
+          ((p.quantity ?? 0) + (editReturnedQtyByProduct[line.productId] ?? 0)) / su.baseUnitsEach
+        );
+        const qty = Math.min(line.quantity, Math.max(1, maxQty));
+        if (maxQty < 1) return prev.filter((c) => c.cartKey !== cartKey);
+        return prev.map((c) =>
+          c.cartKey === cartKey
+            ? {
+                ...c,
+                saleUnitKey: su.unitKey,
+                saleUnitLabel: su.label,
+                baseUnitsEach: su.baseUnitsEach,
+                sellingPrice: price,
+                quantity: qty,
+                totalAmount: qty * price,
+              }
+            : c
+        );
+      });
+    },
+    [products, editReturnedQtyByProduct]
+  );
+
   const applyBarcodeProduct = useCallback(
     (p: Product) => {
       setProducts((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]));
-      const maxU = p.quantity;
-      if (maxU <= 0) {
+      const su = defaultSaleUnit(p);
+      const maxInUnit = Math.floor(p.quantity / su.baseUnitsEach);
+      if (maxInUnit <= 0) {
         setScanMessage("Out of stock for this barcode.");
         window.setTimeout(() => setScanMessage(""), 4000);
         return;
@@ -718,24 +966,24 @@ export default function POSPage() {
     [search, branchId, products, applyBarcodeProduct, fetchAndApplyBarcode]
   );
 
-  const updateCartQty = (productId: number, delta: number) => {
+  const updateCartQty = (cartKey: string, delta: number) => {
     setCart((prev) => {
-      const item = prev.find((c) => c.productId === productId);
+      const item = prev.find((c) => c.cartKey === cartKey);
       if (!item) return prev;
-      const product = products.find((p) => p.id === productId);
+      const product = products.find((p) => p.id === item.productId);
       if (!product) return prev;
-      const maxQty = product.quantity;
-      const newQty = Math.max(0, Math.min(maxQty, item.quantity + delta));
-      if (newQty === 0) return prev.filter((c) => c.productId !== productId);
+      const maxInUnit = Math.floor(product.quantity / item.baseUnitsEach);
+      const newQty = Math.max(0, Math.min(maxInUnit, item.quantity + delta));
+      if (newQty === 0) return prev.filter((c) => c.cartKey !== cartKey);
       const totalAmount = newQty * item.sellingPrice;
       return prev.map((c) =>
-        c.productId === productId ? { ...c, quantity: newQty, totalAmount } : c
+        c.cartKey === cartKey ? { ...c, quantity: newQty, totalAmount } : c
       );
     });
   };
 
-  const removeFromCart = (productId: number) => {
-    setCart((prev) => prev.filter((c) => c.productId !== productId));
+  const removeFromCart = (cartKey: string) => {
+    setCart((prev) => prev.filter((c) => c.cartKey !== cartKey));
   };
 
   const subtotal = cart.reduce((s, c) => s + c.totalAmount, 0);
@@ -749,7 +997,8 @@ export default function POSPage() {
       : Math.min(subtotal, Math.max(0, Number.isFinite(rawVal) ? rawVal : 0));
   const total = Math.max(0, subtotal - discountAmount);
 
-  const checkoutNeedsTillPayment = customerType !== "outreach" || !outreachOnCredit;
+  const checkoutNeedsTillPayment =
+    (customerType !== "outreach" || !outreachOnCredit) && !(customerType === "lab" && total <= 0);
 
   const handleCheckout = async () => {
     if (cart.length === 0) {
@@ -767,6 +1016,10 @@ export default function POSPage() {
         return;
       }
     }
+    if (customerType === "lab" && total > 0 && !paymentMethod.trim()) {
+      setError("Select a payment method for this lab transfer, or use $0 lines / full discount for a no-charge transfer.");
+      return;
+    }
     if (checkoutNeedsTillPayment && !paymentMethod.trim()) {
       setError("Select a payment method. Add one under Settings → Payment methods if none are listed.");
       return;
@@ -781,7 +1034,7 @@ export default function POSPage() {
           productId: c.productId,
           quantity: c.quantity,
           unitPrice: c.sellingPrice,
-          saleUnit: "pcs" as const,
+          saleUnit: c.saleUnitKey,
         })),
         discount: discountAmount,
       };
@@ -790,6 +1043,12 @@ export default function POSPage() {
         baseBody.outreachTeamId = Number(outreachTeamId);
         baseBody.outreachOnCredit = outreachOnCredit;
         if (!outreachOnCredit && selectedPm) {
+          baseBody.paymentMethod = paymentMethod;
+          baseBody.paymentMethodId = selectedPm.id;
+        }
+      } else if (customerType === "lab") {
+        baseBody.customerType = "lab";
+        if (total > 0 && selectedPm) {
           baseBody.paymentMethod = paymentMethod;
           baseBody.paymentMethodId = selectedPm.id;
         }
@@ -814,7 +1073,8 @@ export default function POSPage() {
       const disc = Number(data.discount) || 0;
       let customerLabel = "Walking Customer";
       if (customerType === "patient" && selectedPatient) customerLabel = selectedPatient.name;
-      if (customerType === "outreach") {
+      else if (customerType === "lab") customerLabel = "Lab (stock to lab inventory)";
+      else if (customerType === "outreach") {
         const team = outreachTeams.find((t) => t.id === Number(outreachTeamId));
         customerLabel = team ? `Outreach — ${team.name}` : "Outreach";
         if (outreachOnCredit) customerLabel += " (credit)";
@@ -1016,10 +1276,6 @@ export default function POSPage() {
                 {scanMessage}
               </p>
             ) : null}
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              USB barcode readers work as a keyboard—click here first, then scan. You can also open a product from{" "}
-              <span className="font-medium">Inventory → Ring up at POS</span>.
-            </p>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             {loading ? (
@@ -1033,8 +1289,9 @@ export default function POSPage() {
             ) : (
               <div className="grid grid-cols-2 gap-3 pb-1 pt-1 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-4 lg:gap-4 xl:grid-cols-5 2xl:grid-cols-6">
                 {filteredProducts.map((p) => {
-                  const cartLine = cart.find((c) => c.productId === p.id);
-                  const inCart = Boolean(cartLine);
+                  const cartLines = cart.filter((c) => c.productId === p.id);
+                  const baseInCart = cartLines.reduce((s, c) => s + c.quantity * c.baseUnitsEach, 0);
+                  const inCart = cartLines.length > 0;
                   return (
                   <button
                     key={p.id}
@@ -1051,7 +1308,7 @@ export default function POSPage() {
                     {inCart && (
                       <span
                         className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-white shadow-md ring-2 ring-white dark:ring-gray-800"
-                        title={`In cart${cartLine ? ` ×${cartLine.quantity}` : ""}`}
+                        title={`In cart (${baseInCart} base units)`}
                         aria-hidden
                       >
                         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
@@ -1071,11 +1328,18 @@ export default function POSPage() {
                         {p.name}
                       </p>
                       <span className="mt-0.5 block text-center text-xs text-gray-500">{p.code}</span>
-                      <span className="mt-1 block text-center text-sm font-semibold text-brand-600">${p.sellingPrice.toFixed(2)}</span>
+                      <span className="mt-1 block text-center text-sm font-semibold text-brand-600">
+                        ${p.sellingPrice.toFixed(2)}
+                        <span className="block text-[10px] font-normal text-gray-500 dark:text-gray-400">
+                          / {defaultSaleUnit(p).label}
+                        </span>
+                      </span>
                       <span className="mt-1 block text-center text-xs text-gray-400">
-                        Stock: {p.quantity}
-                        {inCart && cartLine ? (
-                          <span className="ml-1 font-medium text-brand-600 dark:text-brand-400"> · In cart: {cartLine.quantity}</span>
+                        Stock: {p.quantity} base
+                        {inCart ? (
+                          <span className="ml-1 font-medium text-brand-600 dark:text-brand-400">
+                            · In cart: {baseInCart} base
+                          </span>
                         ) : null}
                       </span>
                       {p.expiryDate ? (
@@ -1132,7 +1396,7 @@ export default function POSPage() {
                     : "bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
                 }`}
               >
-                Patient
+                Client
               </button>
               <button
                 type="button"
@@ -1150,6 +1414,24 @@ export default function POSPage() {
                 }`}
               >
                 Outreach
+              </button>
+              <button
+                type="button"
+                title="Move pharmacy stock into lab inventory (for test consumables)"
+                onClick={() => {
+                  setCustomerType("lab");
+                  setSelectedPatient(null);
+                  setPatientSearch("");
+                  setPatientSearchOpen(false);
+                  setOutreachTeamId("");
+                }}
+                className={`min-w-[5rem] flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  customerType === "lab"
+                    ? "bg-brand-500 text-white dark:bg-brand-600"
+                    : "bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                }`}
+              >
+                Lab
               </button>
             </div>
             {customerType === "outreach" && (
@@ -1202,7 +1484,7 @@ export default function POSPage() {
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        placeholder="Search patient by name or code..."
+                        placeholder="Search client by name or code..."
                         value={patientSearch}
                         onChange={(e) => {
                           setPatientSearch(e.target.value);
@@ -1217,7 +1499,7 @@ export default function POSPage() {
                           className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-500/15 dark:text-brand-300 dark:hover:bg-brand-500/25"
                         >
                           <PlusIcon className="h-3.5 w-3.5" aria-hidden />
-                          New patient
+                          New client
                         </button>
                       )}
                     </div>
@@ -1225,7 +1507,7 @@ export default function POSPage() {
                       <div className="absolute top-full left-0 right-0 z-10 mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800">
                         {patientSearchResults.length === 0 ? (
                           <div className="px-3 py-3 text-center text-sm text-gray-500">
-                            <p>No patients found</p>
+                            <p>No clients found</p>
                             {hasPermission("patients.create") && (
                               <button
                                 type="button"
@@ -1235,7 +1517,7 @@ export default function POSPage() {
                                 }}
                                 className="mt-2 text-brand-600 font-medium hover:underline dark:text-brand-400"
                               >
-                                Create new patient
+                                Create new client
                               </button>
                             )}
                           </div>
@@ -1320,9 +1602,15 @@ export default function POSPage() {
               <p className="py-8 text-center text-sm text-gray-500">Cart is empty. Tap products to add.</p>
             ) : (
               <div className="space-y-2.5">
-                {cart.map((c) => (
+                {cart.map((c) => {
+                  const p = products.find((x) => x.id === c.productId);
+                  const unitOptions =
+                    p?.saleUnits && p.saleUnits.length > 0
+                      ? p.saleUnits
+                      : [{ unitKey: c.saleUnitKey, label: c.saleUnitLabel, baseUnitsEach: c.baseUnitsEach }];
+                  return (
                   <div
-                    key={c.productId}
+                    key={c.cartKey}
                     className="w-full min-w-0 rounded-lg border border-brand-200/80 bg-white p-2.5 shadow-sm dark:border-brand-500/25 dark:bg-gray-800"
                   >
                     <div className="flex min-w-0 gap-2">
@@ -1335,8 +1623,24 @@ export default function POSPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium leading-snug text-gray-900 dark:text-gray-100">{c.name}</p>
+                        {p && unitOptions.length > 1 ? (
+                          <select
+                            value={c.saleUnitKey}
+                            onChange={(e) => setCartSaleUnit(c.cartKey, e.target.value)}
+                            className="mt-1 max-w-full rounded border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                            aria-label="Sale unit"
+                          >
+                            {unitOptions.map((u) => (
+                              <option key={u.unitKey} value={u.unitKey}>
+                                {u.label} (×{u.baseUnitsEach} base)
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{c.saleUnitLabel}</p>
+                        )}
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          ${c.sellingPrice.toFixed(2)} / pcs × {c.quantity}
+                          ${c.sellingPrice.toFixed(2)} / {c.saleUnitLabel} × {c.quantity}
                         </p>
                       </div>
                     </div>
@@ -1344,7 +1648,7 @@ export default function POSPage() {
                       <div className="flex shrink-0 items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => updateCartQty(c.productId, -1)}
+                          onClick={() => updateCartQty(c.cartKey, -1)}
                           className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
                         >
                           −
@@ -1352,7 +1656,7 @@ export default function POSPage() {
                         <span className="min-w-6 text-center text-sm font-medium">{c.quantity}</span>
                         <button
                           type="button"
-                          onClick={() => updateCartQty(c.productId, 1)}
+                          onClick={() => updateCartQty(c.cartKey, 1)}
                           className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
                         >
                           +
@@ -1362,7 +1666,7 @@ export default function POSPage() {
                         <span className="text-sm font-semibold">${c.totalAmount.toFixed(2)}</span>
                         <button
                           type="button"
-                          onClick={() => removeFromCart(c.productId)}
+                          onClick={() => removeFromCart(c.cartKey)}
                           className="rounded-lg p-1 text-gray-400 hover:bg-error-50 hover:text-error-500"
                         >
                           <TrashBinIcon className="h-4 w-4" />
@@ -1370,7 +1674,7 @@ export default function POSPage() {
                       </div>
                     </div>
                   </div>
-                ))}
+                );})}
               </div>
             )}
           </div>
@@ -1462,11 +1766,13 @@ export default function POSPage() {
                       {salesList.map((s) => {
                         const hasDep = Boolean(s.depositTransaction?.id);
                         const cust =
-                          s.customerType === "outreach" && s.outreachTeam
-                            ? `Outreach: ${s.outreachTeam.name}`
-                            : s.customerType === "patient" && s.patient
-                              ? s.patient.name
-                              : "Walking";
+                          s.customerType === "lab"
+                            ? "Lab (to inventory)"
+                            : s.customerType === "outreach" && s.outreachTeam
+                              ? `Outreach: ${s.outreachTeam.name}`
+                              : s.customerType === "patient" && s.patient
+                                ? s.patient.name
+                                : "Walking";
                         return (
                           <tr key={s.id} className="border-b border-gray-100 dark:border-gray-800">
                             <td className="py-2.5 pr-3 text-gray-600 dark:text-gray-400">
@@ -1572,11 +1878,13 @@ export default function POSPage() {
                       Customer
                     </p>
                     <p className="font-medium text-gray-900 dark:text-white">
-                      {viewSaleDetail.customerType === "outreach" && viewSaleDetail.outreachTeam
-                        ? `Outreach — ${viewSaleDetail.outreachTeam.name}`
-                        : viewSaleDetail.customerType === "patient" && viewSaleDetail.patient
-                          ? `${viewSaleDetail.patient.name} (${viewSaleDetail.patient.patientCode})`
-                          : "Walking"}
+                      {viewSaleDetail.customerType === "lab"
+                        ? "Lab (to lab inventory)"
+                        : viewSaleDetail.customerType === "outreach" && viewSaleDetail.outreachTeam
+                          ? `Outreach — ${viewSaleDetail.outreachTeam.name}`
+                          : viewSaleDetail.customerType === "patient" && viewSaleDetail.patient
+                            ? `${viewSaleDetail.patient.name} (${viewSaleDetail.patient.patientCode})`
+                            : "Walking"}
                     </p>
                     {viewSaleDetail.customerType === "outreach" && viewSaleDetail.outreachOnCredit ? (
                       <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">On credit</p>
@@ -1697,12 +2005,19 @@ export default function POSPage() {
                     ? outreachTeams.find((t) => t.id === Number(outreachTeamId))?.name
                       ? `Outreach — ${outreachTeams.find((t) => t.id === Number(outreachTeamId))!.name}`
                       : "Outreach"
-                    : customerType === "patient" && selectedPatient
-                      ? selectedPatient.name
-                      : "Walking Customer"}
+                    : customerType === "lab"
+                      ? "Lab — stock to lab inventory"
+                      : customerType === "patient" && selectedPatient
+                        ? selectedPatient.name
+                        : "Walking Customer"}
                 </p>
                 {customerType === "outreach" && outreachOnCredit ? (
                   <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">On credit (no till deposit)</p>
+                ) : null}
+                {customerType === "lab" ? (
+                  <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                    Pharmacy shelf ↓ · Lab inventory ↑ (same product codes)
+                  </p>
                 ) : null}
               </div>
               <div className="rounded-lg border border-gray-200 px-4 py-3 text-sm dark:border-gray-700">
@@ -1743,11 +2058,15 @@ export default function POSPage() {
                     ) : null}
                   </select>
                 </div>
-              ) : (
+              ) : customerType === "outreach" ? (
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   Pharmacy shelf stock is reduced and added to the outreach team bag. Team accounts receivable increases; no cash register deposit for this sale.
                 </p>
-              )}
+              ) : customerType === "lab" ? (
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Total is $0 — no till deposit. Pharmacy stock is reduced and lab inventory is increased for the same lines.
+                </p>
+              ) : null}
               <div className="rounded-lg bg-gray-100 p-4 dark:bg-gray-800">
                 <p className="text-2xl font-bold">Total: ${total.toFixed(2)}</p>
               </div>
@@ -1798,10 +2117,10 @@ export default function POSPage() {
       )}
 
       {createPatientOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="my-8 w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-              <h2 className="text-lg font-semibold">New patient</h2>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
+          <div className="my-8 w-full max-h-[min(90vh,720px)] max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
+              <h2 className="text-lg font-semibold">New client</h2>
               <button
                 type="button"
                 onClick={closeCreatePatientModal}
@@ -1819,69 +2138,185 @@ export default function POSPage() {
                   {createPatientError}
                 </div>
               ) : null}
-              <div>
-                <Label>Name *</Label>
-                <input
-                  required
-                  value={createPatientForm.name}
-                  onChange={(e) => setCreatePatientForm((f) => ({ ...f, name: e.target.value }))}
-                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                  placeholder="Full name"
-                  autoFocus
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+              <ClientFormCard
+                title="Registration branch"
+                description="Defaults to this POS branch; change if the client registered elsewhere."
+              >
                 <div>
-                  <Label>Phone</Label>
-                  <input
-                    value={createPatientForm.phone}
-                    onChange={(e) => setCreatePatientForm((f) => ({ ...f, phone: e.target.value }))}
-                    className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                    placeholder="Optional"
-                  />
-                </div>
-                <div>
-                  <Label>Email</Label>
-                  <input
-                    type="email"
-                    value={createPatientForm.email}
-                    onChange={(e) => setCreatePatientForm((f) => ({ ...f, email: e.target.value }))}
-                    className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                    placeholder="Optional"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <DateField
-                  id="pos-new-patient-dob"
-                  label="Date of birth"
-                  value={createPatientForm.dateOfBirth}
-                  onChange={(v) => setCreatePatientForm((f) => ({ ...f, dateOfBirth: v }))}
-                  appendToBody
-                />
-                <div>
-                  <Label>Gender</Label>
+                  <Label>Branch *</Label>
                   <select
-                    value={createPatientForm.gender}
-                    onChange={(e) => setCreatePatientForm((f) => ({ ...f, gender: e.target.value }))}
+                    required
+                    autoFocus
+                    value={createPatientForm.registeredBranchId}
+                    onChange={(e) =>
+                      setCreatePatientForm((f) => ({ ...f, registeredBranchId: e.target.value }))
+                    }
                     className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
                   >
-                    <option value="">—</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
+                    <option value="">Select branch</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={String(b.id)}>
+                        {b.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
-              </div>
-              <div>
-                <Label>Address</Label>
-                <textarea
-                  value={createPatientForm.address}
-                  onChange={(e) => setCreatePatientForm((f) => ({ ...f, address: e.target.value }))}
-                  rows={2}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                  placeholder="Optional"
-                />
-              </div>
+              </ClientFormCard>
+
+              <ClientFormCard title="Personal information" description="Legal name, demographics, and date of birth.">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label>First name *</Label>
+                    <input
+                      required
+                      value={createPatientForm.firstName}
+                      onChange={(e) => setCreatePatientForm((f) => ({ ...f, firstName: e.target.value }))}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                      placeholder="First name"
+                      autoComplete="given-name"
+                    />
+                  </div>
+                  <div>
+                    <Label>Last name *</Label>
+                    <input
+                      required
+                      value={createPatientForm.lastName}
+                      onChange={(e) => setCreatePatientForm((f) => ({ ...f, lastName: e.target.value }))}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                      placeholder="Last name"
+                      autoComplete="family-name"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-end">
+                  <div className="lg:col-span-5">
+                    <DateField
+                      id="pos-new-patient-dob"
+                      label="Date of birth"
+                      value={createPatientForm.dateOfBirth}
+                      onChange={(v) => setCreatePatientForm((f) => ({ ...f, dateOfBirth: v }))}
+                      appendToBody
+                    />
+                  </div>
+                  <div className="lg:col-span-3">
+                    <AgeReadonlyInput dateOfBirth={createPatientForm.dateOfBirth} idSuffix="pos" />
+                  </div>
+                  <div className="lg:col-span-4">
+                    <Label>Gender</Label>
+                    <select
+                      value={createPatientForm.gender}
+                      onChange={(e) => setCreatePatientForm((f) => ({ ...f, gender: e.target.value }))}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                    >
+                      <option value="">—</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </div>
+                </div>
+              </ClientFormCard>
+
+              <ClientFormCard title="Address" description="City and village define locality; add street detail if needed.">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label>City *</Label>
+                    <select
+                      required
+                      value={createPatientForm.cityId}
+                      onChange={(e) =>
+                        setCreatePatientForm((f) => ({
+                          ...f,
+                          cityId: e.target.value,
+                          villageId: "",
+                        }))
+                      }
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                    >
+                      <option value="">Select city</option>
+                      {cities.map((c) => (
+                        <option key={c.id} value={String(c.id)}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Village *</Label>
+                    <select
+                      required
+                      value={createPatientForm.villageId}
+                      onChange={(e) =>
+                        setCreatePatientForm((f) => ({ ...f, villageId: e.target.value }))
+                      }
+                      disabled={!createPatientForm.cityId}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm disabled:opacity-50 dark:border-gray-700 dark:text-white"
+                    >
+                      <option value="">
+                        {createPatientForm.cityId ? "Select village" : "Select city first"}
+                      </option>
+                      {villages.map((v) => (
+                        <option key={v.id} value={String(v.id)}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <Label>Street / additional detail</Label>
+                  <textarea
+                    value={createPatientForm.address}
+                    onChange={(e) => setCreatePatientForm((f) => ({ ...f, address: e.target.value }))}
+                    rows={2}
+                    className="mt-1 min-h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                    placeholder="Optional"
+                  />
+                </div>
+              </ClientFormCard>
+
+              <ClientFormCard title="Contact details" description="How we reach the client.">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label>Phone</Label>
+                    <input
+                      value={createPatientForm.phone}
+                      onChange={(e) => setCreatePatientForm((f) => ({ ...f, phone: e.target.value }))}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div>
+                    <Label>Email</Label>
+                    <input
+                      type="email"
+                      value={createPatientForm.email}
+                      onChange={(e) => setCreatePatientForm((f) => ({ ...f, email: e.target.value }))}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+              </ClientFormCard>
+
+              <ClientFormCard title="Referral" description="Optional — where the client heard about you.">
+                <div>
+                  <Label>Referred from</Label>
+                  <select
+                    value={createPatientForm.referralSourceId}
+                    onChange={(e) => setCreatePatientForm((f) => ({ ...f, referralSourceId: e.target.value }))}
+                    className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                  >
+                    <option value="">— Not specified —</option>
+                    {referralSourceOptions.map((o) => (
+                      <option key={o.id} value={String(o.id)}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </ClientFormCard>
+
               <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
                 <Button type="button" variant="outline" size="sm" onClick={closeCreatePatientModal}>
                   Cancel
@@ -1948,8 +2383,11 @@ export default function POSPage() {
                     <div className="min-h-[200px] flex-1 overflow-y-auto p-3 md:min-h-[320px]">
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {editFilteredProducts.map((p) => {
-                          const maxQ = getEditMaxQty(p.id);
-                          const line = editCart.find((c) => c.productId === p.id);
+                          const defU = defaultSaleUnit(p);
+                          const maxQ = getEditMaxQty(p.id, defU.baseUnitsEach);
+                          const editBaseInCart = editCart
+                            .filter((c) => c.productId === p.id)
+                            .reduce((s, c) => s + c.quantity * c.baseUnitsEach, 0);
                           return (
                             <button
                               key={p.id}
@@ -1959,9 +2397,13 @@ export default function POSPage() {
                               className="flex min-w-0 flex-col rounded-lg border border-gray-200 bg-white p-2 text-left text-xs transition hover:shadow disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800"
                             >
                               <span className="line-clamp-2 min-w-0 break-words font-medium">{p.name}</span>
-                              <span className="text-[10px] text-gray-500">${p.sellingPrice.toFixed(2)} · Stock {maxQ}</span>
-                              {line ? (
-                                <span className="mt-1 text-[10px] font-medium text-brand-600">In cart: {line.quantity}</span>
+                              <span className="text-[10px] text-gray-500">
+                                ${p.sellingPrice.toFixed(2)}/{defU.label} · max {maxQ} {defU.label}
+                              </span>
+                              {editBaseInCart > 0 ? (
+                                <span className="mt-1 text-[10px] font-medium text-brand-600">
+                                  In cart: {editBaseInCart} base
+                                </span>
                               ) : null}
                             </button>
                           );
@@ -2002,7 +2444,7 @@ export default function POSPage() {
                               : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
                           }`}
                         >
-                          Patient
+                          Client
                         </button>
                       </div>
                       {editCustomerType === "patient" && (
@@ -2027,7 +2469,7 @@ export default function POSPage() {
                               <div className="flex gap-1">
                                 <input
                                   type="text"
-                                  placeholder="Search patient…"
+                                  placeholder="Search client…"
                                   value={editPatientSearch}
                                   onChange={(e) => {
                                     setEditPatientSearch(e.target.value);
@@ -2060,7 +2502,7 @@ export default function POSPage() {
                                           }}
                                           className="mt-1 text-brand-600 font-medium hover:underline dark:text-brand-400"
                                         >
-                                          Create patient
+                                          Create client
                                         </button>
                                       )}
                                     </div>
@@ -2095,28 +2537,50 @@ export default function POSPage() {
                         <p className="text-sm text-gray-500">Add products from the left.</p>
                       ) : (
                         <div className="space-y-2">
-                          {editCart.map((c) => (
+                          {editCart.map((c) => {
+                            const p = products.find((x) => x.id === c.productId);
+                            const unitOptions =
+                              p?.saleUnits && p.saleUnits.length > 0
+                                ? p.saleUnits
+                                : [{ unitKey: c.saleUnitKey, label: c.saleUnitLabel, baseUnitsEach: c.baseUnitsEach }];
+                            return (
                             <div
-                              key={c.productId}
+                              key={c.cartKey}
                               className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-2 gap-y-1 rounded-lg border border-gray-200 bg-white p-2 text-xs dark:border-gray-700 dark:bg-gray-800"
                             >
                               <div className="min-w-0">
                                 <p className="wrap-break-word font-medium leading-snug">{c.name}</p>
+                                {p && unitOptions.length > 1 ? (
+                                  <select
+                                    value={c.saleUnitKey}
+                                    onChange={(e) => setEditCartSaleUnit(c.cartKey, e.target.value)}
+                                    className="mt-0.5 max-w-full rounded border border-gray-200 bg-white px-1 py-0.5 text-[10px] dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                                    aria-label="Sale unit"
+                                  >
+                                    {unitOptions.map((u) => (
+                                      <option key={u.unitKey} value={u.unitKey}>
+                                        {u.label} (×{u.baseUnitsEach} base)
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <p className="text-gray-500">{c.saleUnitLabel}</p>
+                                )}
                                 <p className="text-gray-500">
-                                  ${c.sellingPrice.toFixed(2)} / pcs × {c.quantity}
+                                  ${c.sellingPrice.toFixed(2)} × {c.quantity}
                                 </p>
                               </div>
                               <div className="flex shrink-0 items-center gap-1">
                                 <button
                                   type="button"
-                                  onClick={() => updateEditCartQty(c.productId, -1)}
+                                  onClick={() => updateEditCartQty(c.cartKey, -1)}
                                   className="flex h-7 w-7 items-center justify-center rounded bg-gray-200 dark:bg-gray-700"
                                 >
                                   −
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => updateEditCartQty(c.productId, 1)}
+                                  onClick={() => updateEditCartQty(c.cartKey, 1)}
                                   className="flex h-7 w-7 items-center justify-center rounded bg-gray-200 dark:bg-gray-700"
                                 >
                                   +
@@ -2125,13 +2589,13 @@ export default function POSPage() {
                               <span className="shrink-0 text-right font-semibold w-14">${c.totalAmount.toFixed(2)}</span>
                               <button
                                 type="button"
-                                onClick={() => removeFromEditCart(c.productId)}
+                                onClick={() => removeFromEditCart(c.cartKey)}
                                 className="shrink-0 text-gray-400 hover:text-error-500"
                               >
                                 <TrashBinIcon className="h-4 w-4" />
                               </button>
                             </div>
-                          ))}
+                          );})}
                         </div>
                       )}
                     </div>

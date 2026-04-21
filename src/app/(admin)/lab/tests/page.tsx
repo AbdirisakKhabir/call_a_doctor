@@ -1,10 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
-import Button from "@/components/ui/button/Button";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
-import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
@@ -30,11 +29,6 @@ export default function LabTestsPage() {
   const pageSize = 20;
   const [categories, setCategories] = useState<LabCategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<"add" | "edit" | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ categoryId: "", name: "", code: "", unit: "", normalRange: "", price: "" });
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
 
   const canCreate = hasPermission("lab.create");
   const canEdit = hasPermission("lab.edit");
@@ -67,66 +61,6 @@ export default function LabTestsPage() {
     loadTests().finally(() => setLoading(false));
   }, [page]);
 
-  function openAdd() {
-    setModal("add");
-    setEditingId(null);
-    setForm({ categoryId: categories[0] ? String(categories[0].id) : "", name: "", code: "", unit: "", normalRange: "", price: "" });
-    setError("");
-  }
-
-  function openEdit(t: LabTest) {
-    setModal("edit");
-    setEditingId(t.id);
-    setForm({
-      categoryId: String(t.category.id),
-      name: t.name,
-      code: t.code ?? "",
-      unit: t.unit ?? "",
-      normalRange: t.normalRange ?? "",
-      price: String(t.price ?? 0),
-    });
-    setError("");
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setSubmitting(true);
-    try {
-      if (modal === "add") {
-        const res = await authFetch("/api/lab/tests", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...form,
-            categoryId: Number(form.categoryId),
-            price: form.price === "" ? 0 : Number(form.price),
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) { setError(data.error || "Failed"); return; }
-        await loadTests();
-        setModal(null);
-      } else if (modal === "edit" && editingId) {
-        const res = await authFetch(`/api/lab/tests/${editingId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...form,
-            categoryId: Number(form.categoryId),
-            price: form.price === "" ? 0 : Number(form.price),
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) { setError(data.error || "Failed"); return; }
-        await loadTests();
-        setModal(null);
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   async function handleDelete(id: number) {
     if (!confirm("Delete this test?")) return;
     const res = await authFetch(`/api/lab/tests/${id}`, { method: "DELETE" });
@@ -149,7 +83,15 @@ export default function LabTestsPage() {
     <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="Lab Tests" />
-        {canCreate && categories.length > 0 && <Button startIcon={<PlusIcon />} onClick={openAdd} size="sm">Add Test</Button>}
+        {canCreate && categories.length > 0 && (
+          <Link
+            href="/lab/tests/new"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+          >
+            <PlusIcon />
+            Add Test
+          </Link>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
@@ -182,8 +124,25 @@ export default function LabTestsPage() {
                   {(canEdit || canDelete) && (
                     <TableCell>
                       <div className="flex gap-2">
-                        {canEdit && <button onClick={() => openEdit(t)} className="text-brand-500 hover:underline"><PencilIcon className="size-4" /></button>}
-                        {canDelete && <button onClick={() => handleDelete(t.id)} className="text-error-500 hover:underline"><TrashBinIcon className="size-4" /></button>}
+                        {canEdit && (
+                          <Link
+                            href={`/lab/tests/${t.id}/edit`}
+                            className="inline-flex text-brand-500 hover:underline"
+                            title="Edit"
+                          >
+                            <PencilIcon className="size-4" />
+                          </Link>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(t.id)}
+                            className="text-error-500 hover:underline"
+                            title="Delete"
+                          >
+                            <TrashBinIcon className="size-4" />
+                          </button>
+                        )}
                       </div>
                     </TableCell>
                   )}
@@ -202,58 +161,6 @@ export default function LabTestsPage() {
           onPageChange={setPage}
         />
       </div>
-
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-            <h2 className="mb-4 text-lg font-semibold">{modal === "add" ? "Add Test" : "Edit Test"}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600">{error}</div>}
-              <div>
-                <Label htmlFor="cat">Category *</Label>
-                <select id="cat" required value={form.categoryId} onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white">
-                  <option value="">Select</option>
-                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <Label htmlFor="name">Name *</Label>
-                <input id="name" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-              </div>
-              <div>
-                <Label htmlFor="code">Code</Label>
-                <input id="code" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-              </div>
-              <div>
-                <Label htmlFor="unit">Unit</Label>
-                <input id="unit" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" placeholder="e.g. mg/dL" />
-              </div>
-              <div>
-                <Label htmlFor="range">Normal Range</Label>
-                <input id="range" value={form.normalRange} onChange={(e) => setForm((f) => ({ ...f, normalRange: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" placeholder="e.g. 70-100" />
-              </div>
-              <div>
-                <Label htmlFor="price">Test price ($)</Label>
-                <input
-                  id="price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.price}
-                  onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                  placeholder="0.00"
-                />
-                <p className="mt-1 text-xs text-gray-500">Charged to the patient when this test is ordered.</p>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setModal(null)} size="sm">Cancel</Button>
-                <Button type="submit" disabled={submitting} size="sm">{submitting ? "Saving..." : "Save"}</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }

@@ -131,7 +131,7 @@ export default function OutreachDispensePage() {
     setError("");
     setSuccess("");
     if (!branchId || !teamId || !patientId) {
-      setError("Select branch, team, and patient.");
+      setError("Select branch, team, and client.");
       return;
     }
     const items = lines
@@ -160,7 +160,7 @@ export default function OutreachDispensePage() {
         return;
       }
       setSuccess(
-        `Emergency medication #${data.id} recorded. Patient balance updated. New balance: $${Number(data.patient?.accountBalance ?? 0).toFixed(2)}`
+        `Emergency medication #${data.id} recorded. Client balance updated. New balance: $${Number(data.patient?.accountBalance ?? 0).toFixed(2)}`
       );
       setNotes("");
       await loadTeams();
@@ -182,8 +182,8 @@ export default function OutreachDispensePage() {
     <div>
       <PageBreadCrumb pageTitle="Emergency medication (home visit)" />
       <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-gray-400">
-        Record emergency medication given from the outreach bag to a patient. Bag stock decreases and the charge
-        is added to the patient&apos;s account balance. Collect payment under Patients when the patient pays.
+        Record emergency medication given from the outreach bag to a client. Bag stock decreases and the charge
+        is added to the client&apos;s account balance. Collect payment under Clients when the client pays.
       </p>
 
       <form
@@ -238,7 +238,7 @@ export default function OutreachDispensePage() {
         </div>
 
         <div className="relative">
-          <Label>Patient *</Label>
+          <Label>Client *</Label>
           {patientId ? (
             <div className="mt-1 flex items-center justify-between rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 dark:border-brand-800 dark:bg-brand-500/10">
               <span className="text-sm font-medium">{patientLabel}</span>

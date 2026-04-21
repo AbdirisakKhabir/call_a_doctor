@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { requireActiveBranchAccess } from "@/lib/pharmacy-branch";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { replaceProductSaleUnits, validateSaleUnitsPayload, type SaleUnitInput } from "@/lib/product-sale-units";
+import { computeBaseQuantityFromPackagingLines } from "@/lib/product-quantity-lines";
 
 export async function GET(req: NextRequest) {
   try {
@@ -41,6 +43,7 @@ export async function GET(req: NextRequest) {
 
     const include = {
       category: { select: { id: true, name: true } },
+      saleUnits: { orderBy: { sortOrder: "asc" as const } },
     };
 
     if (paginate) {
@@ -93,6 +96,8 @@ export async function POST(req: NextRequest) {
       forSale,
       internalPurpose,
       expiryDate,
+      saleUnits: saleUnitsRaw,
+      quantityLines: quantityLinesRaw,
     } = body;
 
     const resolved = await requireActiveBranchAccess(auth.userId, bodyBranchId);
@@ -144,26 +149,67 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const product = await prisma.product.create({
-      data: {
-        branchId,
-        name: String(name).trim(),
-        code: codeNorm,
-        description: description ? String(description).trim() : null,
-        imageUrl: imageUrl || null,
-        imagePublicId: imagePublicId || null,
-        costPrice: Number(costPrice) || 0,
-        sellingPrice: Number(sellingPrice) || 0,
-        quantity: Math.max(0, Math.floor(Number(quantity) || 0)),
-        unit: unit ? String(unit).trim() : "pcs",
-        expiryDate: expiryDateVal,
-        categoryId: categoryIdVal,
-        forSale: saleFlag,
-        internalPurpose: saleFlag ? null : purposeRaw,
-      },
-      include: {
-        category: { select: { id: true, name: true } },
-      },
+    const baseLabel = unit ? String(unit).trim() : "Unit";
+    let saleUnitRows: SaleUnitInput[];
+    if (Array.isArray(saleUnitsRaw) && saleUnitsRaw.length > 0) {
+      const v = validateSaleUnitsPayload(saleUnitsRaw as SaleUnitInput[]);
+      if (!v.ok) {
+        return NextResponse.json({ error: v.error }, { status: 400 });
+      }
+      saleUnitRows = v.rows;
+    } else {
+      saleUnitRows = [
+        {
+          unitKey: "base",
+          label: baseLabel === "pcs" ? "Unit" : baseLabel.slice(0, 191),
+          baseUnitsEach: 1,
+          sortOrder: 0,
+        },
+      ];
+    }
+
+    let initialQty = Math.max(0, Math.floor(Number(quantity) || 0));
+    if (Array.isArray(quantityLinesRaw) && quantityLinesRaw.length > 0) {
+      const lines = quantityLinesRaw
+        .filter((x: unknown) => x && typeof x === "object")
+        .map((x: { unitKey?: unknown; quantity?: unknown }) => ({
+          unitKey: String((x as { unitKey?: string }).unitKey ?? ""),
+          quantity: Number((x as { quantity?: number }).quantity),
+        }));
+      const conv = computeBaseQuantityFromPackagingLines(lines, saleUnitRows);
+      if (!conv.ok) {
+        return NextResponse.json({ error: conv.error }, { status: 400 });
+      }
+      initialQty = conv.base;
+    }
+
+    const product = await prisma.$transaction(async (tx) => {
+      const p = await tx.product.create({
+        data: {
+          branchId,
+          name: String(name).trim(),
+          code: codeNorm,
+          description: description ? String(description).trim() : null,
+          imageUrl: imageUrl || null,
+          imagePublicId: imagePublicId || null,
+          costPrice: Number(costPrice) || 0,
+          sellingPrice: Number(sellingPrice) || 0,
+          quantity: initialQty,
+          unit: unit ? String(unit).trim() : "pcs",
+          expiryDate: expiryDateVal,
+          categoryId: categoryIdVal,
+          forSale: saleFlag,
+          internalPurpose: saleFlag ? null : purposeRaw,
+        },
+      });
+      await replaceProductSaleUnits(tx, p.id, saleUnitRows);
+      return tx.product.findUniqueOrThrow({
+        where: { id: p.id },
+        include: {
+          category: { select: { id: true, name: true } },
+          saleUnits: { orderBy: { sortOrder: "asc" } },
+        },
+      });
     });
     await logAuditFromRequest(req, {
       userId: auth.userId,

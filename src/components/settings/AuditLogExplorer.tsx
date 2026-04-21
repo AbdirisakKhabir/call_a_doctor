@@ -178,12 +178,12 @@ export default function AuditLogExplorer({ variant }: Props) {
         {isAdminView ? (
           <>
             Actions performed by accounts with the <strong>Admin</strong> role—sign-ins, configuration changes,
-            pharmacy and patient operations, and other audited events. Use this so other administrators and
+            pharmacy and client operations, and other audited events. Use this so other administrators and
             supervisors can review what Admin users did without seeing all staff activity.
           </>
         ) : (
           <>
-            Sign-ins and recorded actions across pharmacy, patients, appointments, visit cards, payments, and
+            Sign-ins and recorded actions across pharmacy, clients, appointments, visit cards, payments, and
             other modules. Filter by date, user, module, or action.
           </>
         )}
@@ -261,7 +261,7 @@ export default function AuditLogExplorer({ variant }: Props) {
             <label className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Module</label>
             <InputField
               type="text"
-              placeholder="e.g. pharmacy, patients"
+              placeholder="e.g. pharmacy, clients"
               value={moduleQ}
               onChange={(e) => {
                 setModuleQ(e.target.value);

@@ -227,7 +227,7 @@ export default function PrescriptionsPage() {
         <div>
           <PageBreadCrumb pageTitle="Prescriptions & medications" />
           <p className="mt-1 max-w-2xl text-xs text-gray-500 dark:text-gray-400">
-            Prescriptions live on the patient chart (from a visit). Each line is one medication with dose and instructions for pharmacy and audits.
+            Prescriptions live on the client chart (from a visit). Each line is one medication with dose and instructions for pharmacy and audits.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -258,7 +258,7 @@ export default function PrescriptionsPage() {
               href="/pharmacy/patient-invoice"
               className="inline-flex h-10 items-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
             >
-              Patient invoice
+              Client invoice
             </Link>
           )}
           {canCreate && createFrom && (
@@ -283,7 +283,7 @@ export default function PrescriptionsPage() {
             <div className="px-6 py-5 space-y-5">
               {prescribePatient && (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800/50">
-                  <span className="text-gray-500">Patient: </span>
+                  <span className="text-gray-500">Client: </span>
                   <span className="font-medium">{prescribePatient.name}</span>
                   <span className="ml-1 font-mono text-xs text-gray-500">({prescribePatient.patientCode})</span>
                 </div>
@@ -301,7 +301,7 @@ export default function PrescriptionsPage() {
                   onChange={(e) => setCreateForm((f) => ({ ...f, isEmergency: e.target.checked }))}
                   className="rounded border-gray-300 text-brand-600"
                 />
-                <span>Emergency prescription (multiple allowed per patient; filter on Patient invoice)</span>
+                <span>Emergency prescription (multiple allowed per client; filter on Client invoice)</span>
               </label>
               <div>
                 <Label>Add medication (inventory product)</Label>
@@ -323,7 +323,7 @@ export default function PrescriptionsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(item.productId, "quantity", Number(e.target.value))} className="h-9 w-16 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" title="Quantity (units)" />
                           <input placeholder="Dose (e.g. 500mg)" value={item.dosage} onChange={(e) => updateItem(item.productId, "dosage", e.target.value)} className="h-9 w-36 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-                          <input placeholder="SIG / patient instructions" value={item.instructions} onChange={(e) => updateItem(item.productId, "instructions", e.target.value)} className="h-9 min-w-[160px] flex-1 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+                          <input placeholder="SIG / client instructions" value={item.instructions} onChange={(e) => updateItem(item.productId, "instructions", e.target.value)} className="h-9 min-w-[160px] flex-1 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
                           <button type="button" onClick={() => removeProduct(item.productId)} className="rounded-lg p-2 text-error-500 hover:bg-error-50 dark:hover:bg-error-500/10">
                             <TrashBinIcon className="h-4 w-4" />
                           </button>
@@ -374,7 +374,7 @@ export default function PrescriptionsPage() {
             <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-800/50">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Patient</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Client</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Medication</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Qty</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Dose</th>

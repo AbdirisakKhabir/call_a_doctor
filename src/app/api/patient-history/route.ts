@@ -35,8 +35,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { patientId, appointmentId, doctorId, type, notes } = body;
     if (!patientId || !doctorId || !type || !notes || typeof notes !== "string" || !notes.trim()) {
-      return NextResponse.json({ error: "Patient, doctor, type and notes are required" }, { status: 400 });
+      return NextResponse.json({ error: "Client, doctor, type and notes are required" }, { status: 400 });
     }
+    let careFileId: number | null = null;
+    if (appointmentId) {
+      const appt = await prisma.appointment.findUnique({
+        where: { id: Number(appointmentId) },
+        select: { careFileId: true, patientId: true },
+      });
+      if (appt && appt.patientId === Number(patientId)) {
+        careFileId = appt.careFileId ?? null;
+      }
+    }
+
     const history = await prisma.patientHistory.create({
       data: {
         patientId: Number(patientId),
@@ -44,6 +55,7 @@ export async function POST(req: NextRequest) {
         doctorId: Number(doctorId),
         type: String(type).trim(),
         notes: notes.trim(),
+        careFileId,
       },
       include: {
         doctor: { select: { id: true, name: true } },

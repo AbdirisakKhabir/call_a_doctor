@@ -140,8 +140,8 @@ export default function PatientHistoryViewPage() {
   if (!canView) {
     return (
       <div>
-        <PageBreadCrumb pageTitle="Patient history" />
-        <p className="mt-6 text-sm text-gray-500">You do not have permission to view patients.</p>
+        <PageBreadCrumb pageTitle="Client history" />
+        <p className="mt-6 text-sm text-gray-500">You do not have permission to view clients.</p>
       </div>
     );
   }
@@ -149,8 +149,8 @@ export default function PatientHistoryViewPage() {
   if (!patientId) {
     return (
       <div>
-        <PageBreadCrumb pageTitle="Patient history" />
-        <p className="mt-6 text-sm text-gray-500">Invalid patient.</p>
+        <PageBreadCrumb pageTitle="Client history" />
+        <p className="mt-6 text-sm text-gray-500">Invalid client.</p>
       </div>
     );
   }
@@ -158,13 +158,21 @@ export default function PatientHistoryViewPage() {
   return (
     <div>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <PageBreadCrumb pageTitle="Patient history" />
-        <Link
-          href="/patients"
-          className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
-        >
-          ← Back to patients
-        </Link>
+        <PageBreadCrumb pageTitle="Client history" />
+        <div className="flex flex-wrap gap-4">
+          <Link
+            href={`/patients/${patientId}/care-files`}
+            className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+          >
+            Client files
+          </Link>
+          <Link
+            href="/patients"
+            className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+          >
+            ← Back to clients
+          </Link>
+        </div>
       </div>
 
       {loading ? (
@@ -260,7 +268,7 @@ export default function PatientHistoryViewPage() {
             </div>
             <div className="space-y-4 p-6">
               {data.labOrders.length === 0 ? (
-                <p className="text-center text-sm text-gray-500">No lab orders for this patient.</p>
+                <p className="text-center text-sm text-gray-500">No lab orders for this client.</p>
               ) : (
                 data.labOrders.map((order) => (
                   <div
@@ -336,7 +344,7 @@ export default function PatientHistoryViewPage() {
             </div>
             <div className="space-y-4 p-6">
               {data.prescriptions.length === 0 ? (
-                <p className="text-center text-sm text-gray-500">No prescriptions for this patient.</p>
+                <p className="text-center text-sm text-gray-500">No prescriptions for this client.</p>
               ) : (
                 data.prescriptions.map((rx) => (
                   <div

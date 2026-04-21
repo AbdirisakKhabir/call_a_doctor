@@ -9,10 +9,27 @@ import {
   getVisitCardAccess,
 } from "@/lib/visit-card-access";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { serializePatient } from "@/lib/patient-name";
 
 const visitInclude = {
   branch: { select: { id: true, name: true } },
-  patient: { select: { id: true, patientCode: true, name: true, phone: true } },
+  patient: {
+    select: {
+      id: true,
+      patientCode: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      address: true,
+      cityId: true,
+      villageId: true,
+      registeredBranchId: true,
+      city: { select: { id: true, name: true } },
+      village: { select: { id: true, name: true } },
+      registeredBranch: { select: { id: true, name: true } },
+      referralSource: { select: { id: true, name: true } },
+    },
+  },
   doctor: { select: { id: true, name: true } },
   paymentMethod: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true, email: true } },
@@ -52,7 +69,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    return NextResponse.json(card);
+    return NextResponse.json({ ...card, patient: serializePatient(card.patient) });
   } catch (e) {
     console.error("Visit card GET error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -218,9 +235,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id: cardId },
       include: visitInclude,
     });
+    if (!fresh) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     let balanceAfter: number | undefined;
-    if (fresh?.depositTransaction?.accountId != null) {
+    if (fresh.depositTransaction?.accountId != null) {
       balanceAfter = await getFinanceAccountBalance(fresh.depositTransaction.accountId);
     }
 
@@ -232,7 +252,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       resourceId: cardId,
       metadata: { depositCreated: needDeposit },
     });
-    return NextResponse.json({ ...fresh, balanceAfter });
+    return NextResponse.json({
+      ...fresh,
+      patient: serializePatient(fresh.patient),
+      balanceAfter,
+    });
   } catch (e) {
     console.error("Visit card PATCH error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });

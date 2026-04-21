@@ -1,6 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { userHasPermission } from "@/lib/permissions";
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const auth = await getAuthUser(req);
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await userHasPermission(auth.userId, "lab.view"))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const { id } = await params;
+    const parsedId = Number(id);
+    if (!Number.isInteger(parsedId) || parsedId <= 0) {
+      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
+    }
+    const test = await prisma.labTest.findUnique({
+      where: { id: parsedId },
+      include: { category: { select: { id: true, name: true } } },
+    });
+    if (!test) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(test);
+  } catch (e) {
+    console.error("Get lab test error:", e);
+    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+  }
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

@@ -12,29 +12,46 @@ export type PatientPaymentTarget = {
   accountBalance?: number;
 };
 
-type PaymentCategory = "medication" | "prescription" | "pharmacy_credit";
+type PaymentCategory = "medication" | "prescription" | "pharmacy_credit" | "laboratory";
 
 const CATEGORY_OPTIONS: { value: PaymentCategory; label: string }[] = [
   { value: "medication", label: "Medication" },
   { value: "prescription", label: "Prescription" },
   { value: "pharmacy_credit", label: "Pharmacy credits" },
+  { value: "laboratory", label: "Laboratory (lab fee)" },
 ];
+
+type PendingLabOrder = {
+  id: number;
+  totalAmount: number;
+  feeRemaining: number;
+  feeSettled: boolean;
+  doctor: { id: number; name: string };
+  createdAt: string;
+};
 
 type PatientPaymentModalProps = {
   patient: PatientPaymentTarget | null;
   onClose: () => void;
   onSuccess: () => void | Promise<void>;
+  /** Inline card for /payments/new (no fullscreen overlay). */
+  embedded?: boolean;
 };
 
 export default function PatientPaymentModal({
   patient,
   onClose,
   onSuccess,
+  embedded = false,
 }: PatientPaymentModalProps) {
   const [amount, setAmount] = useState("");
+  const [discount, setDiscount] = useState("");
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [notes, setNotes] = useState("");
   const [category, setCategory] = useState<PaymentCategory>("medication");
+  const [labOrderId, setLabOrderId] = useState("");
+  const [pendingLabOrders, setPendingLabOrders] = useState<PendingLabOrder[]>([]);
+  const [loadingLabOrders, setLoadingLabOrders] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
@@ -49,6 +66,9 @@ export default function PatientPaymentModal({
     setPaymentMethodId("");
     setNotes("");
     setCategory("medication");
+    setDiscount("");
+    setLabOrderId("");
+    setPendingLabOrders([]);
     setError("");
   }, [patient?.id]);
 
@@ -71,30 +91,77 @@ export default function PatientPaymentModal({
     };
   }, [patient?.id]);
 
+  useEffect(() => {
+    if (!patient || category !== "laboratory") return;
+    let cancelled = false;
+    setLoadingLabOrders(true);
+    authFetch(`/api/patients/${patient.id}/lab-orders?pendingFee=1`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: unknown) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? (data as PendingLabOrder[]) : [];
+        setPendingLabOrders(list);
+        const first = list[0];
+        setLabOrderId((prev) => {
+          if (prev && list.some((o) => String(o.id) === prev)) return prev;
+          return first ? String(first.id) : "";
+        });
+        if (first) {
+          const bal = patient.accountBalance ?? 0;
+          const apply = Math.min(bal, first.feeRemaining);
+          setAmount(apply > 0 ? String(apply) : "");
+          setDiscount("");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPendingLabOrders([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingLabOrders(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [patient?.id, category]);
+
   if (!patient) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!patient) return;
     setError("");
-    const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      setError("Enter a valid amount");
+    const cash = Number(amount);
+    const disc = discount.trim() === "" ? 0 : Number(discount);
+    const cashNum = Number.isFinite(cash) && cash > 0 ? cash : 0;
+    const discNum = Number.isFinite(disc) && disc > 0 ? disc : 0;
+    if (cashNum < 0 || discNum < 0) {
+      setError("Cash and discount cannot be negative");
       return;
     }
-    if (!paymentMethodId) {
-      setError("Select a payment method");
+    if (cashNum + discNum <= 0) {
+      setError("Enter cash collected and/or a discount");
       return;
     }
+    if (cashNum > 0 && !paymentMethodId) {
+      setError("Select a payment method for cash collected");
+      return;
+    }
+    if (category === "laboratory" && !labOrderId) {
+      setError("Select a lab order with an unpaid fee");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await authFetch(`/api/patients/${patient.id}/payments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: amt,
-          paymentMethodId: Number(paymentMethodId),
+          amount: cashNum,
+          discount: discNum,
+          paymentMethodId: cashNum > 0 ? Number(paymentMethodId) : null,
           category,
+          labOrderId: category === "laboratory" ? Number(labOrderId) : undefined,
           notes: notes.trim() || null,
         }),
       });
@@ -103,114 +170,205 @@ export default function PatientPaymentModal({
         setError(data.error || "Payment failed");
         return;
       }
-      onClose();
+
+      if (!embedded) onClose();
       await onSuccess();
     } finally {
       setSubmitting(false);
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-          <h2 className="text-lg font-semibold">Record payment</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            ×
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
-          {error && (
-            <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-              {error}
-            </div>
-          )}
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            {patient.name} ({patient.patientCode}) — balance due:{" "}
-            <span className="font-semibold text-gray-900 dark:text-white">
-              ${(patient.accountBalance ?? 0).toFixed(2)}
-            </span>
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Payment reduces the patient account balance. Choose what this payment is for (reporting); amounts over the
-            balance are capped to the balance due.
-          </p>
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">Payment for *</legend>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              {CATEGORY_OPTIONS.map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                    category === opt.value
-                      ? "border-brand-500 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/15"
-                      : "border-gray-200 dark:border-gray-700"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentCategory"
-                    value={opt.value}
-                    checked={category === opt.value}
-                    onChange={() => setCategory(opt.value)}
-                    className="border-gray-300 text-brand-600"
-                  />
-                  {opt.label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+  const shellClass = embedded
+    ? "max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-white/3"
+    : "max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900";
+
+  const header = (
+    <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+      <h2 className="text-lg font-semibold">Record payment</h2>
+      {embedded ? (
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
+          Change client
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+
+  const formBody = (
+    <>
+      {header}
+      <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
+        {error && (
+          <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+            {error}
+          </div>
+        )}
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          {patient.name} ({patient.patientCode}) — balance due:{" "}
+          <span className="font-semibold text-gray-900 dark:text-white">
+            ${(patient.accountBalance ?? 0).toFixed(2)}
+          </span>
+        </p>
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">Payment for *</legend>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            {CATEGORY_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                  category === opt.value
+                    ? "border-brand-500 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/15"
+                    : "border-gray-200 dark:border-gray-700"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="paymentCategory"
+                  value={opt.value}
+                  checked={category === opt.value}
+                  onChange={() => {
+                    const v = opt.value;
+                    setCategory(v);
+                    if (v !== "laboratory") {
+                      setLabOrderId("");
+                      setPendingLabOrders([]);
+                    }
+                  }}
+                  className="border-gray-300 text-brand-600"
+                />
+                {opt.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {category === "laboratory" && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
+            Select the lab requisition this payment applies to. Results can be recorded even if the fee is not fully
+            settled yet; post the fee here when cash or a write-off is collected.
+          </div>
+        )}
+
+        {category === "laboratory" && (
           <div>
-            <Label>Amount *</Label>
+            <Label>Lab order *</Label>
+            {loadingLabOrders ? (
+              <p className="mt-1 text-sm text-gray-500">Loading open lab orders…</p>
+            ) : pendingLabOrders.length === 0 ? (
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                No unpaid lab fees. If tests were just ordered, the charge appears on the client account—refresh this
+                screen or check the lab orders list.
+              </p>
+            ) : (
+              <select
+                required
+                value={labOrderId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setLabOrderId(id);
+                  const o = pendingLabOrders.find((x) => String(x.id) === id);
+                  if (o) {
+                    const bal = patient.accountBalance ?? 0;
+                    const apply = Math.min(bal, o.feeRemaining);
+                    setAmount(apply > 0 ? String(apply) : "");
+                  }
+                }}
+                className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              >
+                {pendingLabOrders.map((o) => (
+                  <option key={o.id} value={String(o.id)}>
+                    Order #{o.id} — {o.doctor.name} — remaining ${o.feeRemaining.toFixed(2)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Cash collected</Label>
+            <p className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">Leave 0 if applying only a discount.</p>
             <input
               type="number"
               step="0.01"
-              min="0.01"
-              required
+              min="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
           </div>
           <div>
-            <Label>Payment method *</Label>
-            <select
-              required
-              value={paymentMethodId}
-              onChange={(e) => setPaymentMethodId(e.target.value)}
+            <Label>Discount</Label>
+            <p className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">Write-off toward balance (no cash).</p>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={discount}
+              onChange={(e) => setDiscount(e.target.value)}
               className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            >
-              <option value="">Select…</option>
-              {paymentMethods.map((m) => (
-                <option key={m.id} value={String(m.id)}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>Notes</Label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              className="mt-1 w-full rounded-lg border border-gray-200 px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? "Saving…" : "Record payment"}
-            </Button>
-          </div>
-        </form>
-      </div>
+        </div>
+        <div>
+          <Label>Payment method {Number(amount) > 0 ? "*" : ""}</Label>
+          <p className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">
+            Required when collecting cash; optional for discount-only.
+          </p>
+          <select
+            value={paymentMethodId}
+            onChange={(e) => setPaymentMethodId(e.target.value)}
+            className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+          >
+            <option value="">Select…</option>
+            {paymentMethods.map((m) => (
+              <option key={m.id} value={String(m.id)}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>Notes</Label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            className="mt-1 w-full rounded-lg border border-gray-200 px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            {embedded ? "Change client" : "Cancel"}
+          </Button>
+          <Button type="submit" size="sm" disabled={submitting}>
+            {submitting ? "Saving…" : "Record payment"}
+          </Button>
+        </div>
+      </form>
+    </>
+  );
+
+  if (embedded) {
+    return <div className={shellClass}>{formBody}</div>;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className={shellClass}>{formBody}</div>
     </div>
   );
 }

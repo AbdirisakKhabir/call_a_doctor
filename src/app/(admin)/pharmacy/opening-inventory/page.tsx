@@ -11,6 +11,13 @@ import { PlusIcon } from "@/icons";
 import Image from "next/image";
 import ProductBarcodeLabel from "@/components/pharmacy/ProductBarcodeLabel";
 import { suggestBarcodeValue } from "@/lib/barcode";
+import ProductSaleUnitsEditor, {
+  defaultProductSaleUnitRows,
+  saleUnitRowsToPayload,
+  syncBaseSaleUnitLabel,
+  validateSaleUnitRowsClient,
+  type ProductSaleUnitRow,
+} from "@/components/pharmacy/ProductSaleUnitsEditor";
 
 type Category = { id: number; name: string };
 type Branch = { id: number; name: string };
@@ -40,6 +47,7 @@ export default function OpeningInventoryPage() {
     internalPurpose: "general" as "laboratory" | "cleaning" | "general",
     expiryDate: "",
   });
+  const [saleUnitRows, setSaleUnitRows] = useState<ProductSaleUnitRow[]>(() => defaultProductSaleUnitRows("pcs"));
 
   const canManageSettings = hasPermission("settings.manage");
 
@@ -81,6 +89,10 @@ export default function OpeningInventoryPage() {
       cancelled = true;
     };
   }, [branchId]);
+
+  useEffect(() => {
+    setSaleUnitRows((rows) => syncBaseSaleUnitLabel(rows, form.unit));
+  }, [form.unit]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -124,6 +136,12 @@ export default function OpeningInventoryPage() {
         return;
       }
 
+      const unitsCheck = validateSaleUnitRowsClient(saleUnitRows);
+      if (!unitsCheck.ok) {
+        setError(unitsCheck.error);
+        return;
+      }
+
       const res = await authFetch("/api/pharmacy/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,6 +160,7 @@ export default function OpeningInventoryPage() {
           forSale: form.forSale,
           internalPurpose: form.forSale ? undefined : form.internalPurpose,
           expiryDate: form.expiryDate.trim() ? form.expiryDate : undefined,
+          saleUnits: saleUnitRowsToPayload(saleUnitRows),
         }),
       });
       const data = await res.json();
@@ -162,6 +181,7 @@ export default function OpeningInventoryPage() {
         internalPurpose: "general",
         expiryDate: "",
       });
+      setSaleUnitRows(defaultProductSaleUnitRows("pcs"));
       setImageFile(null);
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -377,7 +397,10 @@ export default function OpeningInventoryPage() {
           </p>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
-              <Label>Unit</Label>
+              <Label>Base unit preset</Label>
+              <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+                Stored on the product record; the <strong className="font-medium">base</strong> packaging row below uses this for its label.
+              </p>
               <select
                 value={form.unit}
                 onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
@@ -404,6 +427,10 @@ export default function OpeningInventoryPage() {
                 ))}
               </select>
             </div>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+            <Label className="mb-3 text-sm">POS &amp; purchase packaging</Label>
+            <ProductSaleUnitsEditor rows={saleUnitRows} onChange={setSaleUnitRows} disabled={submitting} />
           </div>
           <div>
             <DateField

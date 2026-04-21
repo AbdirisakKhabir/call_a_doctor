@@ -46,7 +46,7 @@ const metricCards: {
 }[] = [
   {
     key: "patients",
-    label: "Patients",
+    label: "Clients",
     icon: <UserCircleIcon className="size-6" />,
     href: "/patients",
     gradient: "from-emerald-500/10 via-emerald-500/5 to-transparent dark:from-emerald-500/20 dark:via-emerald-500/10",

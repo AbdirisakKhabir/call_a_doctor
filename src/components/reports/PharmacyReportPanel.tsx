@@ -69,11 +69,11 @@ export function PharmacyReportPanel({ report }: Props) {
   const [purchases, setPurchases] = useState<
     {
       id: number;
-      supplierId: number;
+      supplierId: number | null;
       purchaseDate: string;
       totalAmount: number;
       branch: { name: string } | null;
-      supplier: { name: string };
+      supplier: { name: string } | null;
       paymentMethod: { name: string; account: { name: string } } | null;
     }[]
   >([]);
@@ -442,7 +442,7 @@ export function PharmacyReportPanel({ report }: Props) {
                     <TableRow key={p.id}>
                       <TableCell className="whitespace-nowrap text-sm">{new Date(p.purchaseDate).toLocaleDateString()}</TableCell>
                       <TableCell>{p.branch?.name ?? "—"}</TableCell>
-                      <TableCell className="font-medium">{p.supplier.name}</TableCell>
+                      <TableCell className="font-medium">{p.supplier?.name ?? "—"}</TableCell>
                       <TableCell className="text-sm">
                         {p.paymentMethod ? (
                           <>

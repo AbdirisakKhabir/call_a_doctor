@@ -7,10 +7,27 @@ import {
   getVisitCardAccess,
 } from "@/lib/visit-card-access";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { serializePatient } from "@/lib/patient-name";
 
 const visitInclude = {
   branch: { select: { id: true, name: true } },
-  patient: { select: { id: true, patientCode: true, name: true, phone: true } },
+  patient: {
+    select: {
+      id: true,
+      patientCode: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      address: true,
+      cityId: true,
+      villageId: true,
+      registeredBranchId: true,
+      city: { select: { id: true, name: true } },
+      village: { select: { id: true, name: true } },
+      registeredBranch: { select: { id: true, name: true } },
+      referralSource: { select: { id: true, name: true } },
+    },
+  },
   doctor: { select: { id: true, name: true } },
   paymentMethod: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true, email: true } },
@@ -71,7 +88,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         where: { id: cardId },
         include: visitInclude,
       });
-      return NextResponse.json(already);
+      return NextResponse.json(
+        already ? { ...already, patient: serializePatient(already.patient) } : already
+      );
     }
 
     await prisma.doctorVisitCard.update({
@@ -93,7 +112,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       metadata: { previousStatus: existing.status },
     });
 
-    return NextResponse.json(fresh);
+    return NextResponse.json(
+      fresh ? { ...fresh, patient: serializePatient(fresh.patient) } : fresh
+    );
   } catch (e) {
     console.error("Visit card complete error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });

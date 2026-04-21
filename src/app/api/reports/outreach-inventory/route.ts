@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { serializePatient } from "@/lib/patient-name";
 import {
   getPharmacyReportListBranchScope,
   userCanTransactInventoryAtBranch,
@@ -162,7 +163,7 @@ export async function GET(req: NextRequest) {
       },
       include: {
         team: { select: { id: true, name: true } },
-        patient: { select: { id: true, patientCode: true, name: true } },
+        patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
         items: {
           include: {
             product: { select: { id: true, name: true, code: true } },
@@ -198,7 +199,10 @@ export async function GET(req: NextRequest) {
       include: effectiveInclude,
       salesFromPharmacy: sales,
       returnsToPharmacy: returns,
-      dispensesToPatients: dispenses,
+      dispensesToPatients: dispenses.map((d) => ({
+        ...d,
+        patient: serializePatient(d.patient),
+      })),
       teamInventorySnapshot: teams.map((t) => ({
         id: t.id,
         name: t.name,

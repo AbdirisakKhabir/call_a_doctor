@@ -27,6 +27,24 @@ const cards: Card[] = [
     anyOf: ["appointments.view"],
   },
   {
+    title: "Appointment calendar",
+    description: "Calendar time grid: 15- or 30-minute steps for the schedule and booking.",
+    href: "/settings/appointment-calendar",
+    anyOf: ["settings.manage", "appointments.view"],
+  },
+  {
+    title: "Referred from",
+    description: "Options for how clients heard about the clinic (used on client registration).",
+    href: "/settings/referral-sources",
+    anyOf: ["settings.manage"],
+  },
+  {
+    title: "Cities & villages",
+    description: "Locality lists for client addresses (city, village).",
+    href: "/settings/cities-villages",
+    anyOf: ["settings.manage"],
+  },
+  {
     title: "Activity log",
     description: "Sign-ins and user actions across the system (audit trail).",
     href: "/settings/activity",

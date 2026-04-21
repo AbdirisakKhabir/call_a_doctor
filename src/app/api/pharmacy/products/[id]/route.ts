@@ -3,6 +3,8 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userCanTransactInventoryAtBranch } from "@/lib/branch-access";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { replaceProductSaleUnits, validateSaleUnitsPayload, type SaleUnitInput } from "@/lib/product-sale-units";
+import { computeBaseQuantityFromPackagingLines } from "@/lib/product-quantity-lines";
 
 export async function GET(
   req: NextRequest,
@@ -23,6 +25,7 @@ export async function GET(
       where: { id: parsedId },
       include: {
         category: { select: { id: true, name: true } },
+        saleUnits: { orderBy: { sortOrder: "asc" } },
       },
     });
     if (!product) {
@@ -80,6 +83,8 @@ export async function PATCH(
       forSale,
       internalPurpose,
       expiryDate,
+      saleUnits: saleUnitsRaw,
+      quantityLines: quantityLinesRaw,
     } = body;
 
     const data: Record<string, unknown> = {};
@@ -103,7 +108,6 @@ export async function PATCH(
     if (typeof imagePublicId !== "undefined") data.imagePublicId = imagePublicId || null;
     if (typeof costPrice === "number" || (typeof costPrice === "string" && costPrice !== "")) data.costPrice = Number(costPrice) || 0;
     if (typeof sellingPrice === "number" || (typeof sellingPrice === "string" && sellingPrice !== "")) data.sellingPrice = Number(sellingPrice) || 0;
-    if (typeof quantity === "number" || (typeof quantity === "string" && quantity !== "")) data.quantity = Math.max(0, Math.floor(Number(quantity) || 0));
     if (typeof unit === "string" && unit.trim()) data.unit = unit.trim();
     if (typeof categoryId !== "undefined") {
       if (categoryId === null || categoryId === "") {
@@ -161,12 +165,71 @@ export async function PATCH(
         data.expiryDate = Number.isNaN(d.getTime()) ? null : d;
       }
     }
-    const product = await prisma.product.update({
-      where: { id: parsedId },
-      data,
-      include: {
-        category: { select: { id: true, name: true } },
-      },
+    let saleUnitsToApply: SaleUnitInput[] | null = null;
+    if (Array.isArray(saleUnitsRaw)) {
+      const v = validateSaleUnitsPayload(saleUnitsRaw as SaleUnitInput[]);
+      if (!v.ok) {
+        return NextResponse.json({ error: v.error }, { status: 400 });
+      }
+      saleUnitsToApply = v.rows;
+    }
+
+    let quantityHandled = false;
+    if (Array.isArray(quantityLinesRaw) && quantityLinesRaw.length > 0) {
+      const lines = quantityLinesRaw
+        .filter((x: unknown) => x && typeof x === "object")
+        .map((x: { unitKey?: unknown; quantity?: unknown }) => ({
+          unitKey: String((x as { unitKey?: string }).unitKey ?? ""),
+          quantity: Number((x as { quantity?: number }).quantity),
+        }));
+      const saleUnitsForConv = saleUnitsToApply
+        ? saleUnitsToApply.map((s) => ({ unitKey: s.unitKey, baseUnitsEach: s.baseUnitsEach }))
+        : (
+            await prisma.product.findUnique({
+              where: { id: parsedId },
+              include: { saleUnits: { orderBy: { sortOrder: "asc" } } },
+            })
+          )?.saleUnits.map((s) => ({ unitKey: s.unitKey, baseUnitsEach: s.baseUnitsEach })) ?? [];
+      if (saleUnitsForConv.length === 0) {
+        return NextResponse.json(
+          { error: "Define packaging (sale units) for this product before using mixed quantity lines." },
+          { status: 400 }
+        );
+      }
+      const conv = computeBaseQuantityFromPackagingLines(lines, saleUnitsForConv);
+      if (!conv.ok) {
+        return NextResponse.json({ error: conv.error }, { status: 400 });
+      }
+      data.quantity = conv.base;
+      quantityHandled = true;
+    }
+    if (
+      !quantityHandled &&
+      (typeof quantity === "number" || (typeof quantity === "string" && quantity !== ""))
+    ) {
+      data.quantity = Math.max(0, Math.floor(Number(quantity) || 0));
+    }
+
+    const product = await prisma.$transaction(async (tx) => {
+      const p = await tx.product.update({
+        where: { id: parsedId },
+        data,
+        include: {
+          category: { select: { id: true, name: true } },
+          saleUnits: { orderBy: { sortOrder: "asc" } },
+        },
+      });
+      if (saleUnitsToApply) {
+        await replaceProductSaleUnits(tx, parsedId, saleUnitsToApply);
+        return tx.product.findUniqueOrThrow({
+          where: { id: parsedId },
+          include: {
+            category: { select: { id: true, name: true } },
+            saleUnits: { orderBy: { sortOrder: "asc" } },
+          },
+        });
+      }
+      return p;
     });
     await logAuditFromRequest(req, {
       userId: auth.userId,

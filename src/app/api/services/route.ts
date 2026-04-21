@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { normalizeServiceColor } from "@/lib/service-color";
 
 export async function GET(req: NextRequest) {
   try {
@@ -45,13 +46,19 @@ export async function POST(req: NextRequest) {
     const auth = await getAuthUser(req);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
-    const { name, description, price, durationMinutes, branchId } = body;
+    const { name, description, price, durationMinutes, branchId, color } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    }
+    const normalizedColor =
+      typeof color === "string" && color.trim() ? normalizeServiceColor(color.trim()) : null;
+    if (typeof color === "string" && color.trim() && !normalizedColor) {
+      return NextResponse.json({ error: "Color must be a valid hex value (e.g. #dbeafe)" }, { status: 400 });
     }
     const service = await prisma.service.create({
       data: {
         name: String(name).trim(),
+        color: normalizedColor,
         description: description ? String(description).trim() : null,
         price: Math.max(0, Number(price) || 0),
         durationMinutes: durationMinutes ? Number(durationMinutes) : null,

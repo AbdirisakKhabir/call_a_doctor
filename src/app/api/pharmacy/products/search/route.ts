@@ -17,27 +17,46 @@ export async function GET(req: NextRequest) {
 
     const q = searchParams.get("q") || "";
     const limit = Math.min(50, Math.max(1, Number(searchParams.get("limit")) || 20));
+    /** Purchase / receiving: include internal items and zero qty so buyers can find anything in catalog. */
+    const purchasePurpose = searchParams.get("purpose") === "purchase";
 
-    const baseWhere = {
-      branchId,
-      isActive: true,
+    const baseWhere = purchasePurpose
+      ? {
+          branchId,
+          isActive: true,
+        }
+      : {
+          branchId,
+          isActive: true,
+          forSale: true,
+          quantity: { gt: 0 },
+        };
+
+    const unitSelect = {
+      unitKey: true,
+      label: true,
+      baseUnitsEach: true,
+      sortOrder: true,
+    };
+
+    const productSelect = {
+      id: true,
+      name: true,
+      code: true,
+      imageUrl: true,
+      sellingPrice: true,
+      costPrice: true,
       forSale: true,
-      quantity: { gt: 0 },
+      quantity: true,
+      unit: true,
+      expiryDate: true,
+      saleUnits: { orderBy: { sortOrder: "asc" as const }, select: unitSelect },
     };
 
     if (!q.trim()) {
       const products = await prisma.product.findMany({
         where: baseWhere,
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          imageUrl: true,
-          sellingPrice: true,
-          quantity: true,
-          unit: true,
-          expiryDate: true,
-        },
+        select: productSelect,
         orderBy: { name: "asc" },
         take: limit,
       });
@@ -49,16 +68,7 @@ export async function GET(req: NextRequest) {
         ...baseWhere,
         OR: [{ name: { contains: q } }, { code: { contains: q } }],
       },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        imageUrl: true,
-        sellingPrice: true,
-        quantity: true,
-        unit: true,
-        expiryDate: true,
-      },
+      select: productSelect,
       orderBy: { name: "asc" },
       take: limit,
     });

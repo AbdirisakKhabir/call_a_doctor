@@ -5,9 +5,11 @@ import {
   getPharmacyReportListBranchScope,
   userCanTransactInventoryAtBranch,
 } from "@/lib/branch-access";
-import { lineQuantityToPcs, parseSaleUnit, type SaleUnit } from "@/lib/product-packaging";
+import { lineQuantityToBaseUnits, parseSaleUnit } from "@/lib/product-packaging";
+import { getSaleUnitForProduct } from "@/lib/product-sale-units";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { serializePatient } from "@/lib/patient-name";
 
 export async function GET(req: NextRequest) {
   try {
@@ -61,7 +63,7 @@ export async function GET(req: NextRequest) {
           include: {
             branch: { select: { id: true, name: true } },
             createdBy: { select: { id: true, name: true } },
-            patient: { select: { id: true, patientCode: true, name: true } },
+            patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
             outreachTeam: { select: { id: true, name: true, creditBalance: true } },
             depositTransaction: { select: { id: true } },
             _count: { select: { items: true } },
@@ -73,7 +75,15 @@ export async function GET(req: NextRequest) {
         prisma.sale.count({ where }),
       ]);
 
-      return NextResponse.json({ data: sales, total, page, pageSize });
+      return NextResponse.json({
+        data: sales.map((s) => ({
+          ...s,
+          patient: s.patient ? serializePatient(s.patient) : null,
+        })),
+        total,
+        page,
+        pageSize,
+      });
     }
 
     const sales = await prisma.sale.findMany({
@@ -81,7 +91,7 @@ export async function GET(req: NextRequest) {
       include: {
         branch: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
-        patient: { select: { id: true, patientCode: true, name: true } },
+        patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
         depositTransaction: { select: { id: true } },
         items: {
           include: {
@@ -91,7 +101,12 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { saleDate: "desc" },
     });
-    return NextResponse.json(sales);
+    return NextResponse.json(
+      sales.map((s) => ({
+        ...s,
+        patient: s.patient ? serializePatient(s.patient) : null,
+      }))
+    );
   } catch (e) {
     console.error("Sales list error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -113,11 +128,14 @@ export async function POST(req: NextRequest) {
       notes,
       items,
       patientId,
-      customerType,
+      customerType: customerTypeRaw,
       branchId,
       outreachTeamId: outreachTeamIdBody,
       outreachOnCredit: outreachOnCreditBody,
     } = body;
+
+    const customerType = typeof customerTypeRaw === "string" ? customerTypeRaw : "walking";
+    const isLab = customerType === "lab";
 
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "At least one item is required" }, { status: 400 });
@@ -144,17 +162,17 @@ export async function POST(req: NextRequest) {
     const saleItems: {
       productId: number;
       quantity: number;
-      saleUnit: SaleUnit;
+      saleUnit: string;
       unitPrice: number;
       totalAmount: number;
-      pcs: number;
+      baseUnits: number;
     }[] = [];
 
     for (const it of items) {
       const productId = Number(it.productId);
       const quantity = Math.max(1, Math.floor(Number(it.quantity) || 0));
       const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
-      const saleUnit = parseSaleUnit((it as { saleUnit?: unknown }).saleUnit);
+      const saleUnitKey = parseSaleUnit((it as { saleUnit?: unknown }).saleUnit);
       const lineTotal = quantity * unitPrice;
 
       if (!Number.isInteger(productId) || productId <= 0) continue;
@@ -173,11 +191,20 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const pcs = lineQuantityToPcs(quantity);
-      if (pcs <= 0) {
+      const su = await getSaleUnitForProduct(prisma, productId, saleUnitKey);
+      if (!su) {
+        return NextResponse.json(
+          {
+            error: `Unknown sale unit for this product (key: "${saleUnitKey}"). Configure units on the inventory product.`,
+          },
+          { status: 400 }
+        );
+      }
+      const baseUnits = lineQuantityToBaseUnits(quantity, su.baseUnitsEach);
+      if (baseUnits <= 0) {
         return NextResponse.json({ error: "Invalid quantity for this unit." }, { status: 400 });
       }
-      if (product.quantity < pcs) {
+      if (product.quantity < baseUnits) {
         return NextResponse.json(
           { error: `Insufficient stock for product ID ${productId}` },
           { status: 400 }
@@ -192,14 +219,14 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      if (!product.forSale) {
+      if (!product.forSale && !isLab) {
         return NextResponse.json(
-          { error: "This product is internal stock (not for sale). Use internal usage to deduct stock." },
+          { error: "This product is internal stock (not for sale). Use internal usage to deduct stock, or choose Lab as customer to send stock to lab inventory." },
           { status: 400 }
         );
       }
 
-      saleItems.push({ productId, quantity, saleUnit, unitPrice, totalAmount: lineTotal, pcs });
+      saleItems.push({ productId, quantity, saleUnit: saleUnitKey, unitPrice, totalAmount: lineTotal, baseUnits });
       totalAmount += lineTotal;
     }
 
@@ -211,7 +238,7 @@ export async function POST(req: NextRequest) {
     const finalTotal = Math.max(0, totalAmount - discountAmount);
 
     const salePatientId = patientId && Number.isInteger(Number(patientId)) ? Number(patientId) : null;
-    const isOutreach = customerType === "outreach";
+    const isOutreach = customerType === "outreach" && !isLab;
     const outreachTeamIdNum =
       outreachTeamIdBody != null && outreachTeamIdBody !== "" ? Number(outreachTeamIdBody) : NaN;
     const outreachOnCredit =
@@ -220,7 +247,9 @@ export async function POST(req: NextRequest) {
     let saleCustomerType: string;
     let outreachTeamId: number | null = null;
 
-    if (isOutreach) {
+    if (isLab) {
+      saleCustomerType = "lab";
+    } else if (isOutreach) {
       if (!Number.isInteger(outreachTeamIdNum) || outreachTeamIdNum <= 0) {
         return NextResponse.json(
           { error: "Select an outreach team for this sale." },
@@ -255,7 +284,10 @@ export async function POST(req: NextRequest) {
       account: { id: number; name: string; isActive: boolean };
     } | null = null;
 
-    if (!(isOutreach && outreachOnCredit)) {
+    const skipLedgerPayment =
+      (isOutreach && outreachOnCredit) || (isLab && finalTotal <= 0);
+
+    if (!skipLedgerPayment) {
       ledgerPm =
         Number.isInteger(pmIdNum) && pmIdNum > 0
           ? await prisma.ledgerPaymentMethod.findFirst({
@@ -281,7 +313,11 @@ export async function POST(req: NextRequest) {
     }
 
     const paymentLabel =
-      isOutreach && outreachOnCredit ? "Outreach credit (AR)" : (ledgerPm?.name ?? "—");
+      isOutreach && outreachOnCredit
+        ? "Outreach credit (AR)"
+        : isLab && finalTotal <= 0
+          ? "Lab transfer (no charge)"
+          : (ledgerPm?.name ?? "—");
 
     const sale = await prisma.$transaction(async (tx) => {
       const created = await tx.sale.create({
@@ -291,7 +327,7 @@ export async function POST(req: NextRequest) {
           discount: discountAmount,
           paymentMethod: paymentLabel,
           notes: notes ? String(notes).trim() : null,
-          patientId: isOutreach ? null : salePatientId,
+          patientId: isOutreach || isLab ? null : salePatientId,
           customerType: saleCustomerType,
           outreachTeamId,
           outreachOnCredit: isOutreach ? outreachOnCredit : false,
@@ -311,8 +347,50 @@ export async function POST(req: NextRequest) {
       for (const it of saleItems) {
         await tx.product.update({
           where: { id: it.productId },
-          data: { quantity: { decrement: it.pcs } },
+          data: { quantity: { decrement: it.baseUnits } },
         });
+      }
+
+      if (isLab) {
+        for (const it of saleItems) {
+          const prod = await tx.product.findUnique({
+            where: { id: it.productId },
+            select: { id: true, code: true, name: true, unit: true },
+          });
+          if (!prod) {
+            throw new Error("LAB_PRODUCT_MISSING");
+          }
+          const code = prod.code.trim().toUpperCase();
+          let labRow = await tx.labInventoryItem.findFirst({
+            where: { branchId: bid, code },
+          });
+          if (!labRow) {
+            labRow = await tx.labInventoryItem.create({
+              data: {
+                branchId: bid,
+                code,
+                name: prod.name,
+                unit: prod.unit || "pcs",
+                quantity: 0,
+                sellingPrice: 0,
+              },
+            });
+          }
+          await tx.labInventoryItem.update({
+            where: { id: labRow.id },
+            data: { quantity: { increment: it.baseUnits } },
+          });
+          await tx.labStockMovement.create({
+            data: {
+              labInventoryItemId: labRow.id,
+              branchId: bid,
+              signedQuantity: it.baseUnits,
+              reason: "receive",
+              notes: `POS to lab · Pharmacy sale #${created.id} · product #${prod.id} (+${it.baseUnits} base)`,
+              createdById: auth.userId,
+            },
+          });
+        }
       }
 
       if (isOutreach && outreachTeamId) {
@@ -330,14 +408,14 @@ export async function POST(req: NextRequest) {
             create: {
               teamId: outreachTeamId,
               productId: it.productId,
-              quantity: it.pcs,
+              quantity: it.baseUnits,
             },
-            update: { quantity: { increment: it.pcs } },
+            update: { quantity: { increment: it.baseUnits } },
           });
         }
       }
 
-      if (ledgerPm) {
+      if (ledgerPm && finalTotal > 0) {
         await tx.accountTransaction.create({
           data: {
             accountId: ledgerPm.accountId,
@@ -355,7 +433,7 @@ export async function POST(req: NextRequest) {
       return tx.sale.findUnique({
         where: { id: created.id },
         include: {
-          patient: { select: { id: true, patientCode: true, name: true } },
+          patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
           outreachTeam: { select: { id: true, name: true, creditBalance: true } },
           items: {
             include: {
@@ -385,7 +463,10 @@ export async function POST(req: NextRequest) {
         customerType: saleCustomerType,
       },
     });
-    return NextResponse.json(sale);
+    return NextResponse.json({
+      ...sale,
+      patient: sale.patient ? serializePatient(sale.patient) : null,
+    });
   } catch (e) {
     console.error("Create sale error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });

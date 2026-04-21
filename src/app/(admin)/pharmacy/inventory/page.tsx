@@ -14,8 +14,9 @@ import Badge from "@/components/ui/badge/Badge";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import Label from "@/components/form/Label";
-import DateField from "@/components/form/DateField";
-import { ArrowDownIcon, ArrowUpIcon, PencilIcon, PlusIcon, PosIcon, TrashBinIcon } from "@/icons";
+import { ArrowDownIcon, ArrowUpIcon, MoreDotIcon, PlusIcon, PosIcon } from "@/icons";
+import { Dropdown } from "@/components/ui/dropdown/Dropdown";
+import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import Link from "next/link";
 import Image from "next/image";
 import ExpiryDateBadge from "@/components/pharmacy/ExpiryDateBadge";
@@ -30,8 +31,6 @@ import {
 import { useExpirySoon } from "@/context/ExpirySoonContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
-import ProductBarcodeLabel from "@/components/pharmacy/ProductBarcodeLabel";
-import { suggestBarcodeValue } from "@/lib/barcode";
 import { printProductBarcodeLabel } from "@/lib/print-product-barcode";
 
 type Product = {
@@ -43,11 +42,15 @@ type Product = {
   costPrice: number;
   sellingPrice: number;
   quantity: number;
+  /** Non-sellable quantity (expired/damaged, etc.) — not available at POS. */
+  unsellableQuantity?: number;
   unit: string;
   expiryDate: string | null;
   forSale: boolean;
   internalPurpose: string | null;
   category: { id: number; name: string } | null;
+  /** When present, stock can be entered as several packaging lines that convert to base pcs. */
+  saleUnits?: { unitKey: string; label: string; baseUnitsEach: number }[];
 };
 
 type Category = { id: number; name: string };
@@ -144,24 +147,16 @@ export default function InventoryPage() {
   const [expiryFilter, setExpiryFilter] = useState<InventoryExpiryFilter>("all");
   /** Window for “Expiring soon” (days from today, or through end of month N). */
   const [expirySoonWindow, setExpirySoonWindow] = useState<ExpirySoonConfig>(DEFAULT_EXPIRY_SOON_CONFIG);
-  const [modal, setModal] = useState<"edit" | null>(null);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [form, setForm] = useState({
-    name: "",
-    code: "",
-    costPrice: "",
-    sellingPrice: "",
-    quantity: "",
-    unit: "pcs",
-    categoryId: "",
-    forSale: true,
-    internalPurpose: "general" as "laboratory" | "cleaning" | "general",
-    expiryDate: "",
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [modal, setModal] = useState<"unsellable" | null>(null);
+  const [unsellableProduct, setUnsellableProduct] = useState<Product | null>(null);
+  const [unsellableQty, setUnsellableQty] = useState("1");
+  const [unsellableReason, setUnsellableReason] = useState<"expired" | "damaged" | "recall" | "other">("expired");
+  const [unsellableNotes, setUnsellableNotes] = useState("");
+  const [unsellableSubmitting, setUnsellableSubmitting] = useState(false);
+  const [unsellableError, setUnsellableError] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [actionsMenuProductId, setActionsMenuProductId] = useState<number | null>(null);
 
   const canEdit = hasPermission("pharmacy.edit");
   const canDelete = hasPermission("pharmacy.delete");
@@ -251,67 +246,59 @@ export default function InventoryPage() {
     Promise.all([loadProducts(), loadCategories()]).finally(() => setLoading(false));
   }, [branchId, search, categoryFilter, stockType, productPage]);
 
-  function openEdit(p: Product) {
-    setEditingProduct(p);
-    setForm({
-      name: p.name,
-      code: p.code,
-      costPrice: String(p.costPrice),
-      sellingPrice: String(p.sellingPrice),
-      quantity: String(p.quantity),
-      unit: p.unit,
-      categoryId: p.category?.id ? String(p.category.id) : "",
-      forSale: p.forSale,
-      internalPurpose: (p.internalPurpose === "laboratory" || p.internalPurpose === "cleaning" ? p.internalPurpose : "general") as
-        | "laboratory"
-        | "cleaning"
-        | "general",
-      expiryDate: p.expiryDate ? p.expiryDate.slice(0, 10) : "",
-    });
-    setModal("edit");
-    setError("");
-  }
-
-  async function handleUpdate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editingProduct) return;
-    setError("");
-    setSubmitting(true);
-    try {
-      const res = await authFetch(`/api/pharmacy/products/${editingProduct.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name.trim(),
-          code: form.code.trim().toUpperCase(),
-          costPrice: Number(form.costPrice) || 0,
-          sellingPrice: form.forSale ? Number(form.sellingPrice) || 0 : 0,
-          quantity: Math.max(0, Math.floor(Number(form.quantity) || 0)),
-          unit: form.unit,
-          categoryId: form.categoryId ? Number(form.categoryId) : null,
-          forSale: form.forSale,
-          internalPurpose: form.forSale ? null : form.internalPurpose,
-          expiryDate: form.expiryDate.trim() ? form.expiryDate : null,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Failed to update");
-        return;
-      }
-      await loadProducts();
-      setModal(null);
-      setEditingProduct(null);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   async function handleDelete(id: number) {
     if (!confirm("Delete this product?")) return;
     const res = await authFetch(`/api/pharmacy/products/${id}`, { method: "DELETE" });
     if (res.ok) await loadProducts();
     else alert((await res.json()).error || "Failed to delete");
+  }
+
+  function openUnsellable(p: Product) {
+    setUnsellableProduct(p);
+    setUnsellableQty(String(Math.max(1, p.quantity)));
+    setUnsellableReason("expired");
+    setUnsellableNotes("");
+    setUnsellableError("");
+    setModal("unsellable");
+  }
+
+  async function handleUnsellableSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!unsellableProduct || !branchId) return;
+    const q = Math.floor(Number(unsellableQty));
+    if (!Number.isFinite(q) || q <= 0) {
+      setUnsellableError("Enter a positive whole number.");
+      return;
+    }
+    if (q > unsellableProduct.quantity) {
+      setUnsellableError("Cannot move more than current sellable quantity.");
+      return;
+    }
+    setUnsellableSubmitting(true);
+    setUnsellableError("");
+    try {
+      const res = await authFetch("/api/pharmacy/unsellable-stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: unsellableProduct.id,
+          quantity: q,
+          branchId: Number(branchId),
+          reason: unsellableReason,
+          notes: unsellableNotes.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUnsellableError(data.error || "Failed");
+        return;
+      }
+      await loadProducts();
+      setModal(null);
+      setUnsellableProduct(null);
+    } finally {
+      setUnsellableSubmitting(false);
+    }
   }
 
   if (!hasPermission("pharmacy.view")) {
@@ -343,6 +330,9 @@ export default function InventoryPage() {
           </Link>
           <Link href="/pharmacy/internal-usage">
             <Button size="sm" variant="outline">Internal usage</Button>
+          </Link>
+          <Link href="/pharmacy/unsellable-stock">
+            <Button size="sm" variant="outline">Unsellable stock</Button>
           </Link>
           <Link href="/pharmacy/pos">
             <Button size="sm" variant="primary" startIcon={<PosIcon className="size-4 shrink-0" aria-hidden />}>
@@ -607,7 +597,12 @@ export default function InventoryPage() {
                   <TableCell>${p.costPrice.toFixed(2)}</TableCell>
                   <TableCell>{p.forSale ? `$${p.sellingPrice.toFixed(2)}` : "—"}</TableCell>
                   <TableCell>
-                    <span className="font-medium">{(p.quantity).toLocaleString()} pcs</span>
+                    <span className="font-medium">{p.quantity.toLocaleString()} pcs</span>
+                    {(p.unsellableQuantity ?? 0) > 0 ? (
+                      <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-300">
+                        {(p.unsellableQuantity ?? 0).toLocaleString()} unsellable
+                      </span>
+                    ) : null}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
                     <ExpiryDateBadge expiryDate={p.expiryDate} />
@@ -618,56 +613,77 @@ export default function InventoryPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="inline-flex gap-1">
+                    <div className="relative inline-block text-left">
                       <button
                         type="button"
-                        onClick={() => {
-                          const branchName = branches.find((b) => String(b.id) === branchId)?.name;
-                          printProductBarcodeLabel({
-                            productName: p.name,
-                            code: p.code,
-                            branchName,
-                          });
-                        }}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-brand-50 hover:text-brand-500 dark:hover:bg-brand-500/10"
-                        title="Print barcode label"
-                        aria-label="Print barcode"
+                        className="dropdown-toggle inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
+                        aria-haspopup="menu"
+                        aria-expanded={actionsMenuProductId === p.id}
+                        aria-label={`Actions for ${p.name}`}
+                        onClick={() =>
+                          setActionsMenuProductId((cur) => (cur === p.id ? null : p.id))
+                        }
                       >
-                        <svg
-                          className="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                          aria-hidden
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"
-                          />
-                        </svg>
+                        <MoreDotIcon className="h-5 w-5" aria-hidden />
                       </button>
-                      {canOpenPos && p.forSale && branchId ? (
-                        <Link
-                          href={`/pharmacy/pos?branchId=${encodeURIComponent(branchId)}&scan=${encodeURIComponent(p.code)}`}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-brand-50 hover:text-brand-500 dark:hover:bg-brand-500/10"
-                          title="Ring up at POS (barcode)"
-                          aria-label="Ring up at POS"
+                      <Dropdown
+                        isOpen={actionsMenuProductId === p.id}
+                        onClose={() => setActionsMenuProductId(null)}
+                        className="min-w-44 p-2"
+                      >
+                        <DropdownItem
+                          onClick={() => {
+                            const branchName = branches.find((b) => String(b.id) === branchId)?.name;
+                            printProductBarcodeLabel({
+                              productName: p.name,
+                              code: p.code,
+                              branchName,
+                            });
+                          }}
+                          onItemClick={() => setActionsMenuProductId(null)}
+                          className="flex w-full rounded-lg font-normal text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
                         >
-                          <PosIcon className="h-4 w-4" aria-hidden />
-                        </Link>
-                      ) : null}
-                      {canEdit && (
-                        <button type="button" onClick={() => openEdit(p)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-brand-50 hover:text-brand-500 dark:hover:bg-brand-500/10" aria-label="Edit">
-                          <PencilIcon className="h-4 w-4" />
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button type="button" onClick={() => handleDelete(p.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-error-50 hover:text-error-500 dark:hover:bg-error-500/10" aria-label="Delete">
-                          <TrashBinIcon className="h-4 w-4" />
-                        </button>
-                      )}
+                          Print barcode label
+                        </DropdownItem>
+                        {canOpenPos && p.forSale && branchId ? (
+                          <DropdownItem
+                            tag="a"
+                            href={`/pharmacy/pos?branchId=${encodeURIComponent(branchId)}&scan=${encodeURIComponent(p.code)}`}
+                            onItemClick={() => setActionsMenuProductId(null)}
+                            className="flex w-full rounded-lg font-normal text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
+                          >
+                            Ring up at POS
+                          </DropdownItem>
+                        ) : null}
+                        {canEdit && p.quantity > 0 ? (
+                          <DropdownItem
+                            onClick={() => openUnsellable(p)}
+                            onItemClick={() => setActionsMenuProductId(null)}
+                            className="flex w-full rounded-lg font-normal text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-500/15"
+                          >
+                            Move to unsellable stock
+                          </DropdownItem>
+                        ) : null}
+                        {canEdit && branchId ? (
+                          <DropdownItem
+                            tag="a"
+                            href={`/pharmacy/inventory/${p.id}/edit`}
+                            onItemClick={() => setActionsMenuProductId(null)}
+                            className="flex w-full rounded-lg font-normal text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/5"
+                          >
+                            Edit product
+                          </DropdownItem>
+                        ) : null}
+                        {canDelete ? (
+                          <DropdownItem
+                            onClick={() => handleDelete(p.id)}
+                            onItemClick={() => setActionsMenuProductId(null)}
+                            className="flex w-full rounded-lg font-normal text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                          >
+                            Delete
+                          </DropdownItem>
+                        ) : null}
+                      </Dropdown>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -686,138 +702,98 @@ export default function InventoryPage() {
         />
       </div>
 
-      {modal === "edit" && editingProduct && (
+      {modal === "unsellable" && unsellableProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-              <h2 className="text-lg font-semibold">Edit Product</h2>
-              <button type="button" onClick={() => setModal(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              <h2 className="text-lg font-semibold">Move to unsellable stock</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setModal(null);
+                  setUnsellableProduct(null);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
-            <form onSubmit={handleUpdate} className="px-6 py-5 space-y-4">
-              {error && <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">{error}</div>}
-              <div>
-                <Label>Stock type *</Label>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, forSale: true }))}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                      form.forSale ? "bg-brand-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                    }`}
-                  >
-                    For sale
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, forSale: false }))}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                      !form.forSale ? "bg-brand-500 text-white" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                    }`}
-                  >
-                    Internal
-                  </button>
+            <form onSubmit={handleUnsellableSubmit} className="space-y-4 px-6 py-5">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                <span className="font-medium text-gray-900 dark:text-white">{unsellableProduct.name}</span>
+                <span className="ml-2 font-mono text-xs text-gray-500">{unsellableProduct.code}</span>
+              </p>
+              <p className="text-xs text-gray-500">
+                Sellable on hand: {unsellableProduct.quantity.toLocaleString()} {unsellableProduct.unit || "pcs"}
+              </p>
+              {unsellableError && (
+                <div className="rounded-lg bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+                  {unsellableError}
                 </div>
-                {!form.forSale && (
-                  <select
-                    value={form.internalPurpose}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        internalPurpose: e.target.value as "laboratory" | "cleaning" | "general",
-                      }))
-                    }
-                    className="mt-2 h-10 w-full rounded-lg border border-gray-200 bg-transparent px-3 text-sm dark:border-gray-700 dark:text-white"
-                  >
-                    <option value="laboratory">Laboratory</option>
-                    <option value="cleaning">Cleaning</option>
-                    <option value="general">General</option>
-                  </select>
-                )}
-              </div>
+              )}
               <div>
-                <Label>Name *</Label>
-                <input required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-end justify-between gap-2">
-                  <Label>Barcode *</Label>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, code: suggestBarcodeValue() }))}
-                      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                    >
-                      Generate new barcode
-                    </button>
-                  )}
-                </div>
+                <Label htmlFor="unsellable-qty">Quantity to move (base units)</Label>
                 <input
+                  id="unsellable-qty"
+                  type="number"
+                  min={1}
+                  max={unsellableProduct.quantity}
+                  value={unsellableQty}
+                  onChange={(e) => setUnsellableQty(e.target.value)}
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   required
-                  value={form.code}
-                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 font-mono text-sm dark:border-gray-700 dark:text-white"
-                  autoComplete="off"
-                  placeholder="Unique per branch (scan at POS)"
                 />
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Printed on labels; USB scanners read this value at POS. CODE128 is used for the label preview.
-                </p>
-                <div className="mt-3">
-                  <ProductBarcodeLabel value={form.code} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Cost Price</Label>
-                  <input type="number" step="0.01" min="0" value={form.costPrice} onChange={(e) => setForm((f) => ({ ...f, costPrice: e.target.value }))} className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" />
-                </div>
-                <div>
-                  <Label>Selling Price</Label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    disabled={!form.forSale}
-                    value={form.forSale ? form.sellingPrice : "0"}
-                    onChange={(e) => setForm((f) => ({ ...f, sellingPrice: e.target.value }))}
-                    className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm disabled:opacity-60 dark:border-gray-700 dark:text-white"
-                  />
-                </div>
               </div>
               <div>
-                <Label>Quantity (pieces on hand)</Label>
-                <input type="number" min="0" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" />
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Inventory is tracked in pieces (pcs).
-                </p>
-              </div>
-              <div>
-                <Label>Category</Label>
-                <select value={form.categoryId} onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))} className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white">
-                  <option value="">All</option>
-                  {categories.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+                <Label htmlFor="unsellable-reason">Reason</Label>
+                <select
+                  id="unsellable-reason"
+                  value={unsellableReason}
+                  onChange={(e) =>
+                    setUnsellableReason(e.target.value as "expired" | "damaged" | "recall" | "other")
+                  }
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                >
+                  <option value="expired">Expired</option>
+                  <option value="damaged">Damaged</option>
+                  <option value="recall">Recall</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
               <div>
-                <DateField
-                  id="inventory-expiry"
-                  label="Expiry date"
-                  value={form.expiryDate}
-                  onChange={(v) => setForm((f) => ({ ...f, expiryDate: v }))}
-                  appendToBody
+                <Label htmlFor="unsellable-notes">Notes (optional)</Label>
+                <textarea
+                  id="unsellable-notes"
+                  value={unsellableNotes}
+                  onChange={(e) => setUnsellableNotes(e.target.value)}
+                  rows={2}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                  placeholder="Batch reference, etc."
                 />
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Optional. Clear the field and save to remove.</p>
               </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <Button type="button" variant="outline" onClick={() => setModal(null)} size="sm">Cancel</Button>
-                <Button type="submit" disabled={submitting} size="sm">{submitting ? "Saving..." : "Update"}</Button>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setModal(null);
+                    setUnsellableProduct(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={unsellableSubmitting}>
+                  {unsellableSubmitting ? "Moving…" : "Move to unsellable"}
+                </Button>
               </div>
             </form>
           </div>
         </div>
       )}
+
     </>
   );
 }

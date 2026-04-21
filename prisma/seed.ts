@@ -18,10 +18,10 @@ const DEFAULT_PERMISSIONS = [
   { name: "pharmacy.edit", description: "Edit pharmacy records", module: "pharmacy" },
   { name: "pharmacy.delete", description: "Delete pharmacy records", module: "pharmacy" },
   { name: "pharmacy.pos", description: "Use POS system", module: "pharmacy" },
-  { name: "patients.view", description: "View patients", module: "patients" },
-  { name: "patients.create", description: "Create patients", module: "patients" },
-  { name: "patients.edit", description: "Edit patients", module: "patients" },
-  { name: "patients.delete", description: "Delete patients", module: "patients" },
+  { name: "patients.view", description: "View clients", module: "patients" },
+  { name: "patients.create", description: "Create clients", module: "patients" },
+  { name: "patients.edit", description: "Edit clients", module: "patients" },
+  { name: "patients.delete", description: "Delete clients", module: "patients" },
   { name: "appointments.view", description: "View appointments", module: "appointments" },
   { name: "appointments.create", description: "Create appointments", module: "appointments" },
   { name: "appointments.edit", description: "Edit appointments", module: "appointments" },
@@ -34,8 +34,8 @@ const DEFAULT_PERMISSIONS = [
   { name: "prescriptions.create", description: "Create prescriptions", module: "prescriptions" },
   { name: "prescriptions.edit", description: "Edit prescriptions", module: "prescriptions" },
   { name: "prescriptions.delete", description: "Delete prescriptions", module: "prescriptions" },
-  { name: "patient_history.view", description: "View patient history", module: "patients" },
-  { name: "patient_history.create", description: "Record patient history", module: "patients" },
+  { name: "patient_history.view", description: "View client history", module: "patients" },
+  { name: "patient_history.create", description: "Record client history", module: "patients" },
   { name: "expenses.view", description: "View expenses", module: "expenses" },
   { name: "expenses.create", description: "Create expenses", module: "expenses" },
   { name: "expenses.edit", description: "Edit expenses", module: "expenses" },
@@ -145,7 +145,7 @@ async function main() {
 
   const receptionRole = await prisma.role.upsert({
     where: { name: "Reception" },
-    create: { name: "Reception", description: "Front desk: visit cards, patients" },
+    create: { name: "Reception", description: "Front desk: visit cards, clients" },
     update: {},
   });
   for (const perm of [

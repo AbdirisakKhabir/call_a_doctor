@@ -28,6 +28,7 @@ model User {
   branches         UserBranch[]
   financeTransactions AccountTransaction[] @relation("FinanceTransactionCreatedBy")
   internalStockLogs InternalStockLog[]
+  unsellableStockLogsCreated UnsellableStockLog[] @relation("UnsellableStockLogCreatedBy")
   outreachReturnsCreated OutreachReturn[] @relation("OutreachReturnCreatedBy")
   outreachDispensesCreated OutreachDispense[] @relation("OutreachDispenseCreatedBy")
   patientPaymentsCreated PatientPayment[] @relation("PatientPaymentCreatedBy")
@@ -35,6 +36,8 @@ model User {
   doctorProfile    Doctor?
   visitCardsCreated DoctorVisitCard[] @relation("VisitCardCreatedBy")
   auditLogs        AuditLog[]
+  labSalesCreated  LabSale[]     @relation("LabSaleCreatedBy")
+  labStockMovementsCreated LabStockMovement[] @relation("LabStockMovementCreatedBy")
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -73,13 +76,57 @@ model RolePermission {
 
 // Single-row global settings (id = 1).
 model AppSettings {
-  id               Int      @id @default(1)
-  expirySoonMode   String   @default("days") // days | months
-  expirySoonDays   Int      @default(10)
-  expirySoonMonths Int      @default(1) // 1 = through end of current month, 2 = through end of next month, etc.
-  updatedAt        DateTime @updatedAt
+  id                            Int      @id @default(1)
+  expirySoonMode                String   @default("days") // days | months
+  expirySoonDays                Int      @default(10)
+  expirySoonMonths              Int      @default(1) // 1 = through end of current month, 2 = through end of next month, etc.
+  /// Calendar grid & new-appointment time steps: 15 or 30 minutes.
+  appointmentCalendarSlotMinutes Int     @default(15)
+  updatedAt                     DateTime @updatedAt
 
   @@map("app_settings")
+}
+
+// Configurable options for "Referred from" on client registration (managed under Settings).
+model ReferralSource {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  patients  Patient[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("referral_sources")
+}
+
+/// Locality for client address (managed under Settings).
+model City {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  villages  Village[]
+  patients  Patient[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("cities")
+}
+
+model Village {
+  id        Int      @id @default(autoincrement())
+  cityId    Int
+  city      City     @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  patients  Patient[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cityId, name])
+  @@map("villages")
 }
 
 // --- Patients ---
@@ -87,13 +134,26 @@ model AppSettings {
 model Patient {
   id              Int              @id @default(autoincrement())
   patientCode     String           @unique
-  name            String
+  firstName       String
+  lastName        String
   phone           String?
   email           String?
   dateOfBirth     DateTime?
+  /// Full years; recalculated from `dateOfBirth` whenever the client is saved.
+  age             Int?
   gender          String?
+  /// Optional street / extra detail; city and village identify locality.
   address         String?
+  cityId          Int?
+  villageId       Int?
+  city            City?            @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  village         Village?         @relation(fields: [villageId], references: [id], onDelete: SetNull)
+  /// Branch where the client was first registered (required on new registrations).
+  registeredBranchId Int?
+  registeredBranch   Branch?       @relation("PatientRegisteredBranch", fields: [registeredBranchId], references: [id], onDelete: SetNull)
   notes           String?
+  referralSourceId Int?
+  referralSource   ReferralSource? @relation(fields: [referralSourceId], references: [id], onDelete: SetNull)
   /// Balance owed by patient (e.g. outreach medication charges).
   accountBalance  Float            @default(0)
   isActive        Boolean          @default(true)
@@ -105,10 +165,38 @@ model Patient {
   outreachDispenses OutreachDispense[]
   patientPayments PatientPayment[]
   doctorVisitCards DoctorVisitCard[]
+  labSales        LabSale[]
+  careFiles       PatientCareFile[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
   @@map("patients")
+}
+
+/// A running client file: appointments, lab, notes, prescriptions, and payments can be grouped for a single invoice.
+model PatientCareFile {
+  id          Int       @id @default(autoincrement())
+  patientId   Int
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  fileCode    String    @unique
+  title       String?
+  /// open | closed
+  status      String    @default("open")
+  openedAt    DateTime  @default(now())
+  closedAt    DateTime?
+  invoicedAt  DateTime?
+  notes       String?
+  appointments     Appointment[]
+  labOrders        LabOrder[]
+  prescriptions    Prescription[]
+  patientHistories PatientHistory[]
+  doctorVisitCards DoctorVisitCard[]
+  patientPayments  PatientPayment[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([patientId, status])
+  @@map("patient_care_files")
 }
 
 // --- Branches ---
@@ -135,6 +223,11 @@ model Branch {
   outreachDispenses OutreachDispense[]
   pharmacySaleReturns PharmacySaleReturn[]
   doctorVisitCards DoctorVisitCard[]
+  patientsRegistered Patient[] @relation("PatientRegisteredBranch")
+  labInventoryItems LabInventoryItem[]
+  labStockMovements LabStockMovement[]
+  labSales          LabSale[]
+  unsellableStockLogs UnsellableStockLog[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -180,6 +273,8 @@ model Doctor {
 model Service {
   id                  Int                 @id @default(autoincrement())
   name                String
+  /// Calendar / appointment UI: hex e.g. #dbeafe; null = use default styling
+  color               String?
   description         String?
   price               Float               @default(0)
   durationMinutes     Int?                // e.g. 30, 60
@@ -187,10 +282,29 @@ model Service {
   branch              Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
   isActive            Boolean             @default(true)
   appointmentServices AppointmentService[]
+  disposables         ServiceDisposable[]
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
   @@map("services")
+}
+
+/// Pharmacy product (by code at appointment branch) consumed when a booked service is completed.
+model ServiceDisposable {
+  id               Int     @id @default(autoincrement())
+  serviceId        Int
+  service          Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  /// Matches `Product.code` at the appointment branch.
+  productCode      String
+  /// Consumption per one service line quantity step, in `deductionUnitKey` (see ProductSaleUnit).
+  unitsPerService  Float   @default(1)
+  deductionUnitKey String  @default("base")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([serviceId, productCode])
+  @@index([serviceId])
+  @@map("service_disposables")
 }
 
 // --- Appointments ---
@@ -206,6 +320,8 @@ model Appointment {
   appointmentDate DateTime           @db.Date
   startTime      String              // e.g. "09:00"
   endTime        String?             // e.g. "09:30"
+  /// Minutes before start to remind (e.g. 15, 60); null = no reminder
+  reminderMinutesBefore Int?
   status         String              @default("scheduled") // scheduled, completed, cancelled, no-show
   notes          String?
   totalAmount    Float               @default(0)
@@ -215,9 +331,13 @@ model Appointment {
   patientHistories PatientHistory[]
   labOrders      LabOrder[]
   prescriptions  Prescription[]
+  careFileId     Int?
+  careFile       PatientCareFile?    @relation(fields: [careFileId], references: [id], onDelete: SetNull)
+  serviceDisposableLogs InternalStockLog[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
+  @@index([careFileId])
   @@map("appointments")
 }
 
@@ -230,6 +350,8 @@ model AppointmentService {
   quantity       Int         @default(1)
   unitPrice      Float
   totalAmount    Float
+  /// Set when pharmacy disposables for this line were deducted (idempotent).
+  disposablesDeductedAt DateTime?
   createdAt      DateTime    @default(now())
 
   @@map("appointment_services")
@@ -255,10 +377,13 @@ model DoctorVisitCard {
   createdBy         User?     @relation("VisitCardCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   notes             String?
   depositTransaction AccountTransaction?
+  careFileId        Int?
+  careFile          PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   @@unique([branchId, cardNumber])
+  @@index([careFileId])
   @@index([branchId, visitDate])
   @@index([doctorId, visitDate])
   @@map("doctor_visit_cards")
@@ -310,7 +435,11 @@ model Product {
   imagePublicId     String?
   costPrice         Float             @default(0)
   sellingPrice      Float             @default(0)
+  /// Stock on hand in base (smallest) units — see ProductSaleUnit with unitKey "base". Sellable shelf / POS quantity only.
   quantity          Int               @default(0)
+  /// Non-sellable quantity (expired, damaged, etc.) — excluded from POS; see UnsellableStockLog for movements.
+  unsellableQuantity Int              @default(0)
+  /// Label for the base stock unit (e.g. piece, tablet, pair).
   unit              String            @default("pcs")
   /// Optional batch / lot expiry (e.g. for medicines).
   expiryDate        DateTime?
@@ -325,14 +454,36 @@ model Product {
   saleItems         SaleItem[]
   prescriptionItems PrescriptionItem[]
   internalStockLogs InternalStockLog[]
+  unsellableStockLogs UnsellableStockLog[]
   outreachInventoryItems OutreachInventoryItem[]
   outreachReturnItems    OutreachReturnItem[]
   outreachDispenseItems  OutreachDispenseItem[]
+  saleUnits         ProductSaleUnit[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
   @@unique([branchId, code])
   @@map("products")
+}
+
+/// Defines how pharmacy counts stock (base unit) vs purchase/sale packaging (e.g. 1 box = 100 base units).
+model ProductSaleUnit {
+  id            Int     @id @default(autoincrement())
+  productId     Int
+  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Stable key for APIs/POS, e.g. "base", "box". Smallest stock step uses "base" with baseUnitsEach = 1.
+  unitKey       String
+  /// Display label (e.g. "Piece", "Box").
+  label         String
+  /// One purchase/sale count of this unit equals this many base units (stock quantity increments/decrements).
+  baseUnitsEach Int
+  sortOrder     Int     @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([productId, unitKey])
+  @@index([productId])
+  @@map("product_sale_units")
 }
 
 /// Stock removed for internal operations (lab, cleaning) — not a retail sale.
@@ -345,20 +496,45 @@ model InternalStockLog {
   quantity    Int
   purpose     String
   notes       String?
+  /// When usage was triggered by completing an appointment service (reporting).
+  relatedAppointmentId Int?
+  relatedAppointment   Appointment? @relation(fields: [relatedAppointmentId], references: [id], onDelete: SetNull)
   createdById Int?
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
 
   @@index([productId, createdAt])
+  @@index([relatedAppointmentId])
+  @@index([purpose, createdAt])
   @@map("internal_stock_logs")
+}
+
+/// Movement of stock from sellable quantity to unsellable (expiry, damage, recall, etc.) — inventory write-off from a sales perspective.
+model UnsellableStockLog {
+  id          Int      @id @default(autoincrement())
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  branchId    Int
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  quantity    Int
+  reason      String   // expired | damaged | recall | other
+  notes       String?  @db.Text
+  createdById Int?
+  createdBy   User?    @relation("UnsellableStockLogCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([branchId, createdAt])
+  @@index([productId])
+  @@map("unsellable_stock_logs")
 }
 
 model Purchase {
   id          Int           @id @default(autoincrement())
   branchId    Int?
   branch      Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  supplierId  Int
-  supplier    Supplier      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  /// Optional when stock is received without a vendor record (donation, transfer-in, etc.).
+  supplierId  Int?
+  supplier    Supplier?     @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   purchaseDate DateTime     @default(now())
   totalAmount Float         @default(0)
   status      String        @default("completed")
@@ -589,17 +765,27 @@ model PatientPayment {
   id         Int       @id @default(autoincrement())
   patientId  Int
   patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  /// Cash/collected amount posted to the linked finance account (deposit).
   amount     Float
-  /// medication | prescription | pharmacy_credit — what the payment is applied toward (balance still decrements the same)
+  /// Discount/write-off applied toward the client balance on this transaction (no cash movement).
+  discount   Float     @default(0)
+  /// medication | prescription | pharmacy_credit | laboratory — laboratory may link to a lab order
   category   String    @default("medication")
   paymentMethodId Int?
   paymentMethod LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  /// When set, cash + discount settle this lab order fee (reception).
+  labOrderId Int?
+  labOrder   LabOrder? @relation(fields: [labOrderId], references: [id], onDelete: SetNull)
+  careFileId Int?
+  careFile   PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
   notes      String?
   createdById Int?
   createdBy   User?    @relation("PatientPaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt  DateTime @default(now())
 
   @@index([patientId, createdAt])
+  @@index([labOrderId])
+  @@index([careFileId])
   @@map("patient_payments")
 }
 
@@ -615,8 +801,11 @@ model PatientHistory {
   doctor         Doctor       @relation(fields: [doctorId], references: [id], onDelete: Restrict)
   type           String       // chief_complaint, history, examination, diagnosis, notes
   notes          String       @db.Text
+  careFileId     Int?
+  careFile       PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
 
+  @@index([careFileId])
   @@map("patient_histories")
 }
 
@@ -646,10 +835,30 @@ model LabTest {
   price       Float         @default(0)
   isActive    Boolean       @default(true)
   orderItems  LabOrderItem[]
+  disposables LabTestDisposable[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
   @@map("lab_tests")
+}
+
+/// Lab inventory consumed when a lab test result is completed (matched by LabInventoryItem.code per branch).
+model LabTestDisposable {
+  id           Int     @id @default(autoincrement())
+  labTestId    Int
+  labTest      LabTest @relation(fields: [labTestId], references: [id], onDelete: Cascade)
+  /// Matched to LabInventoryItem.code at the appointment branch; one unit = one quantity step (label = item.unit).
+  productCode  String
+  /// Inventory units to deduct per completed test line, interpreted in `deductionUnitKey` (see LabInventoryUnit).
+  unitsPerTest Float
+  /// Which LabInventoryUnit.unitKey this line uses (e.g. base, pair, box). Stock is stored in base units.
+  deductionUnitKey String @default("base")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([labTestId, productCode])
+  @@index([labTestId])
+  @@map("lab_test_disposables")
 }
 
 model LabOrder {
@@ -664,12 +873,20 @@ model LabOrder {
   orderedBy      User?        @relation("LabOrderCreatedBy", fields: [orderedById], references: [id], onDelete: SetNull)
   status         String       @default("pending") // pending, completed, cancelled
   notes          String?
-  /// Sum of line unit prices at order time (lab fee charged to patient).
+  /// Sum of line unit prices at order time (lab fee charged to patient account).
   totalAmount    Float         @default(0)
+  /// Cash received at reception toward this order (see PatientPayment when linked).
+  labFeePaidAmount     Float   @default(0)
+  /// Discount/write-off applied at reception toward this order.
+  labFeeDiscountAmount Float   @default(0)
   items          LabOrderItem[]
+  patientPayments PatientPayment[]
+  careFileId     Int?
+  careFile       PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@index([careFileId])
   @@map("lab_orders")
 }
 
@@ -688,9 +905,118 @@ model LabOrderItem {
   recordedBy     User?     @relation("LabResultRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
   recordedAt     DateTime?
   notes          String?
+  /// Set when inventory disposables for this line were deducted (idempotent).
+  disposablesDeductedAt DateTime?
   createdAt      DateTime  @default(now())
+  stockMovements LabStockMovement[]
 
   @@map("lab_order_items")
+}
+
+/// Consumables and supplies held in the lab (separate from pharmacy Product stock).
+model LabInventoryItem {
+  id           Int       @id @default(autoincrement())
+  branchId     Int
+  branch       Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  name         String
+  code         String
+  /// Label for the smallest stock step (same as LabInventoryUnit key "base").
+  unit         String    @default("pcs")
+  /// On-hand quantity in base (smallest) units — see LabInventoryUnit with unitKey "base".
+  quantity     Int       @default(0)
+  /// Lab POS price per stock unit; default 0 for fee-free issue/sale tracking.
+  sellingPrice Float     @default(0)
+  isActive     Boolean   @default(true)
+  labUnits     LabInventoryUnit[]
+  movements    LabStockMovement[]
+  labSaleItems LabSaleItem[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([branchId, code])
+  @@index([branchId])
+  @@map("lab_inventory_items")
+}
+
+/// Alternate count units for the same lab line (e.g. 1 pair = 2 pcs base), like pharmacy ProductSaleUnit.
+model LabInventoryUnit {
+  id                 Int              @id @default(autoincrement())
+  labInventoryItemId Int
+  labInventoryItem   LabInventoryItem @relation(fields: [labInventoryItemId], references: [id], onDelete: Cascade)
+  unitKey            String
+  label              String
+  /// One count of this unit equals this many base units (stock quantity steps).
+  baseUnitsEach      Int
+  sortOrder          Int              @default(0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([labInventoryItemId, unitKey])
+  @@index([labInventoryItemId])
+  @@map("lab_inventory_units")
+}
+
+/// Stock in/out for lab inventory (receipts, adjustments, test disposables, lab POS sales).
+model LabStockMovement {
+  id                 Int              @id @default(autoincrement())
+  labInventoryItemId Int
+  labInventoryItem   LabInventoryItem @relation(fields: [labInventoryItemId], references: [id], onDelete: Restrict)
+  branchId           Int
+  branch             Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  /// Positive = stock in; negative = stock out.
+  signedQuantity     Int
+  /// receive | adjustment | disposable | lab_sale
+  reason             String
+  labOrderItemId     Int?
+  labOrderItem       LabOrderItem?    @relation(fields: [labOrderItemId], references: [id], onDelete: SetNull)
+  labSaleId          Int?
+  labSale            LabSale?         @relation(fields: [labSaleId], references: [id], onDelete: SetNull)
+  notes              String?          @db.Text
+  createdById        Int?
+  createdBy          User?            @relation("LabStockMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt          DateTime         @default(now())
+
+  @@index([branchId, createdAt])
+  @@index([labInventoryItemId, createdAt])
+  @@index([reason, createdAt])
+  @@map("lab_stock_movements")
+}
+
+model LabSale {
+  id            Int       @id @default(autoincrement())
+  branchId      Int
+  branch        Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  saleDate      DateTime  @default(now())
+  totalAmount   Float     @default(0)
+  /// Optional when totalAmount is 0 (fee-free).
+  paymentMethod String    @default("")
+  patientId     Int?
+  patient       Patient?  @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  customerType  String    @default("walking")
+  notes         String?
+  createdById   Int?
+  createdBy     User?     @relation("LabSaleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items         LabSaleItem[]
+  stockMovements LabStockMovement[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([branchId, saleDate])
+  @@map("lab_sales")
+}
+
+model LabSaleItem {
+  id                 Int              @id @default(autoincrement())
+  labSaleId          Int
+  labSale            LabSale          @relation(fields: [labSaleId], references: [id], onDelete: Cascade)
+  labInventoryItemId Int
+  labInventoryItem   LabInventoryItem @relation(fields: [labInventoryItemId], references: [id], onDelete: Restrict)
+  quantity           Int
+  unitPrice          Float
+  totalAmount        Float
+
+  @@index([labSaleId])
+  @@map("lab_sale_items")
 }
 
 // --- Prescriptions (Doctor prescribes from inventory) ---
@@ -710,9 +1036,12 @@ model Prescription {
   status         String             @default("pending") // pending, dispensed, cancelled
   notes          String?
   items          PrescriptionItem[]
+  careFileId     Int?
+  careFile       PatientCareFile?  @relation(fields: [careFileId], references: [id], onDelete: SetNull)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
+  @@index([careFileId])
   @@map("prescriptions")
 }
 

@@ -53,7 +53,7 @@ export default function OutreachOverviewPage() {
     },
     {
       label: "Emergency medication",
-      sub: "Field visits — charges to patient balance",
+      sub: "Field visits — charges to client balance",
       value: totalDispenses,
       href: "/reports/outreach/dispenses",
       accent: "from-violet-500/15 to-violet-600/5 border-violet-200/80 dark:border-violet-500/20",

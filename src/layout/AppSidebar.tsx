@@ -115,6 +115,12 @@ const labItems: NavItem[] = [
       { name: "Categories", path: "/lab/categories", permission: "lab.view" },
       { name: "Tests", path: "/lab/tests", permission: "lab.view" },
       { name: "Orders & Results", path: "/lab/orders", permission: "lab.view" },
+      { name: "Lab inventory", path: "/lab/inventory", permission: "lab.view", exact: true },
+      {
+        name: "New lab stock item",
+        path: "/lab/inventory/new",
+        permissionAny: ["lab.create", "lab.edit"],
+      },
     ],
   },
 ];
@@ -138,13 +144,14 @@ const pharmacyItems: NavItem[] = [
     permission: "pharmacy.view",
     subItems: [
       { name: "Inventory", path: "/pharmacy/inventory", permission: "pharmacy.view" },
+      { name: "Unsellable stock", path: "/pharmacy/unsellable-stock", permission: "pharmacy.view" },
       { name: "Opening inventory", path: "/pharmacy/opening-inventory", permission: "pharmacy.create" },
       { name: "Categories", path: "/pharmacy/categories", permission: "pharmacy.view" },
       { name: "Purchases", path: "/pharmacy/purchases", permission: "pharmacy.view" },
       { name: "Suppliers", path: "/pharmacy/suppliers", permission: "pharmacy.view" },
       { name: "Internal usage", path: "/pharmacy/internal-usage", permission: "pharmacy.view" },
       { name: "POS", path: "/pharmacy/pos", permission: "pharmacy.pos" },
-      { name: "Patient invoice", path: "/pharmacy/patient-invoice", permission: "prescriptions.view" },
+      { name: "Client invoice", path: "/pharmacy/patient-invoice", permission: "prescriptions.view" },
       { name: "Sale returns", path: "/pharmacy/sale-returns", permission: "pharmacy.pos" },
       { name: "Sales list", path: "/pharmacy/sales", permission: "pharmacy.view" },
       { name: "Outreach teams", path: "/pharmacy/outreach/teams", permission: "pharmacy.view" },
@@ -154,7 +161,7 @@ const pharmacyItems: NavItem[] = [
   },
   {
     icon: <UserCircleIcon />,
-    name: "Patients",
+    name: "Clients",
     path: "/patients",
     permission: "pharmacy.view",
   },
@@ -163,6 +170,19 @@ const pharmacyItems: NavItem[] = [
     name: "Payments",
     path: "/payments",
     permissionAny: ["accounts.deposit", "pharmacy.pos"],
+    subItems: [
+      {
+        name: "Client balances",
+        path: "/payments",
+        permissionAny: ["accounts.deposit", "pharmacy.pos"],
+        exact: true,
+      },
+      {
+        name: "Record payment",
+        path: "/payments/new",
+        permissionAny: ["accounts.deposit", "pharmacy.pos"],
+      },
+    ],
   },
 ];
 
@@ -180,6 +200,25 @@ const reportsItems: NavItem[] = [
       { name: "Categories report", path: "/reports/categories", permission: "pharmacy.view" },
       { name: "Suppliers report", path: "/reports/suppliers", permission: "pharmacy.view" },
       { name: "Opening inventory report", path: "/reports/opening-inventory", permission: "pharmacy.view" },
+      { name: "Lab activity", path: "/reports/lab-activity", permission: "lab.view" },
+    ],
+  },
+  {
+    icon: <UserCircleIcon />,
+    name: "Client reports",
+    path: "/reports/new-members",
+    permissionAny: ["patients.view", "appointments.view"],
+    subItems: [
+      {
+        name: "Client registration report",
+        path: "/reports/new-members",
+        permission: "patients.view",
+      },
+      {
+        name: "Outstanding balances",
+        path: "/reports/outstanding-balances",
+        permissionAny: ["accounts.deposit", "pharmacy.pos", "patients.view"],
+      },
     ],
   },
 ];
@@ -233,8 +272,15 @@ const settingsItems: NavItem[] = [
     subItems: [
       { name: "Overview", path: "/settings", permission: "settings.view" },
       { name: "Branches & access", path: "/settings/branches", permission: "settings.manage" },
+      { name: "Referred from", path: "/settings/referral-sources", permission: "settings.manage" },
+      { name: "Cities & villages", path: "/settings/cities-villages", permission: "settings.manage" },
       { name: "Doctors", path: "/settings/doctors", permission: "appointments.view" },
       { name: "Services", path: "/settings/services", permission: "appointments.view" },
+      {
+        name: "Appointment calendar",
+        path: "/settings/appointment-calendar",
+        permissionAny: ["settings.manage", "appointments.view"],
+      },
       { name: "Activity log", path: "/settings/activity", permission: "audit.view" },
       {
         name: "Admin activity",

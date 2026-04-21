@@ -11,14 +11,36 @@ import {
 import { userHasPermission } from "@/lib/permissions";
 import { logAuditFromRequest } from "@/lib/audit-log";
 import { getFinanceAccountBalance } from "@/lib/finance-balance";
+import { serializePatient } from "@/lib/patient-name";
+import { resolveReferralSourceIdForWrite } from "@/lib/referral-source";
+import { calculateAgeFromDate } from "@/lib/age-from-dob";
+import { assertActiveBranch, assertVillageInCity } from "@/lib/patient-location";
+import { assertOpenCareFileForPatient, ensureOpenCareFile } from "@/lib/care-file";
 
 const visitInclude = {
   branch: { select: { id: true, name: true } },
-  patient: { select: { id: true, patientCode: true, name: true, phone: true } },
+  patient: {
+    select: {
+      id: true,
+      patientCode: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      address: true,
+      cityId: true,
+      villageId: true,
+      registeredBranchId: true,
+      city: { select: { id: true, name: true } },
+      village: { select: { id: true, name: true } },
+      registeredBranch: { select: { id: true, name: true } },
+      referralSource: { select: { id: true, name: true } },
+    },
+  },
   doctor: { select: { id: true, name: true } },
   paymentMethod: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   depositTransaction: { select: { id: true, amount: true, transactionDate: true, accountId: true } },
+  careFile: { select: { id: true, fileCode: true, status: true } },
 } as const;
 
 export async function GET(req: NextRequest) {
@@ -64,7 +86,12 @@ export async function GET(req: NextRequest) {
         }),
         prisma.doctorVisitCard.count({ where }),
       ]);
-      return NextResponse.json({ data, total, page, pageSize });
+      return NextResponse.json({
+        data: data.map((row) => ({ ...row, patient: serializePatient(row.patient) })),
+        total,
+        page,
+        pageSize,
+      });
     }
 
     const data = await prisma.doctorVisitCard.findMany({
@@ -73,7 +100,7 @@ export async function GET(req: NextRequest) {
       orderBy: [{ visitDate: "desc" }, { id: "desc" }],
       take: 500,
     });
-    return NextResponse.json(data);
+    return NextResponse.json(data.map((row) => ({ ...row, patient: serializePatient(row.patient) })));
   } catch (e) {
     console.error("Visit cards list error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -103,6 +130,7 @@ export async function POST(req: NextRequest) {
       notes,
       paymentMethodId: bodyPaymentMethodId,
       transactionDate,
+      careFileId: bodyCareFileId,
     } = body;
 
     const branchId = Number(bid);
@@ -133,25 +161,63 @@ export async function POST(req: NextRequest) {
     if (pid != null && Number.isInteger(Number(pid))) {
       patientId = Number(pid);
       const p = await prisma.patient.findFirst({ where: { id: patientId, isActive: true } });
-      if (!p) return NextResponse.json({ error: "Patient not found" }, { status: 404 });
-    } else if (newPatient && typeof newPatient.name === "string" && newPatient.name.trim()) {
+      if (!p) return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    } else if (
+      newPatient &&
+      typeof newPatient.firstName === "string" &&
+      typeof newPatient.lastName === "string" &&
+      newPatient.firstName.trim() &&
+      newPatient.lastName.trim()
+    ) {
       const count = await prisma.patient.count();
       const patientCode = `PAT-${String(count + 1).padStart(4, "0")}`;
+      const refNew = await resolveReferralSourceIdForWrite(
+        newPatient && typeof newPatient === "object"
+          ? (newPatient as Record<string, unknown>).referralSourceId
+          : undefined
+      );
+      if (!refNew.ok) {
+        return NextResponse.json({ error: refNew.error }, { status: 400 });
+      }
+      const np = newPatient as Record<string, unknown>;
+      const rb = Number(np.registeredBranchId);
+      if (!Number.isInteger(rb)) {
+        return NextResponse.json({ error: "Registration branch is required for a new client" }, { status: 400 });
+      }
+      if (!(await assertActiveBranch(rb))) {
+        return NextResponse.json({ error: "Invalid or inactive registration branch" }, { status: 400 });
+      }
+      const cId = Number(np.cityId);
+      const vId = Number(np.villageId);
+      if (!Number.isInteger(cId) || !Number.isInteger(vId)) {
+        return NextResponse.json({ error: "City and village are required for a new client" }, { status: 400 });
+      }
+      if (!(await assertVillageInCity(vId, cId))) {
+        return NextResponse.json({ error: "Invalid or inactive city/village combination" }, { status: 400 });
+      }
+
+      const dob = newPatient.dateOfBirth ? new Date(newPatient.dateOfBirth) : null;
       const created = await prisma.patient.create({
         data: {
           patientCode,
-          name: String(newPatient.name).trim(),
+          firstName: String(newPatient.firstName).trim(),
+          lastName: String(newPatient.lastName).trim(),
           phone: newPatient.phone ? String(newPatient.phone).trim() : null,
           email: newPatient.email ? String(newPatient.email).trim() : null,
-          dateOfBirth: newPatient.dateOfBirth ? new Date(newPatient.dateOfBirth) : null,
+          dateOfBirth: dob,
+          age: calculateAgeFromDate(dob),
           gender: newPatient.gender ? String(newPatient.gender).trim() : null,
           address: newPatient.address ? String(newPatient.address).trim() : null,
+          cityId: cId,
+          villageId: vId,
+          registeredBranchId: rb,
+          ...(refNew.value != null ? { referralSourceId: refNew.value } : {}),
         },
       });
       patientId = created.id;
     } else {
       return NextResponse.json(
-        { error: "Provide patientId or newPatient with a name" },
+        { error: "Provide an existing client id or new client first and last name" },
         { status: 400 }
       );
     }
@@ -192,6 +258,15 @@ export async function POST(req: NextRequest) {
     let card;
     try {
       card = await prisma.$transaction(async (tx) => {
+        let careFileId: number | null = null;
+        if (bodyCareFileId != null && bodyCareFileId !== "") {
+          const cf = await assertOpenCareFileForPatient(tx, patientId, Number(bodyCareFileId));
+          careFileId = cf.id;
+        } else {
+          const ensured = await ensureOpenCareFile(tx, patientId);
+          careFileId = ensured.id;
+        }
+
         const created = await tx.doctorVisitCard.create({
           data: {
             cardNumber: String(cardNumber).trim(),
@@ -205,6 +280,7 @@ export async function POST(req: NextRequest) {
             paymentMethodId: pmid,
             notes: notes != null && String(notes).trim() ? String(notes).trim() : null,
             createdById: auth.userId,
+            careFileId,
           },
         });
 
@@ -236,6 +312,9 @@ export async function POST(req: NextRequest) {
         });
       });
     } catch (e: unknown) {
+      if (e instanceof Error && e.message.startsWith("BAD_REQUEST:")) {
+        return NextResponse.json({ error: e.message.replace(/^BAD_REQUEST:/, "").trim() }, { status: 400 });
+      }
       if (e instanceof Error && e.message === "INVALID_PM") {
         return NextResponse.json({ error: "Invalid or inactive payment method" }, { status: 400 });
       }
@@ -257,8 +336,11 @@ export async function POST(req: NextRequest) {
     if (card?.depositTransaction?.accountId != null) {
       accountBalanceAfter = await getFinanceAccountBalance(card.depositTransaction.accountId);
     }
+    const cardOut = card
+      ? { ...card, patient: serializePatient(card.patient) }
+      : card;
     return NextResponse.json(
-      accountBalanceAfter != null ? { ...card, accountBalanceAfter } : card
+      accountBalanceAfter != null ? { ...cardOut, accountBalanceAfter } : cardOut
     );
   } catch (e: unknown) {
     console.error("Visit card create error:", e);

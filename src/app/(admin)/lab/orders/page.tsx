@@ -217,7 +217,7 @@ export default function LabOrdersPage() {
                       Choose tests
                     </h2>
                     <p className="mt-1 max-w-xl text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-                      Search the catalog, select multiple tests, and review the ordered list. Fees are summed and added to the patient&apos;s account balance.
+                      Search the catalog, select multiple tests, and review the ordered list. Fees are summed and added to the client&apos;s account balance.
                     </p>
                   </div>
                 </div>
@@ -353,7 +353,7 @@ export default function LabOrdersPage() {
                   <span className="font-mono text-lg font-bold tabular-nums text-gray-900 dark:text-white">${selectedLabFee.toFixed(2)}</span>
                 </div>
                 <p className="mt-2 text-xs leading-snug text-gray-500 dark:text-gray-400">
-                  Charged to the patient&apos;s balance when you create this order.
+                  Charged to the client&apos;s balance when you create this order.
                 </p>
               </div>
             </div>
@@ -395,7 +395,7 @@ export default function LabOrdersPage() {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">No lab orders yet</h3>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Lab orders are created from appointments. Click an appointment to send a patient to the lab.</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Lab orders are created from appointments. Click an appointment to send a client to the lab.</p>
             </div>
           </div>
         </div>

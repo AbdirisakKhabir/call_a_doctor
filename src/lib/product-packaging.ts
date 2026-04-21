@@ -1,15 +1,23 @@
 /**
- * Sale and purchase line quantities are always in pieces (pcs).
- * `saleUnit` / `purchaseUnit` on persisted rows are always `"pcs"`.
+ * Sale/purchase line quantities are counted in the selected {@link ProductSaleUnit} (unitKey).
+ * Product.quantity is always in base (smallest) units.
  */
 
-export type SaleUnit = "pcs";
+import { lineCountToBaseUnits, normalizeSaleUnitKey } from "@/lib/product-sale-units";
 
-export function parseSaleUnit(_raw: unknown): SaleUnit {
-  return "pcs";
+export type { SaleUnitInput } from "@/lib/product-sale-units";
+
+/** @deprecated use normalizeSaleUnitKey */
+export function parseSaleUnit(raw: unknown): string {
+  return normalizeSaleUnitKey(typeof raw === "string" ? raw : null);
 }
 
-/** Convert a line quantity to integer pcs (quantities are already in pcs). */
-export function lineQuantityToPcs(quantity: number): number {
-  return Math.max(0, Math.floor(Number(quantity) || 0));
+/** Convert a line quantity in the given sale unit to base units for stock. */
+export function lineQuantityToBaseUnits(quantity: number, baseUnitsEach: number): number {
+  return lineCountToBaseUnits(quantity, baseUnitsEach);
+}
+
+/** @deprecated alias for lineQuantityToBaseUnits */
+export function lineQuantityToPcs(quantity: number, baseUnitsEach = 1): number {
+  return lineQuantityToBaseUnits(quantity, baseUnitsEach);
 }

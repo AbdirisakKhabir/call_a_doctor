@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { serializePatient } from "@/lib/patient-name";
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
       ...(status ? { status } : {}),
     };
     const include = {
-      patient: { select: { id: true, patientCode: true, name: true } },
+      patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
       doctor: { select: { id: true, name: true } },
       appointment: { select: { id: true, appointmentDate: true, startTime: true } },
       items: {
@@ -39,7 +40,12 @@ export async function GET(req: NextRequest) {
         }),
         prisma.labOrder.count({ where }),
       ]);
-      return NextResponse.json({ data: orders, total, page, pageSize });
+      return NextResponse.json({
+        data: orders.map((o) => ({ ...o, patient: serializePatient(o.patient) })),
+        total,
+        page,
+        pageSize,
+      });
     }
 
     const orders = await prisma.labOrder.findMany({
@@ -47,7 +53,7 @@ export async function GET(req: NextRequest) {
       include,
       orderBy: { createdAt: "desc" },
     });
-    return NextResponse.json(orders);
+    return NextResponse.json(orders.map((o) => ({ ...o, patient: serializePatient(o.patient) })));
   } catch (e) {
     console.error("Lab orders error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -61,7 +67,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { appointmentId, patientId, doctorId, notes, testIds } = body;
     if (!appointmentId || !patientId || !doctorId || !Array.isArray(testIds) || testIds.length === 0) {
-      return NextResponse.json({ error: "Appointment, patient, doctor and at least one test are required" }, { status: 400 });
+      return NextResponse.json({ error: "Appointment, client, doctor and at least one test are required" }, { status: 400 });
     }
 
     const uniqueTestIds = [
@@ -90,7 +96,7 @@ export async function POST(req: NextRequest) {
     const patientIdNum = Number(patientId);
 
     const include = {
-      patient: { select: { id: true, patientCode: true, name: true, accountBalance: true } },
+      patient: { select: { id: true, patientCode: true, firstName: true, lastName: true, accountBalance: true } },
       doctor: { select: { id: true, name: true } },
       appointment: { select: { id: true, appointmentDate: true, startTime: true } },
       items: {
@@ -99,6 +105,14 @@ export async function POST(req: NextRequest) {
     };
 
     const order = await prisma.$transaction(async (tx) => {
+      const apptRow = await tx.appointment.findUnique({
+        where: { id: Number(appointmentId) },
+        select: { patientId: true, careFileId: true },
+      });
+      if (!apptRow || apptRow.patientId !== patientIdNum) {
+        throw new Error("BAD_REQUEST:Appointment does not match this client.");
+      }
+
       const created = await tx.labOrder.create({
         data: {
           appointmentId: Number(appointmentId),
@@ -107,6 +121,7 @@ export async function POST(req: NextRequest) {
           orderedById: auth.userId,
           notes: notes ? String(notes).trim() : null,
           totalAmount,
+          careFileId: apptRow.careFileId,
           items: {
             create: uniqueTestIds.map((tid) => ({
               labTestId: tid,
@@ -144,8 +159,11 @@ export async function POST(req: NextRequest) {
         patientCharged: totalAmount > 0,
       },
     });
-    return NextResponse.json(order);
+    return NextResponse.json({ ...order, patient: serializePatient(order.patient) });
   } catch (e) {
+    if (e instanceof Error && e.message.startsWith("BAD_REQUEST:")) {
+      return NextResponse.json({ error: e.message.replace(/^BAD_REQUEST:/, "").trim() }, { status: 400 });
+    }
     console.error("Create lab order error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }

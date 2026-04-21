@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
+import { DollarLineIcon } from "@/icons";
 import {
   Table,
   TableBody,
@@ -62,22 +63,28 @@ export default function PaymentsPage() {
     <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="Payments" />
-        <Link
-          href="/patients"
-          className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
-        >
-          Manage patients
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {canRecordPayment && (
+            <Link
+              href="/payments/new"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/25 transition hover:bg-brand-600 hover:shadow-lg hover:shadow-brand-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:shadow-brand-500/20 dark:focus-visible:ring-offset-gray-900"
+            >
+              <DollarLineIcon className="h-5 w-5 opacity-95" />
+              Record payment
+            </Link>
+          )}
+          <Link
+            href="/patients"
+            className="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 transition hover:bg-gray-50 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-white/5"
+          >
+            Manage clients
+          </Link>
+        </div>
       </div>
-
-      <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-        Record payments toward medication, prescriptions, or pharmacy credits. Balances are reduced the same as from the
-        Patients list.
-      </p>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
         <div className="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">Patients with balance</h3>
+          <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">Clients with balance</h3>
           <input
             type="text"
             placeholder="Search by name, code, phone..."
@@ -93,7 +100,7 @@ export default function PaymentsPage() {
           </div>
         ) : patients.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <p className="text-sm text-gray-500 dark:text-gray-400">No patients match your search.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">No clients match your search.</p>
           </div>
         ) : (
           <Table>
@@ -120,7 +127,7 @@ export default function PaymentsPage() {
                       <button
                         type="button"
                         onClick={() => setPaymentPatient(p)}
-                        className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                        className="inline-flex min-h-9 items-center justify-center rounded-lg bg-brand-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-gray-900"
                       >
                         Record payment
                       </button>
@@ -139,7 +146,7 @@ export default function PaymentsPage() {
           total={total}
           page={page}
           pageSize={pageSize}
-          noun="patients"
+          noun="clients"
           onPageChange={setPage}
         />
       </div>

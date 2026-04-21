@@ -14,15 +14,23 @@ import {
 } from "@/components/ui/table";
 import Label from "@/components/form/Label";
 import DateField from "@/components/form/DateField";
+import AgeReadonlyInput from "@/components/form/AgeReadonlyInput";
+import ClientFormCard from "@/components/patients/ClientFormCard";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import { HorizontaLDots, PlusIcon } from "@/icons";
 import PatientPaymentModal from "@/components/patients/PatientPaymentModal";
+import { Dropdown } from "@/components/ui/dropdown/Dropdown";
+import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
+import { calculateAgeFromIsoDateString } from "@/lib/age-from-dob";
 
 type Patient = {
   id: number;
   patientCode: string;
+  firstName: string;
+  lastName: string;
+  /** Display full name (from API). */
   name: string;
   phone: string | null;
   email: string | null;
@@ -30,8 +38,23 @@ type Patient = {
   gender: string | null;
   address: string | null;
   notes: string | null;
+  referralSourceId?: number | null;
+  referralSource?: { id: number; name: string } | null;
+  city?: { id: number; name: string } | null;
+  village?: { id: number; name: string } | null;
+  registeredBranch?: { id: number; name: string } | null;
+  cityId?: number | null;
+  villageId?: number | null;
+  registeredBranchId?: number | null;
+  /** Persisted full years (recalculated when DOB is saved). */
+  age?: number | null;
   accountBalance?: number;
 };
+
+type ReferralOption = { id: number; name: string };
+type CityOpt = { id: number; name: string };
+type VillageOpt = { id: number; name: string };
+type BranchOpt = { id: number; name: string };
 
 type Doctor = { id: number; name: string };
 
@@ -43,6 +66,37 @@ type HistoryEntry = {
   doctor: { id: number; name: string };
   appointment: { id: number; appointmentDate: string; startTime: string } | null;
 };
+
+function formatAgeColumn(dateOfBirth: string | null | undefined): string {
+  if (dateOfBirth == null || dateOfBirth === "") return "—";
+  const n = calculateAgeFromIsoDateString(dateOfBirth);
+  return n !== null ? String(n) : "—";
+}
+
+function displayPatientAge(p: { age?: number | null; dateOfBirth?: string | null }): string {
+  if (p.age != null && Number.isFinite(p.age)) return String(p.age);
+  return formatAgeColumn(p.dateOfBirth);
+}
+
+function patientRowHasClientActions(
+  p: Patient,
+  opts: {
+    canView: boolean;
+    canClinicalNote: boolean;
+    canRecordPayment: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
+  }
+): boolean {
+  const canPayRow = opts.canRecordPayment && (p.accountBalance ?? 0) > 0;
+  return (
+    opts.canView ||
+    opts.canClinicalNote ||
+    canPayRow ||
+    opts.canEdit ||
+    opts.canDelete
+  );
+}
 
 function historyTypeLabel(t: string) {
   const map: Record<string, string> = {
@@ -56,7 +110,7 @@ function historyTypeLabel(t: string) {
 }
 
 export default function PatientsPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user, isLoading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const historyParams = useMemo(
     () =>
@@ -80,16 +134,23 @@ export default function PatientsPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const pageSize = 20;
-  const [modal, setModal] = useState<"add" | "edit" | null>(null);
+  const [editModal, setEditModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [clientActionsMenuId, setClientActionsMenuId] = useState<number | null>(null);
+  const [referralOptions, setReferralOptions] = useState<ReferralOption[]>([]);
   const [form, setForm] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     phone: "",
     email: "",
     dateOfBirth: "",
     gender: "",
     address: "",
+    cityId: "",
+    villageId: "",
+    registeredBranchId: "",
     notes: "",
+    referralSourceId: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -102,6 +163,11 @@ export default function PatientsPage() {
     hasPermission("accounts.deposit") || hasPermission("pharmacy.pos");
   const canClinicalNote =
     hasPermission("patient_history.create") || hasPermission("patient_history.view");
+  const canAllBranches = hasPermission("settings.manage");
+
+  const [cities, setCities] = useState<CityOpt[]>([]);
+  const [villages, setVillages] = useState<VillageOpt[]>([]);
+  const [branches, setBranches] = useState<BranchOpt[]>([]);
 
   async function loadPatients() {
     const params = new URLSearchParams();
@@ -161,6 +227,70 @@ export default function PatientsPage() {
   }, [search]);
 
   useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/referral-sources")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled && Array.isArray(data)) setReferralOptions(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/cities")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled && Array.isArray(data)) setCities(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+    const url = canAllBranches ? "/api/branches?all=true" : "/api/branches";
+    let cancelled = false;
+    authFetch(url)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        const list = Array.isArray(data) ? data : data.data ?? [];
+        if (!cancelled) setBranches(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [canAllBranches, authLoading, user?.id]);
+
+  useEffect(() => {
+    const cid = form.cityId ? Number(form.cityId) : null;
+    if (!cid || !Number.isInteger(cid)) {
+      setVillages([]);
+      return;
+    }
+    let cancelled = false;
+    authFetch(`/api/villages?cityId=${cid}`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!cancelled && Array.isArray(data)) setVillages(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [form.cityId]);
+
+  useEffect(() => {
     setLoading(true);
     loadPatients().finally(() => setLoading(false));
   }, [search, page]);
@@ -207,67 +337,59 @@ export default function PatientsPage() {
     }
   }
 
-  function openAdd() {
-    setModal("add");
-    setEditingId(null);
-    setForm({ name: "", phone: "", email: "", dateOfBirth: "", gender: "", address: "", notes: "" });
-    setError("");
-  }
-
   function openEdit(p: Patient) {
-    setModal("edit");
+    setEditModal(true);
     setEditingId(p.id);
     setForm({
-      name: p.name,
+      firstName: p.firstName,
+      lastName: p.lastName,
       phone: p.phone ?? "",
       email: p.email ?? "",
       dateOfBirth: p.dateOfBirth ? p.dateOfBirth.slice(0, 10) : "",
       gender: p.gender ?? "",
       address: p.address ?? "",
+      cityId: p.cityId != null ? String(p.cityId) : "",
+      villageId: p.villageId != null ? String(p.villageId) : "",
+      registeredBranchId: p.registeredBranchId != null ? String(p.registeredBranchId) : "",
       notes: p.notes ?? "",
+      referralSourceId: p.referralSourceId != null ? String(p.referralSourceId) : "",
     });
     setError("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!editingId) return;
     setError("");
     setSubmitting(true);
     try {
-      if (modal === "add") {
-        const res = await authFetch("/api/patients", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "Failed to create");
-          return;
-        }
-        await loadPatients();
-        setModal(null);
-      } else if (modal === "edit" && editingId) {
-        const res = await authFetch(`/api/patients/${editingId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "Failed to update");
-          return;
-        }
-        await loadPatients();
-        setModal(null);
+      const payload = {
+        ...form,
+        referralSourceId: form.referralSourceId ? Number(form.referralSourceId) : null,
+        cityId: form.cityId ? Number(form.cityId) : null,
+        villageId: form.villageId ? Number(form.villageId) : null,
+        registeredBranchId: form.registeredBranchId ? Number(form.registeredBranchId) : null,
+      };
+      const res = await authFetch(`/api/patients/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to update");
+        return;
       }
+      await loadPatients();
+      setEditModal(false);
+      setEditingId(null);
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this patient?")) return;
+    if (!confirm("Delete this client?")) return;
     const res = await authFetch(`/api/patients/${id}`, { method: "DELETE" });
     if (res.ok) await loadPatients();
     else alert((await res.json()).error || "Failed to delete");
@@ -276,16 +398,22 @@ export default function PatientsPage() {
   return (
     <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <PageBreadCrumb pageTitle="Patients" />
+        <PageBreadCrumb pageTitle="Clients" />
         {canCreate && (
-          <Button startIcon={<PlusIcon />} onClick={openAdd} size="sm">Add Patient</Button>
+          <Link
+            href="/patients/new"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 dark:hover:bg-brand-600"
+          >
+            <PlusIcon />
+            Add client
+          </Link>
         )}
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
         <div className="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">All Patients</h3>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">All clients</h3>
             <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-50 px-1.5 text-xs font-semibold text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
               {loading ? "…" : total}
             </span>
@@ -305,8 +433,16 @@ export default function PatientsPage() {
           </div>
         ) : patients.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <p className="text-sm text-gray-500 dark:text-gray-400">No patients yet.</p>
-            {canCreate && <Button className="mt-2" onClick={openAdd} size="sm">Add Patient</Button>}
+            <p className="text-sm text-gray-500 dark:text-gray-400">No clients yet.</p>
+            {canCreate && (
+              <Link
+                href="/patients/new"
+                className="mt-2 inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+              >
+                <PlusIcon />
+                Add client
+              </Link>
+            )}
           </div>
         ) : (
           <Table>
@@ -315,8 +451,12 @@ export default function PatientsPage() {
                 <TableCell isHeader>Code</TableCell>
                 <TableCell isHeader>Name</TableCell>
                 <TableCell isHeader>Phone</TableCell>
-                <TableCell isHeader>Email</TableCell>
                 <TableCell isHeader>Gender</TableCell>
+                <TableCell isHeader>Age</TableCell>
+                <TableCell isHeader>Branch</TableCell>
+                <TableCell isHeader>City</TableCell>
+                <TableCell isHeader>Village</TableCell>
+                <TableCell isHeader>Referred from</TableCell>
                 <TableCell isHeader className="text-right">Balance</TableCell>
                 <TableCell isHeader className="text-right">Actions</TableCell>
               </TableRow>
@@ -327,49 +467,114 @@ export default function PatientsPage() {
                   <TableCell className="font-mono text-sm">{p.patientCode}</TableCell>
                   <TableCell className="font-medium">{p.name}</TableCell>
                   <TableCell>{p.phone || "—"}</TableCell>
-                  <TableCell>{p.email || "—"}</TableCell>
                   <TableCell>{p.gender || "—"}</TableCell>
+                  <TableCell className="tabular-nums text-sm text-gray-800 dark:text-gray-200">
+                    {displayPatientAge(p)}
+                  </TableCell>
+                  <TableCell className="max-w-[7rem] truncate text-xs text-gray-600 dark:text-gray-400">
+                    {p.registeredBranch?.name ?? "—"}
+                  </TableCell>
+                  <TableCell className="max-w-[7rem] truncate text-xs text-gray-600 dark:text-gray-400">
+                    {p.city?.name ?? "—"}
+                  </TableCell>
+                  <TableCell className="max-w-[7rem] truncate text-xs text-gray-600 dark:text-gray-400">
+                    {p.village?.name ?? "—"}
+                  </TableCell>
+                  <TableCell className="max-w-40 truncate text-sm text-gray-600 dark:text-gray-400">
+                    {p.referralSource?.name ?? "—"}
+                  </TableCell>
                   <TableCell className="text-right font-mono text-sm">
                     ${(p.accountBalance ?? 0).toFixed(2)}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex gap-1">
-                      {hasPermission("patients.view") && (
-                        <Link
-                          href={`/patients/${p.id}/history`}
-                          className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
-                        >
-                          History
-                        </Link>
-                      )}
-                      {canClinicalNote && (
-                        <Link
-                          href={`/patients?history=1&patientId=${p.id}`}
-                          className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                        >
-                          Clinical note
-                        </Link>
-                      )}
-                      {canRecordPayment && (p.accountBalance ?? 0) > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => openPayment(p)}
-                          className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
-                        >
-                          Pay
-                        </button>
-                      )}
-                      {canEdit && (
-                        <button type="button" onClick={() => openEdit(p)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-brand-50 hover:text-brand-500 dark:hover:bg-brand-500/10" aria-label="Edit">
-                          <PencilIcon className="h-4 w-4" />
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button type="button" onClick={() => handleDelete(p.id)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-error-50 hover:text-error-500 dark:hover:bg-error-500/10" aria-label="Delete">
-                          <TrashBinIcon className="h-4 w-4" />
-                        </button>
-                      )}
+                  <TableCell className="text-right align-middle overflow-visible">
+                    {!patientRowHasClientActions(p, {
+                      canView: hasPermission("patients.view"),
+                      canClinicalNote,
+                      canRecordPayment,
+                      canEdit,
+                      canDelete,
+                    }) ? (
+                      <span className="text-gray-400">—</span>
+                    ) : (
+                    <div className="relative inline-flex justify-end">
+                      <button
+                        type="button"
+                        className="dropdown-toggle inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                        aria-expanded={clientActionsMenuId === p.id}
+                        aria-haspopup="menu"
+                        aria-label={`Actions for ${p.name}`}
+                        onClick={() =>
+                          setClientActionsMenuId((cur) => (cur === p.id ? null : p.id))
+                        }
+                      >
+                        <HorizontaLDots className="h-5 w-5 rotate-90" aria-hidden />
+                      </button>
+                      <Dropdown
+                        isOpen={clientActionsMenuId === p.id}
+                        onClose={() => setClientActionsMenuId(null)}
+                        className="min-w-[11rem] py-1"
+                      >
+                        {hasPermission("patients.view") && (
+                          <>
+                            <DropdownItem
+                              tag="a"
+                              href={`/patients/${p.id}/history`}
+                              onItemClick={() => setClientActionsMenuId(null)}
+                            >
+                              History
+                            </DropdownItem>
+                            <DropdownItem
+                              tag="a"
+                              href={`/patients/${p.id}/care-files`}
+                              onItemClick={() => setClientActionsMenuId(null)}
+                            >
+                              Client files
+                            </DropdownItem>
+                          </>
+                        )}
+                        {canClinicalNote && (
+                          <DropdownItem
+                            tag="a"
+                            href={`/patients?history=1&patientId=${p.id}`}
+                            onItemClick={() => setClientActionsMenuId(null)}
+                          >
+                            Clinical note
+                          </DropdownItem>
+                        )}
+                        {canRecordPayment && (p.accountBalance ?? 0) > 0 && (
+                          <DropdownItem
+                            onClick={() => {
+                              openPayment(p);
+                              setClientActionsMenuId(null);
+                            }}
+                          >
+                            Record payment
+                          </DropdownItem>
+                        )}
+                        {canEdit && (
+                          <DropdownItem
+                            onClick={() => {
+                              openEdit(p);
+                              setClientActionsMenuId(null);
+                            }}
+                          >
+                            Edit
+                          </DropdownItem>
+                        )}
+                        {canDelete && (
+                          <DropdownItem
+                            onClick={() => {
+                              void handleDelete(p.id);
+                              setClientActionsMenuId(null);
+                            }}
+                            className="text-error-600 hover:bg-error-50 hover:text-error-700 dark:text-error-400 dark:hover:bg-error-500/10"
+                          >
+                            Delete
+                          </DropdownItem>
+                        )}
+                      </Dropdown>
                     </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -382,65 +587,188 @@ export default function PatientsPage() {
           total={total}
           page={page}
           pageSize={pageSize}
-          noun="patients"
+          noun="clients"
           onPageChange={setPage}
         />
       </div>
 
-      {modal && (
+      {editModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-              <h2 className="text-lg font-semibold">{modal === "add" ? "Add Patient" : "Edit Patient"}</h2>
-              <button type="button" onClick={() => setModal(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+          <div className="max-h-[min(90vh,720px)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">
+              <h2 className="text-lg font-semibold">Edit client</h2>
+              <button type="button" onClick={() => setEditModal(false)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
               {error && <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">{error}</div>}
-              <div>
-                <Label>Name *</Label>
-                <input required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="Full name" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              <ClientFormCard
+                title="Registration branch"
+                description="Where this client was first registered."
+              >
                 <div>
-                  <Label>Phone</Label>
-                  <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="+1234567890" />
-                </div>
-                <div>
-                  <Label>Email</Label>
-                  <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="email@example.com" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <DateField
-                  id="patient-dob"
-                  label="Date of Birth"
-                  value={form.dateOfBirth}
-                  onChange={(v) => setForm((f) => ({ ...f, dateOfBirth: v }))}
-                  appendToBody
-                />
-                <div>
-                  <Label>Gender</Label>
-                  <select value={form.gender} onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))} className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white">
-                    <option value="">Select</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
+                  <Label>Branch *</Label>
+                  <select
+                    required
+                    autoFocus
+                    value={form.registeredBranchId}
+                    onChange={(e) => setForm((f) => ({ ...f, registeredBranchId: e.target.value }))}
+                    className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                  >
+                    <option value="">Select branch</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={String(b.id)}>
+                        {b.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
-              </div>
-              <div>
-                <Label>Address</Label>
-                <textarea value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} rows={2} className="h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="Full address" />
-              </div>
-              <div>
-                <Label>Patient chart notes (alerts / allergies)</Label>
-                <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Shown when booking and prescribing.</p>
-                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="Allergies, warnings, demographics…" />
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <Button type="button" variant="outline" onClick={() => setModal(null)} size="sm">Cancel</Button>
-                <Button type="submit" disabled={submitting} size="sm">{submitting ? "Saving..." : modal === "add" ? "Create" : "Update"}</Button>
+              </ClientFormCard>
+
+              <ClientFormCard title="Personal information" description="Legal name, demographics, and date of birth.">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label>First name *</Label>
+                    <input
+                      required
+                      value={form.firstName}
+                      onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                      placeholder="First name"
+                      autoComplete="given-name"
+                    />
+                  </div>
+                  <div>
+                    <Label>Last name *</Label>
+                    <input
+                      required
+                      value={form.lastName}
+                      onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                      placeholder="Last name"
+                      autoComplete="family-name"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-end">
+                  <div className="lg:col-span-5">
+                    <DateField
+                      id="patient-dob"
+                      label="Date of birth"
+                      value={form.dateOfBirth}
+                      onChange={(v) => setForm((f) => ({ ...f, dateOfBirth: v }))}
+                      appendToBody
+                    />
+                  </div>
+                  <div className="lg:col-span-3">
+                    <AgeReadonlyInput dateOfBirth={form.dateOfBirth} idSuffix="edit" />
+                  </div>
+                  <div className="lg:col-span-4">
+                    <Label>Gender</Label>
+                    <select value={form.gender} onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white">
+                      <option value="">Select</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </div>
+                </div>
+              </ClientFormCard>
+
+              <ClientFormCard
+                title="Address"
+                description="City and village. Update both together when changing locality."
+              >
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label>City *</Label>
+                    <select
+                      required
+                      value={form.cityId}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, cityId: e.target.value, villageId: "" }))
+                      }
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                    >
+                      <option value="">Select city</option>
+                      {cities.map((c) => (
+                        <option key={c.id} value={String(c.id)}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Village *</Label>
+                    <select
+                      required
+                      value={form.villageId}
+                      onChange={(e) => setForm((f) => ({ ...f, villageId: e.target.value }))}
+                      disabled={!form.cityId}
+                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm disabled:opacity-50 dark:border-gray-700 dark:text-white"
+                    >
+                      <option value="">{form.cityId ? "Select village" : "Select city first"}</option>
+                      {villages.map((v) => (
+                        <option key={v.id} value={String(v.id)}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <Label>Street / additional detail</Label>
+                  <textarea
+                    value={form.address}
+                    onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                    rows={2}
+                    className="mt-1 min-h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                    placeholder="Optional"
+                  />
+                </div>
+              </ClientFormCard>
+
+              <ClientFormCard title="Contact details" description="How we reach the client.">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label>Phone</Label>
+                    <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="+1234567890" />
+                  </div>
+                  <div>
+                    <Label>Email</Label>
+                    <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="email@example.com" />
+                  </div>
+                </div>
+              </ClientFormCard>
+
+              <ClientFormCard title="Referral & chart" description="Optional referral source and clinical alerts on file.">
+                <div>
+                  <Label>Referred from</Label>
+                  <select
+                    value={form.referralSourceId}
+                    onChange={(e) => setForm((f) => ({ ...f, referralSourceId: e.target.value }))}
+                    className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                  >
+                    <option value="">— Not specified —</option>
+                    {referralOptions.map((o) => (
+                      <option key={o.id} value={String(o.id)}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Configure options under Settings → Referred from.</p>
+                </div>
+                <div>
+                  <Label>Client chart notes (alerts / allergies)</Label>
+                  <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Shown when booking and prescribing.</p>
+                  <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} className="mt-1 min-h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="Allergies, warnings, demographics…" />
+                </div>
+              </ClientFormCard>
+
+              <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
+                <Button type="button" variant="outline" onClick={() => setEditModal(false)} size="sm">Cancel</Button>
+                <Button type="submit" disabled={submitting} size="sm">{submitting ? "Saving..." : "Update"}</Button>
               </div>
             </form>
           </div>
@@ -476,7 +804,7 @@ export default function PatientsPage() {
                 <>
                   <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-800/40">
                     <p>
-                      <span className="text-gray-500">Patient: </span>
+                      <span className="text-gray-500">Client: </span>
                       <span className="font-medium">{historyPatient?.name ?? "—"}</span>
                       {historyPatient?.patientCode && (
                         <span className="ml-1 font-mono text-xs text-gray-500">({historyPatient.patientCode})</span>

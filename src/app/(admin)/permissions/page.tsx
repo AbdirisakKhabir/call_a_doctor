@@ -13,6 +13,12 @@ type Permission = {
   module: string | null;
 };
 
+/** User-facing module title; API still uses slug keys like `patients`. */
+function formatModuleTitle(module: string) {
+  if (module === "patients") return "Clients";
+  return module;
+}
+
 const MODULE_COLORS: Record<string, "primary" | "success" | "warning" | "info" | "error"> = {
   users: "primary",
   roles: "success",
@@ -132,7 +138,7 @@ export default function PermissionsPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold capitalize text-gray-800 dark:text-white/90">
-                      {module}
+                      {formatModuleTitle(module)}
                     </h3>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
                       {perms.length} permission{perms.length !== 1 ? "s" : ""}

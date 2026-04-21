@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { formatClientFullName, serializePatient } from "@/lib/patient-name";
+import { resolveReferralSourceIdForWrite } from "@/lib/referral-source";
+import { calculateAgeFromDate } from "@/lib/age-from-dob";
+import { assertActiveBranch, assertVillageInCity } from "@/lib/patient-location";
+
+const patientInclude = {
+  referralSource: { select: { id: true, name: true } },
+  city: { select: { id: true, name: true } },
+  village: { select: { id: true, name: true } },
+  registeredBranch: { select: { id: true, name: true } },
+} as const;
 
 export async function GET(
   _req: NextRequest,
@@ -15,14 +26,15 @@ export async function GET(
     const { id } = await params;
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) {
-      return NextResponse.json({ error: "Invalid patient id" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid client id" }, { status: 400 });
     }
 
     const patient = await prisma.patient.findUnique({
       where: { id: parsedId },
+      include: patientInclude,
     });
     if (!patient) {
-      return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
     const [completed, cancelled, noShow, recentAppointments] = await Promise.all([
@@ -35,14 +47,14 @@ export async function GET(
         take: 3,
         include: {
           services: {
-            include: { service: { select: { id: true, name: true, durationMinutes: true, price: true } } },
+            include: { service: { select: { id: true, name: true, durationMinutes: true, price: true, color: true } } },
           },
         },
       }),
     ]);
 
     return NextResponse.json({
-      ...patient,
+      ...serializePatient(patient),
       appointmentStats: { completed, cancelled, noShow },
       recentAppointments,
     });
@@ -64,25 +76,90 @@ export async function PATCH(
     const { id } = await params;
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) {
-      return NextResponse.json({ error: "Invalid patient id" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid client id" }, { status: 400 });
     }
 
     const body = await req.json();
-    const { name, phone, email, dateOfBirth, gender, address, notes, isActive } = body;
+    const {
+      firstName,
+      lastName,
+      phone,
+      email,
+      dateOfBirth,
+      gender,
+      address,
+      notes,
+      isActive,
+      referralSourceId,
+      cityId,
+      villageId,
+      registeredBranchId,
+    } = body;
 
     const data: Record<string, unknown> = {};
-    if (typeof name === "string" && name.trim()) data.name = name.trim();
+    if (typeof firstName === "string" && typeof lastName === "string") {
+      const fn = firstName.trim();
+      const ln = lastName.trim();
+      if (!fn || !ln) {
+        return NextResponse.json({ error: "First name and last name are required" }, { status: 400 });
+      }
+      data.firstName = fn;
+      data.lastName = ln;
+    }
     if (typeof phone !== "undefined") data.phone = phone ? String(phone).trim() : null;
     if (typeof email !== "undefined") data.email = email ? String(email).trim() : null;
-    if (typeof dateOfBirth !== "undefined") data.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    if (typeof dateOfBirth !== "undefined") {
+      const dob = dateOfBirth ? new Date(dateOfBirth) : null;
+      data.dateOfBirth = dob;
+      data.age = calculateAgeFromDate(dob);
+    }
     if (typeof gender !== "undefined") data.gender = gender ? String(gender).trim() : null;
     if (typeof address !== "undefined") data.address = address ? String(address).trim() : null;
     if (typeof notes !== "undefined") data.notes = notes ? String(notes).trim() : null;
     if (typeof isActive === "boolean") data.isActive = isActive;
+    if (typeof referralSourceId !== "undefined") {
+      const ref = await resolveReferralSourceIdForWrite(referralSourceId);
+      if (!ref.ok) {
+        return NextResponse.json({ error: ref.error }, { status: 400 });
+      }
+      data.referralSourceId = ref.value ?? null;
+    }
+
+    const localityPartial =
+      typeof cityId !== "undefined" || typeof villageId !== "undefined";
+    if (localityPartial) {
+      if (typeof cityId === "undefined" || typeof villageId === "undefined") {
+        return NextResponse.json(
+          { error: "Send both city and village when updating locality" },
+          { status: 400 }
+        );
+      }
+      const cId = Number(cityId);
+      const vId = Number(villageId);
+      if (!Number.isInteger(cId) || !Number.isInteger(vId)) {
+        return NextResponse.json({ error: "Invalid city or village" }, { status: 400 });
+      }
+      if (!(await assertVillageInCity(vId, cId))) {
+        return NextResponse.json({ error: "Invalid or inactive city/village combination" }, { status: 400 });
+      }
+      data.cityId = cId;
+      data.villageId = vId;
+    }
+    if (typeof registeredBranchId !== "undefined") {
+      const rb = Number(registeredBranchId);
+      if (!Number.isInteger(rb)) {
+        return NextResponse.json({ error: "Registration branch is required" }, { status: 400 });
+      }
+      if (!(await assertActiveBranch(rb))) {
+        return NextResponse.json({ error: "Invalid or inactive registration branch" }, { status: 400 });
+      }
+      data.registeredBranchId = rb;
+    }
 
     const patient = await prisma.patient.update({
       where: { id: parsedId },
       data,
+      include: patientInclude,
     });
     await logAuditFromRequest(req, {
       userId: auth.userId,
@@ -92,7 +169,7 @@ export async function PATCH(
       resourceId: parsedId,
       metadata: { keys: Object.keys(data) },
     });
-    return NextResponse.json(patient);
+    return NextResponse.json(serializePatient(patient));
   } catch (e) {
     console.error("Update patient error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -111,7 +188,7 @@ export async function DELETE(
     const { id } = await params;
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) {
-      return NextResponse.json({ error: "Invalid patient id" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid client id" }, { status: 400 });
     }
 
     await prisma.patient.delete({ where: { id: parsedId } });

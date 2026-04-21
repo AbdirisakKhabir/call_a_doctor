@@ -1,4 +1,4 @@
-/** Browser print for consolidated medication invoice (shared by Pharmacy patient invoice). */
+/** Browser print for consolidated medication invoice (shared by Pharmacy client invoice). */
 
 export function escapeHtml(s: string) {
   return s

@@ -41,7 +41,7 @@ export default function PatientInvoicePage() {
   const [invPatient, setInvPatient] = useState<{ id: number; patientCode: string; name: string } | null>(null);
   const [invFrom, setInvFrom] = useState("");
   const [invTo, setInvTo] = useState("");
-  /** Multiple Rx per patient: narrow list to emergency-only or clinic (scheduled) only. */
+  /** Multiple Rx per client: narrow list to emergency-only or clinic (scheduled) only. */
   const [invRxFilter, setInvRxFilter] = useState<"all" | "emergency" | "clinic">("all");
   const [invPrescriptions, setInvPrescriptions] = useState<Prescription[]>([]);
   const [invSelected, setInvSelected] = useState<Set<number>>(new Set());
@@ -137,7 +137,7 @@ export default function PatientInvoicePage() {
 
   async function handleGenerateInvoice() {
     if (!invPatient || invSelected.size === 0 || !branchId) {
-      setInvError("Select pharmacy, patient, and at least one prescription.");
+      setInvError("Select pharmacy, client, and at least one prescription.");
       return;
     }
     setInvSubmitting(true);
@@ -171,10 +171,10 @@ export default function PatientInvoicePage() {
   if (!canView) {
     return (
       <div>
-        <PageBreadCrumb pageTitle="Patient invoice" />
+        <PageBreadCrumb pageTitle="Client invoice" />
         <div className="mt-6 rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center dark:border-gray-800 dark:bg-white/3">
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            You need Pharmacy and Prescriptions access to use patient invoices.
+            You need Pharmacy and Prescriptions access to use client invoices.
           </p>
         </div>
       </div>
@@ -184,7 +184,7 @@ export default function PatientInvoicePage() {
   return (
     <div>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <PageBreadCrumb pageTitle="Patient invoice" />
+        <PageBreadCrumb pageTitle="Client invoice" />
         <Link
           href="/prescriptions"
           className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
@@ -194,7 +194,7 @@ export default function PatientInvoicePage() {
       </div>
 
       <p className="mb-6 max-w-2xl text-sm text-gray-600 dark:text-gray-400">
-        Build a one-time consolidated medication invoice for a patient. Choose the <strong>pharmacy branch</strong> (visit
+        Build a one-time consolidated medication invoice for a client. Choose the <strong>pharmacy branch</strong> (visit
         location), optional <strong>visit date range</strong>, and filter <strong>emergency</strong> vs <strong>clinic</strong>{" "}
         prescriptions when there are many. Then select which prescriptions to include. Line totals use each product&apos;s
         current selling price.
@@ -249,17 +249,17 @@ export default function PatientInvoicePage() {
             </div>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Date filters use the appointment (visit) date. Leave both empty to include all prescriptions for this patient
+            Date filters use the appointment (visit) date. Leave both empty to include all prescriptions for this client
             at the selected branch.
           </p>
 
           {!invPatient ? (
             <div>
-              <Label>Find patient</Label>
+              <Label>Find client</Label>
               <input
                 value={invPatientSearch}
                 onChange={(e) => setInvPatientSearch(e.target.value)}
-                placeholder="Name or patient code…"
+                placeholder="Name or client code…"
                 disabled={!branchId}
                 className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
               />
@@ -300,7 +300,7 @@ export default function PatientInvoicePage() {
                     setInvSelected(new Set());
                   }}
                 >
-                  Change patient
+                  Change client
                 </button>
               </div>
 
@@ -322,14 +322,14 @@ export default function PatientInvoicePage() {
                   </select>
                 </div>
                 <p className="mt-6 max-w-md text-xs text-gray-500 dark:text-gray-400">
-                  Use this when a patient has several emergency and regular prescriptions—show only the kind you are billing.
+                  Use this when a client has several emergency and regular prescriptions—show only the kind you are billing.
                 </p>
               </div>
 
               {invLoading ? (
                 <p className="text-sm text-gray-500">Loading prescriptions…</p>
               ) : invPrescriptions.length === 0 ? (
-                <p className="text-sm text-gray-500">No prescriptions for this patient at this branch in the selected date range.</p>
+                <p className="text-sm text-gray-500">No prescriptions for this client at this branch in the selected date range.</p>
               ) : (
                 <>
                   <div className="flex justify-end">

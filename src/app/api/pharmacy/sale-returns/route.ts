@@ -6,7 +6,8 @@ import {
   userCanTransactInventoryAtBranch,
 } from "@/lib/branch-access";
 import { userHasPermission } from "@/lib/permissions";
-import { lineQuantityToPcs } from "@/lib/product-packaging";
+import { lineQuantityToBaseUnits } from "@/lib/product-packaging";
+import { getSaleUnitForProduct } from "@/lib/product-sale-units";
 import { logAuditFromRequest } from "@/lib/audit-log";
 
 /**
@@ -247,10 +248,12 @@ export async function POST(req: NextRequest) {
 
       for (const l of lines) {
         const saleItem = sale.items.find((i) => i.id === l.saleItemId)!;
-        const pcs = lineQuantityToPcs(l.quantity);
+        const su = await getSaleUnitForProduct(tx, saleItem.productId, saleItem.saleUnit);
+        const each = su?.baseUnitsEach ?? 1;
+        const baseAdd = lineQuantityToBaseUnits(l.quantity, each);
         await tx.product.update({
           where: { id: saleItem.productId },
-          data: { quantity: { increment: pcs } },
+          data: { quantity: { increment: baseAdd } },
         });
       }
 
