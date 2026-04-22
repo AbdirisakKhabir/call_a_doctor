@@ -5,7 +5,6 @@ import { useRouter, useParams } from "next/navigation";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import ServiceForm, { type ServiceFormValues } from "../../ServiceForm";
-import ServiceDisposablesFields from "@/components/settings/ServiceDisposablesFields";
 
 type Branch = { id: number; name: string };
 
@@ -41,7 +40,7 @@ export default function EditServicePage() {
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [initial, setInitial] = useState<ServiceFormValues | null>(null);
-  const [disposableBranchId, setDisposableBranchId] = useState("");
+  const [initialDisposableBranchId, setInitialDisposableBranchId] = useState("");
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -73,7 +72,7 @@ export default function EditServicePage() {
       }
       const s = (await svcRes.json()) as ServiceApi;
       setInitial(toFormValues(s));
-      setDisposableBranchId(s.branch ? String(s.branch.id) : branchList[0] ? String(branchList[0].id) : "");
+      setInitialDisposableBranchId(s.branch ? String(s.branch.id) : branchList[0] ? String(branchList[0].id) : "");
       setLoading(false);
     })();
     return () => {
@@ -106,35 +105,27 @@ export default function EditServicePage() {
   }
 
   return (
-    <div>
-      <ServiceForm
-        title="Update service details."
-        breadcrumbTitle="Edit service"
-        backHref="/settings/services"
-        branches={branches}
-        initialValues={initial}
-        submitLabel="Save changes"
-        onSubmit={async (form) => {
-          const res = await authFetch(`/api/services/${serviceId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(form),
-          });
-          const data = await res.json();
-          if (!res.ok) return { error: data.error || "Failed to save" };
-          router.push("/settings/services");
-          router.refresh();
-        }}
-      />
-      <div className="mx-auto mt-6 max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-white/3 md:p-8">
-        <ServiceDisposablesFields
-          serviceId={serviceId}
-          branches={branches}
-          disposableBranchId={disposableBranchId}
-          onDisposableBranchIdChange={setDisposableBranchId}
-          canEdit={canEdit}
-        />
-      </div>
-    </div>
+    <ServiceForm
+      title="Update service details."
+      breadcrumbTitle="Edit service"
+      backHref="/settings/services"
+      branches={branches}
+      initialValues={initial}
+      serviceId={serviceId}
+      initialDisposableBranchId={initialDisposableBranchId}
+      canManageDisposables={canEdit}
+      submitLabel="Save changes"
+      onSubmit={async (form) => {
+        const res = await authFetch(`/api/services/${serviceId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        });
+        const data = await res.json();
+        if (!res.ok) return { error: data.error || "Failed to save" };
+        router.push("/settings/services");
+        router.refresh();
+      }}
+    />
   );
 }

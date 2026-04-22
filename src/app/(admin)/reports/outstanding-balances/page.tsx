@@ -20,6 +20,7 @@ type Row = {
   lastName: string;
   name: string;
   phone: string | null;
+  mobile: string | null;
   email: string | null;
   accountBalance: number;
   city?: { id: number; name: string } | null;
@@ -97,6 +98,7 @@ export default function OutstandingBalancesReportPage() {
         Code: p.patientCode,
         Name: p.name,
         Phone: p.phone ?? "",
+        Mobile: p.mobile ?? "",
         Email: p.email ?? "",
         City: p.city?.name ?? "",
         Village: p.village?.name ?? "",
@@ -189,6 +191,7 @@ export default function OutstandingBalancesReportPage() {
                     <TableCell isHeader>Code</TableCell>
                     <TableCell isHeader>Client</TableCell>
                     <TableCell isHeader>Phone</TableCell>
+                    <TableCell isHeader>Mobile</TableCell>
                     <TableCell isHeader>Location</TableCell>
                     <TableCell isHeader>Registered branch</TableCell>
                     <TableCell isHeader className="text-right">
@@ -205,6 +208,7 @@ export default function OutstandingBalancesReportPage() {
                       <TableCell className="font-mono text-xs">{p.patientCode}</TableCell>
                       <TableCell>{p.name}</TableCell>
                       <TableCell>{p.phone ?? "—"}</TableCell>
+                      <TableCell>{p.mobile ?? "—"}</TableCell>
                       <TableCell className="text-sm text-gray-600 dark:text-gray-400">
                         {[p.city?.name, p.village?.name].filter(Boolean).join(" · ") || "—"}
                       </TableCell>

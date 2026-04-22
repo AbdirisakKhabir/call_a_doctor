@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
             firstName: true,
             lastName: true,
             phone: true,
+            mobile: true,
             email: true,
             address: true,
           },

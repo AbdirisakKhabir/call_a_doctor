@@ -84,6 +84,7 @@ export async function PATCH(
       firstName,
       lastName,
       phone,
+      mobile,
       email,
       dateOfBirth,
       gender,
@@ -107,6 +108,7 @@ export async function PATCH(
       data.lastName = ln;
     }
     if (typeof phone !== "undefined") data.phone = phone ? String(phone).trim() : null;
+    if (typeof mobile !== "undefined") data.mobile = mobile ? String(mobile).trim() : null;
     if (typeof email !== "undefined") data.email = email ? String(email).trim() : null;
     if (typeof dateOfBirth !== "undefined") {
       const dob = dateOfBirth ? new Date(dateOfBirth) : null;

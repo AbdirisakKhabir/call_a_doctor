@@ -48,7 +48,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json(
         {
           error:
-            "This branch is linked to appointments, doctors, or services. Deactivate it instead of deleting, or reassign those records first.",
+            "This branch is linked to calendar bookings, doctors, or services. Deactivate it instead of deleting, or reassign those records first.",
         },
         { status: 400 }
       );

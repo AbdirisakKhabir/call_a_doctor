@@ -110,7 +110,7 @@ export default function ServicesDisposablesReportPage() {
     <div>
       <PageBreadCrumb pageTitle="Services & disposables" />
       <p className="mt-2 max-w-3xl text-sm text-gray-600 dark:text-gray-400">
-        Completed appointments in the period: service quantities and revenue, plus pharmacy stock removed for service
+        Completed bookings in the period: service quantities and revenue, plus pharmacy stock removed for service
         disposables (cost and retail value use current product cost / selling price).
       </p>
 
@@ -158,7 +158,7 @@ export default function ServicesDisposablesReportPage() {
           <div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               <span className="font-semibold text-gray-900 dark:text-white">{data.completedAppointmentCount}</span>{" "}
-              completed appointment(s) in range
+              completed booking(s) in range
               {data.branchId != null && (
                 <span className="ml-2 font-mono text-xs">(branch filter #{data.branchId})</span>
               )}
@@ -218,7 +218,7 @@ export default function ServicesDisposablesReportPage() {
           <div>
             <h2 className="text-base font-semibold text-gray-900 dark:text-white">Disposables used (pharmacy)</h2>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              From internal stock movements when appointments were marked completed (purpose: service disposable).
+              From internal stock movements when bookings were marked completed (purpose: service disposable).
             </p>
             <div className="mt-2 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
               <Table>

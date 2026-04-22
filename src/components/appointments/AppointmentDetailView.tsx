@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Swal from "sweetalert2";
+import "sweetalert2/dist/sweetalert2.min.css";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import DateField from "@/components/form/DateField";
 import { authFetch } from "@/lib/api";
@@ -72,7 +74,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
     const res = await authFetch(`/api/appointments/${appointmentId}`);
     const data = (await res.json()) as AppointmentDetail & { error?: string };
     if (!res.ok) {
-      setLoadError(typeof data.error === "string" ? data.error : "Could not load appointment");
+      setLoadError(typeof data.error === "string" ? data.error : "Could not load booking");
       setAppointment(null);
       return;
     }
@@ -155,7 +157,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
     if (!appointment || !canEditAppointments) return;
     if (
       !window.confirm(
-        "Cancel this appointment? It will stay on the calendar as cancelled; you can book someone else in this slot."
+        "Cancel this booking? It will stay on the calendar as cancelled; you can book someone else in this slot."
       )
     ) {
       return;
@@ -219,9 +221,9 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
   if (loadError || !appointment) {
     return (
       <div>
-        <PageBreadCrumb pageTitle="Appointment" />
+        <PageBreadCrumb pageTitle="Booking" />
         <div className="mt-6 rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center dark:border-gray-800 dark:bg-white/3">
-          <p className="text-sm text-gray-600 dark:text-gray-400">{loadError || "Appointment not found."}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{loadError || "Booking not found."}</p>
           <Link href="/appointments" className="mt-4 inline-block font-medium text-brand-600 hover:underline dark:text-brand-400">
             Back to calendar
           </Link>
@@ -234,7 +236,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-      <PageBreadCrumb pageTitle="Appointment" />
+      <PageBreadCrumb pageTitle="Booking" />
 
       <div className="mt-4 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <Link
@@ -246,7 +248,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            title="Previous appointment"
+            title="Previous booking"
             disabled={adjacentLoading || patchLoading}
             onClick={() => void loadAdjacent("prev")}
             className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
@@ -255,7 +257,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
           </button>
           <button
             type="button"
-            title="Next appointment"
+            title="Next booking"
             disabled={adjacentLoading || patchLoading}
             onClick={() => void loadAdjacent("next")}
             className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
@@ -266,7 +268,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
       </div>
 
       <div className="mt-4 w-full max-w-2xl rounded-2xl border border-gray-200 bg-white px-5 py-6 shadow-sm dark:border-gray-800 dark:bg-white/3 sm:px-8">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Appointment summary</h1>
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Booking summary</h1>
         {(adjacentLoading || patchLoading) && (
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Updating…</p>
         )}
@@ -418,7 +420,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
                   onClick={() => void cancelAppointment()}
                   className="w-full rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-950/40"
                 >
-                  Cancel appointment
+                  Cancel booking
                 </button>
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   Marks the visit as cancelled. It remains visible on the calendar for your records.
@@ -464,16 +466,25 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
           )}
           <div className="flex flex-wrap gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
             {(hasPermission("patient_history.create") || hasPermission("patient_history.view")) && (
-              <Link
-                href={`/patients?history=1&patientId=${a.patient.id}&appointmentId=${a.id}`}
+              <button
+                type="button"
                 className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm text-white hover:bg-brand-600"
+                onClick={() => {
+                  void Swal.fire({
+                    icon: "info",
+                    title: "Sorry, please wait",
+                    text: "We are working on note forms.",
+                    confirmButtonText: "OK",
+                    confirmButtonColor: "#465fff",
+                  });
+                }}
               >
-                Clinical note
-              </Link>
+                Clinic note
+              </button>
             )}
             {(hasPermission("lab.create") || hasPermission("lab.view")) && (
               <Link
-                href={`/lab/orders?create=1&appointmentId=${a.id}&patientId=${a.patient.id}&doctorId=${a.doctor.id}`}
+                href={`/lab/orders/new?appointmentId=${a.id}&patientId=${a.patient.id}&doctorId=${a.doctor.id}`}
                 className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm text-white hover:bg-brand-600"
               >
                 Send to Lab

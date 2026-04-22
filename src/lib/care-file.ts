@@ -85,6 +85,7 @@ export async function buildCareFileInvoicePayload(prisma: PrismaClient | Tx, car
           firstName: true,
           lastName: true,
           phone: true,
+          mobile: true,
           accountBalance: true,
         },
       },

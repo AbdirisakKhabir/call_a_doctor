@@ -16,6 +16,7 @@ type Permission = {
 /** User-facing module title; API still uses slug keys like `patients`. */
 function formatModuleTitle(module: string) {
   if (module === "patients") return "Clients";
+  if (module === "appointments") return "Calendar";
   return module;
 }
 

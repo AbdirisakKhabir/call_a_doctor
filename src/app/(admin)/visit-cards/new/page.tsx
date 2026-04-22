@@ -7,7 +7,14 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import DateField from "@/components/form/DateField";
+import ClientPhoneFields from "@/components/patients/ClientPhoneFields";
 import { authFetch } from "@/lib/api";
+import {
+  DEFAULT_PHONE_COUNTRY_ISO2,
+  formatInternationalPhoneForStorage,
+  validateClientPhoneNational,
+  validateOptionalClientPhoneNational,
+} from "@/lib/phone-country";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
 import { PAYMENT_STATUS_OPTIONS, type PaymentStatusValue } from "@/lib/visit-card-labels";
@@ -47,7 +54,10 @@ function NewVisitCardPage() {
   const [newPatient, setNewPatient] = useState({
     firstName: "",
     lastName: "",
-    phone: "",
+    phoneCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+    phoneNational: "",
+    mobileCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+    mobileNational: "",
     referralSourceId: "",
     cityId: "",
     villageId: "",
@@ -234,6 +244,24 @@ function NewVisitCardPage() {
       setError("City and village are required for a new client");
       return;
     }
+    if (useNewPatient) {
+      const phoneErr = validateClientPhoneNational(
+        newPatient.phoneCountryIso2,
+        newPatient.phoneNational
+      );
+      if (phoneErr) {
+        setError(phoneErr);
+        return;
+      }
+      const mobileErr = validateOptionalClientPhoneNational(
+        newPatient.mobileCountryIso2,
+        newPatient.mobileNational
+      );
+      if (mobileErr) {
+        setError(mobileErr);
+        return;
+      }
+    }
     const fee = form.visitFee === "" ? 0 : Number(form.visitFee);
     if (form.paymentStatus === "paid" && fee > 0 && !form.paymentMethodId) {
       setError("Select a payment method for a paid visit with a fee");
@@ -259,7 +287,16 @@ function NewVisitCardPage() {
         body.newPatient = {
           firstName: newPatient.firstName.trim(),
           lastName: newPatient.lastName.trim(),
-          phone: newPatient.phone.trim() || undefined,
+          phone:
+            formatInternationalPhoneForStorage(
+              newPatient.phoneCountryIso2,
+              newPatient.phoneNational
+            ) ?? undefined,
+          mobile:
+            formatInternationalPhoneForStorage(
+              newPatient.mobileCountryIso2,
+              newPatient.mobileNational
+            ) ?? undefined,
           registeredBranchId: bid,
           cityId: Number(newPatient.cityId),
           villageId: Number(newPatient.villageId),
@@ -413,14 +450,27 @@ function NewVisitCardPage() {
                 />
               </div>
             </div>
-            <div>
-              <Label>Phone</Label>
-              <input
-                value={newPatient.phone}
-                onChange={(e) => setNewPatient((n) => ({ ...n, phone: e.target.value }))}
-                className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-              />
-            </div>
+            <ClientPhoneFields
+              label="Phone"
+              countryIso2={newPatient.phoneCountryIso2}
+              national={newPatient.phoneNational}
+              onCountryIso2Change={(phoneCountryIso2) =>
+                setNewPatient((n) => ({ ...n, phoneCountryIso2 }))
+              }
+              onNationalChange={(phoneNational) => setNewPatient((n) => ({ ...n, phoneNational }))}
+              nationalInputId="visit-card-new-client-phone-national"
+            />
+            <ClientPhoneFields
+              label="Mobile (optional)"
+              optionalMobile
+              countryIso2={newPatient.mobileCountryIso2}
+              national={newPatient.mobileNational}
+              onCountryIso2Change={(mobileCountryIso2) =>
+                setNewPatient((n) => ({ ...n, mobileCountryIso2 }))
+              }
+              onNationalChange={(mobileNational) => setNewPatient((n) => ({ ...n, mobileNational }))}
+              nationalInputId="visit-card-new-client-mobile-national"
+            />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label>City *</Label>

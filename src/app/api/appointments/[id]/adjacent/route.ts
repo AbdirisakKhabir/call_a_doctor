@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: { id: parsedId },
       select: { id: true, appointmentDate: true, startTime: true },
     });
-    if (!cur) return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
+    if (!cur) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
 
     const include = {
       branch: { select: { id: true, name: true } },

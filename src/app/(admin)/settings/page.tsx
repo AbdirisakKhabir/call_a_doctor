@@ -21,13 +21,7 @@ const cards: Card[] = [
     anyOf: ["appointments.view"],
   },
   {
-    title: "Services",
-    description: "Appointment services, pricing, duration, and branch scope.",
-    href: "/settings/services",
-    anyOf: ["appointments.view"],
-  },
-  {
-    title: "Appointment calendar",
+    title: "Calendar settings",
     description: "Calendar time grid: 15- or 30-minute steps for the schedule and booking.",
     href: "/settings/appointment-calendar",
     anyOf: ["settings.manage", "appointments.view"],
@@ -96,7 +90,8 @@ export default function SettingsHubPage() {
     <div>
       <PageBreadCrumb pageTitle="Settings" />
       <p className="mt-2 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-        Branches, clinic setup (doctors, services), user access, and system configuration. Financial ledger and accounts are under{" "}
+        Branches, clinic setup (doctors, calendar), user access, and system configuration. The service catalog is under{" "}
+        <strong>Services</strong> in the sidebar. Financial ledger and accounts are under{" "}
         <Link href="/accounting" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
           Accounting
         </Link>

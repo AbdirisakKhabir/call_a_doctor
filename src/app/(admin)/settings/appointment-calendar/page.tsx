@@ -65,9 +65,9 @@ export default function AppointmentCalendarSettingsPage() {
   if (!canRead) {
     return (
       <div>
-        <PageBreadCrumb pageTitle="Appointment calendar" />
+        <PageBreadCrumb pageTitle="Calendar settings" />
         <div className="mt-6 rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center dark:border-gray-800 dark:bg-white/3">
-          <p className="text-sm text-gray-500 dark:text-gray-400">You need appointments.view to open this page.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">You need permission to view the calendar to open this page.</p>
         </div>
       </div>
     );
@@ -75,9 +75,9 @@ export default function AppointmentCalendarSettingsPage() {
 
   return (
     <div>
-      <PageBreadCrumb pageTitle="Appointment calendar" />
+      <PageBreadCrumb pageTitle="Calendar settings" />
       <p className="mt-2 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-        Controls the time grid on the appointments calendar and the time dropdowns when booking. Does not change stored appointment lengths—those follow service duration.
+        Controls the time grid on the calendar and the time dropdowns when booking. Does not change stored booking lengths—those follow service duration.
       </p>
 
       {loading ? (

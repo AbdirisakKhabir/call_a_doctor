@@ -100,7 +100,7 @@ export default function FinancialReportsPage() {
                     <td className="px-6 py-2 text-right font-medium text-gray-900 dark:text-white">${data.incomeStatement.revenue.pharmacy.toFixed(2)}</td>
                   </tr>
                   <tr>
-                    <td className="pl-10 pr-6 py-2 text-sm text-gray-600 dark:text-gray-400">Appointments</td>
+                    <td className="pl-10 pr-6 py-2 text-sm text-gray-600 dark:text-gray-400">Calendar</td>
                     <td className="px-6 py-2 text-right font-medium text-gray-900 dark:text-white">${data.incomeStatement.revenue.appointments.toFixed(2)}</td>
                   </tr>
                   <tr>

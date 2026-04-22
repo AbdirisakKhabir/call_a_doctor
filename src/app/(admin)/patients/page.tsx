@@ -13,10 +13,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import Label from "@/components/form/Label";
-import DateField from "@/components/form/DateField";
+import DateOfBirthSplitFields from "@/components/form/DateOfBirthSplitFields";
 import AgeReadonlyInput from "@/components/form/AgeReadonlyInput";
 import ClientFormCard from "@/components/patients/ClientFormCard";
+import ClientPhoneFields from "@/components/patients/ClientPhoneFields";
 import { authFetch } from "@/lib/api";
+import {
+  DEFAULT_PHONE_COUNTRY_ISO2,
+  formatInternationalPhoneForStorage,
+  parseStoredPhoneIntoParts,
+  validateClientPhoneNational,
+  validateOptionalClientPhoneNational,
+} from "@/lib/phone-country";
 import { useAuth } from "@/context/AuthContext";
 import { HorizontaLDots, PlusIcon } from "@/icons";
 import PatientPaymentModal from "@/components/patients/PatientPaymentModal";
@@ -33,6 +41,7 @@ type Patient = {
   /** Display full name (from API). */
   name: string;
   phone: string | null;
+  mobile: string | null;
   email: string | null;
   dateOfBirth: string | null;
   gender: string | null;
@@ -141,7 +150,10 @@ export default function PatientsPage() {
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
-    phone: "",
+    phoneCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+    phoneNational: "",
+    mobileCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+    mobileNational: "",
     email: "",
     dateOfBirth: "",
     gender: "",
@@ -340,10 +352,15 @@ export default function PatientsPage() {
   function openEdit(p: Patient) {
     setEditModal(true);
     setEditingId(p.id);
+    const phoneParts = parseStoredPhoneIntoParts(p.phone);
+    const mobileParts = parseStoredPhoneIntoParts(p.mobile);
     setForm({
       firstName: p.firstName,
       lastName: p.lastName,
-      phone: p.phone ?? "",
+      phoneCountryIso2: phoneParts.countryIso2,
+      phoneNational: phoneParts.national,
+      mobileCountryIso2: mobileParts.countryIso2,
+      mobileNational: mobileParts.national,
       email: p.email ?? "",
       dateOfBirth: p.dateOfBirth ? p.dateOfBirth.slice(0, 10) : "",
       gender: p.gender ?? "",
@@ -361,10 +378,32 @@ export default function PatientsPage() {
     e.preventDefault();
     if (!editingId) return;
     setError("");
+    const phoneErr = validateClientPhoneNational(form.phoneCountryIso2, form.phoneNational);
+    if (phoneErr) {
+      setError(phoneErr);
+      return;
+    }
+    const mobileErr = validateOptionalClientPhoneNational(
+      form.mobileCountryIso2,
+      form.mobileNational
+    );
+    if (mobileErr) {
+      setError(mobileErr);
+      return;
+    }
     setSubmitting(true);
     try {
+      const {
+        phoneCountryIso2,
+        phoneNational,
+        mobileCountryIso2,
+        mobileNational,
+        ...formRest
+      } = form;
       const payload = {
-        ...form,
+        ...formRest,
+        phone: formatInternationalPhoneForStorage(phoneCountryIso2, phoneNational),
+        mobile: formatInternationalPhoneForStorage(mobileCountryIso2, mobileNational),
         referralSourceId: form.referralSourceId ? Number(form.referralSourceId) : null,
         cityId: form.cityId ? Number(form.cityId) : null,
         villageId: form.villageId ? Number(form.villageId) : null,
@@ -451,6 +490,7 @@ export default function PatientsPage() {
                 <TableCell isHeader>Code</TableCell>
                 <TableCell isHeader>Name</TableCell>
                 <TableCell isHeader>Phone</TableCell>
+                <TableCell isHeader>Mobile</TableCell>
                 <TableCell isHeader>Gender</TableCell>
                 <TableCell isHeader>Age</TableCell>
                 <TableCell isHeader>Branch</TableCell>
@@ -467,6 +507,7 @@ export default function PatientsPage() {
                   <TableCell className="font-mono text-sm">{p.patientCode}</TableCell>
                   <TableCell className="font-medium">{p.name}</TableCell>
                   <TableCell>{p.phone || "—"}</TableCell>
+                  <TableCell>{p.mobile || "—"}</TableCell>
                   <TableCell>{p.gender || "—"}</TableCell>
                   <TableCell className="tabular-nums text-sm text-gray-800 dark:text-gray-200">
                     {displayPatientAge(p)}
@@ -652,26 +693,23 @@ export default function PatientsPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-end">
-                  <div className="lg:col-span-5">
-                    <DateField
-                      id="patient-dob"
-                      label="Date of birth"
-                      value={form.dateOfBirth}
-                      onChange={(v) => setForm((f) => ({ ...f, dateOfBirth: v }))}
-                      appendToBody
-                    />
-                  </div>
-                  <div className="lg:col-span-3">
+                <div className="space-y-5">
+                  <DateOfBirthSplitFields
+                    idPrefix="patient-dob"
+                    label="Date of birth"
+                    value={form.dateOfBirth}
+                    onChange={(v) => setForm((f) => ({ ...f, dateOfBirth: v }))}
+                  />
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:items-end sm:gap-x-8">
                     <AgeReadonlyInput dateOfBirth={form.dateOfBirth} idSuffix="edit" />
-                  </div>
-                  <div className="lg:col-span-4">
-                    <Label>Gender</Label>
-                    <select value={form.gender} onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white">
-                      <option value="">Select</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
+                    <div>
+                      <Label>Gender</Label>
+                      <select value={form.gender} onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white">
+                        <option value="">Select</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </ClientFormCard>
@@ -731,13 +769,34 @@ export default function PatientsPage() {
 
               <ClientFormCard title="Contact details" description="How we reach the client.">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label>Phone</Label>
-                    <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="+1234567890" />
-                  </div>
+                  <ClientPhoneFields
+                    label="Phone"
+                    countryIso2={form.phoneCountryIso2}
+                    national={form.phoneNational}
+                    onCountryIso2Change={(phoneCountryIso2) =>
+                      setForm((f) => ({ ...f, phoneCountryIso2 }))
+                    }
+                    onNationalChange={(phoneNational) => setForm((f) => ({ ...f, phoneNational }))}
+                    nationalInputId="edit-client-phone-national"
+                  />
                   <div>
                     <Label>Email</Label>
                     <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white" placeholder="email@example.com" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <ClientPhoneFields
+                      label="Mobile (optional)"
+                      optionalMobile
+                      countryIso2={form.mobileCountryIso2}
+                      national={form.mobileNational}
+                      onCountryIso2Change={(mobileCountryIso2) =>
+                        setForm((f) => ({ ...f, mobileCountryIso2 }))
+                      }
+                      onNationalChange={(mobileNational) =>
+                        setForm((f) => ({ ...f, mobileNational }))
+                      }
+                      nationalInputId="edit-client-mobile-national"
+                    />
                   </div>
                 </div>
               </ClientFormCard>
@@ -790,7 +849,7 @@ export default function PatientsPage() {
               <div>
                 <h2 className="text-lg font-semibold">Clinical note (treatment history)</h2>
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  Document this encounter for the chart. When opened from the calendar, the note can be linked to that appointment.
+                  Document this encounter for the chart. When opened from the calendar, the note can be linked to that booking.
                 </p>
               </div>
               <button type="button" onClick={closeHistoryModal} className="shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
@@ -812,7 +871,7 @@ export default function PatientsPage() {
                     </p>
                     {historyParams.appointmentId && historyPatient && (
                       <p className="mt-1 text-xs text-gray-500">
-                        Linked to appointment #{historyParams.appointmentId} (visit documentation).
+                        Linked to booking #{historyParams.appointmentId} (visit documentation).
                       </p>
                     )}
                     {historyPatient?.notes?.trim() && (

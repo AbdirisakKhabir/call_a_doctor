@@ -107,10 +107,15 @@ export function printCareFileInvoice(payload: CareFileInvoicePayload) {
   <h1>Client file — ${escapeHtml(payload.file.fileCode)}</h1>
   <p class="meta">Status: ${escapeHtml(payload.file.status)} · Opened ${new Date(payload.file.openedAt).toLocaleString()}</p>
   <p><strong>${escapeHtml(name)}</strong> (${escapeHtml(payload.patient.patientCode)})${
-    payload.patient.phone ? ` · ${escapeHtml(payload.patient.phone)}` : ""
+    [payload.patient.phone, payload.patient.mobile].filter(Boolean).length
+      ? ` · ${[payload.patient.phone, payload.patient.mobile]
+          .filter(Boolean)
+          .map((s) => escapeHtml(String(s)))
+          .join(" · ")}`
+      : ""
   }</p>
 
-  <h2>Appointments</h2>
+  <h2>Calendar</h2>
   <table>
     <thead><tr><th>Date</th><th>Branch</th><th>Doctor</th><th class="num">Amount</th></tr></thead>
     <tbody>${apptRows || `<tr><td colspan="4" class="muted">None</td></tr>`}</tbody>

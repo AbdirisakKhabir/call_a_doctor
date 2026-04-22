@@ -26,6 +26,7 @@ const visitInclude = {
       firstName: true,
       lastName: true,
       phone: true,
+      mobile: true,
       address: true,
       cityId: true,
       villageId: true,
@@ -203,6 +204,10 @@ export async function POST(req: NextRequest) {
           firstName: String(newPatient.firstName).trim(),
           lastName: String(newPatient.lastName).trim(),
           phone: newPatient.phone ? String(newPatient.phone).trim() : null,
+          mobile:
+            newPatient.mobile != null && String(newPatient.mobile).trim()
+              ? String(newPatient.mobile).trim()
+              : null,
           email: newPatient.email ? String(newPatient.email).trim() : null,
           dateOfBirth: dob,
           age: calculateAgeFromDate(dob),

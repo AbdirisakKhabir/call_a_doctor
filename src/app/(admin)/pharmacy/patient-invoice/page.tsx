@@ -249,7 +249,7 @@ export default function PatientInvoicePage() {
             </div>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Date filters use the appointment (visit) date. Leave both empty to include all prescriptions for this client
+            Date filters use the visit date from the calendar. Leave both empty to include all prescriptions for this client
             at the selected branch.
           </p>
 

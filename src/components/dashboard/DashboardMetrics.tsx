@@ -56,7 +56,7 @@ const metricCards: {
   },
   {
     key: "appointments",
-    label: "Appointments",
+    label: "Calendar",
     icon: <CalenderIcon className="size-6" />,
     href: "/appointments",
     gradient: "from-amber-500/10 via-amber-500/5 to-transparent dark:from-amber-500/20 dark:via-amber-500/10",

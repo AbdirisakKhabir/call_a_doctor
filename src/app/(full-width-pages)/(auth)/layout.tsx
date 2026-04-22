@@ -40,7 +40,7 @@ export default function AuthLayout({
                 Care that fits your clinic
               </h2>
               <p className="mt-4 text-pretty text-base leading-relaxed text-brand-100/90">
-                Appointments, clients, lab, pharmacy, and finances — one calm workspace for your team.
+                Calendar, clients, lab, pharmacy, and finances — one calm workspace for your team.
               </p>
               <ul className="mt-10 space-y-3 text-left text-sm text-white/85">
                 <li className="flex items-start gap-3">

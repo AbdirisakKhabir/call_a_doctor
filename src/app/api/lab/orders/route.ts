@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { appointmentId, patientId, doctorId, notes, testIds } = body;
     if (!appointmentId || !patientId || !doctorId || !Array.isArray(testIds) || testIds.length === 0) {
-      return NextResponse.json({ error: "Appointment, client, doctor and at least one test are required" }, { status: 400 });
+      return NextResponse.json({ error: "Booking, client, doctor and at least one test are required" }, { status: 400 });
     }
 
     const uniqueTestIds = [

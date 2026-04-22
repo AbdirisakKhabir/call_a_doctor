@@ -61,6 +61,16 @@ const DEFAULT_PERMISSIONS = [
 ];
 
 async function main() {
+  if (process.env.SEED_SNAPSHOT === "1") {
+    const { applySeedSnapshot, defaultSnapshotPath } = await import("./seed-snapshot");
+    const filePath = process.env.SEED_SNAPSHOT_PATH || defaultSnapshotPath();
+    const truncate = process.env.SEED_SNAPSHOT_TRUNCATE === "1";
+    console.log(`SEED_SNAPSHOT: loading ${filePath} (truncate all app tables first: ${truncate})`);
+    await applySeedSnapshot(prisma, filePath, { truncate });
+    console.log("SEED_SNAPSHOT: finished.");
+    return;
+  }
+
   // Create permissions
   for (const p of DEFAULT_PERMISSIONS) {
     await prisma.permission.upsert({

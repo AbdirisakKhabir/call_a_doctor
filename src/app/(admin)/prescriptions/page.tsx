@@ -363,7 +363,7 @@ export default function PrescriptionsPage() {
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">No prescriptions yet</h3>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Open an appointment and choose Create prescription, or use the quick link from the appointment detail. Medications are added as lines with dose and SIG.
+                Open a calendar booking and choose Create prescription, or use the quick link from the booking detail. Medications are added as lines with dose and SIG.
               </p>
             </div>
           </div>

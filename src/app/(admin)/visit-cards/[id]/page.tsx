@@ -24,7 +24,7 @@ type VisitCardDetail = {
   notes: string | null;
   paymentMethod: { id: number; name: string } | null;
   depositTransaction: { id: number; amount: number } | null;
-  patient: { name: string; patientCode: string; phone: string | null };
+  patient: { name: string; patientCode: string; phone: string | null; mobile: string | null };
   doctor: { id: number; name: string };
   branch: { name: string };
 };
@@ -184,7 +184,10 @@ export default function VisitCardViewPage() {
                   <span className="font-normal text-gray-500 dark:text-gray-400">({card.patient.patientCode})</span>
                 </dd>
                 {card.patient.phone ? (
-                  <dd className="mt-0.5 text-sm text-gray-600 dark:text-gray-300">{card.patient.phone}</dd>
+                  <dd className="mt-0.5 text-sm text-gray-600 dark:text-gray-300">Phone: {card.patient.phone}</dd>
+                ) : null}
+                {card.patient.mobile ? (
+                  <dd className="mt-0.5 text-sm text-gray-600 dark:text-gray-300">Mobile: {card.patient.mobile}</dd>
                 ) : null}
               </div>
               <div>

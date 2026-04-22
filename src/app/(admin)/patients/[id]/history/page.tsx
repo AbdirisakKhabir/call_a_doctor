@@ -13,6 +13,7 @@ type ChartPatient = {
   patientCode: string;
   name: string;
   phone: string | null;
+  mobile: string | null;
   email: string | null;
   dateOfBirth: string | null;
   gender: string | null;
@@ -195,7 +196,8 @@ export default function PatientHistoryViewPage() {
                   <h1 className="text-xl font-bold text-gray-900 dark:text-white">{data.patient.name}</h1>
                   <p className="mt-0.5 font-mono text-sm text-gray-500">{data.patient.patientCode}</p>
                   <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
-                    {data.patient.phone && <span>{data.patient.phone}</span>}
+                    {data.patient.phone && <span>Phone: {data.patient.phone}</span>}
+                    {data.patient.mobile && <span>Mobile: {data.patient.mobile}</span>}
                     {data.patient.email && <span>{data.patient.email}</span>}
                     {data.patient.gender && <span>{data.patient.gender}</span>}
                     {data.patient.dateOfBirth && (

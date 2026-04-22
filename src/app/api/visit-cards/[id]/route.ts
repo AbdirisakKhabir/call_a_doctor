@@ -20,6 +20,7 @@ const visitInclude = {
       firstName: true,
       lastName: true,
       phone: true,
+      mobile: true,
       address: true,
       cityId: true,
       villageId: true,

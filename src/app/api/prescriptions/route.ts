@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { appointmentId, patientId, doctorId, notes, items, isEmergency } = body;
     if (!appointmentId || !patientId || !doctorId || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: "Appointment, client, doctor and at least one item are required" }, { status: 400 });
+      return NextResponse.json({ error: "Booking, client, doctor and at least one item are required" }, { status: 400 });
     }
 
     const appt = await prisma.appointment.findUnique({
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
       select: { branchId: true, careFileId: true },
     });
     if (!appt) {
-      return NextResponse.json({ error: "Appointment not found" }, { status: 400 });
+      return NextResponse.json({ error: "Booking not found" }, { status: 400 });
     }
 
     for (const i of items as { productId: number }[]) {
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
       if (prod && prod.branchId !== appt.branchId) {
         return NextResponse.json(
           {
-            error: `Product "${prod.name}" is not in stock at this appointment’s branch. Choose items from that branch’s retail inventory.`,
+            error: `Product "${prod.name}" is not in stock at this booking's branch. Choose items from that branch's retail inventory.`,
           },
           { status: 400 }
         );

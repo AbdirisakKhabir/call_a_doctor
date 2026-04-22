@@ -4,10 +4,17 @@ import React, { useEffect, useState, useCallback, useRef, Suspense } from "react
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
-import DateField from "@/components/form/DateField";
+import DateOfBirthSplitFields from "@/components/form/DateOfBirthSplitFields";
 import AgeReadonlyInput from "@/components/form/AgeReadonlyInput";
 import ClientFormCard from "@/components/patients/ClientFormCard";
+import ClientPhoneFields from "@/components/patients/ClientPhoneFields";
 import { authFetch } from "@/lib/api";
+import {
+  DEFAULT_PHONE_COUNTRY_ISO2,
+  formatInternationalPhoneForStorage,
+  validateClientPhoneNational,
+  validateOptionalClientPhoneNational,
+} from "@/lib/phone-country";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
 import { PlusIcon, TrashBinIcon } from "@/icons";
@@ -200,7 +207,10 @@ export default function POSPage() {
   const [createPatientForm, setCreatePatientForm] = useState({
     firstName: "",
     lastName: "",
-    phone: "",
+    phoneCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+    phoneNational: "",
+    mobileCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+    mobileNational: "",
     email: "",
     dateOfBirth: "",
     gender: "",
@@ -215,7 +225,10 @@ export default function POSPage() {
     setCreatePatientForm({
       firstName: "",
       lastName: "",
-      phone: "",
+      phoneCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+      phoneNational: "",
+      mobileCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+      mobileNational: "",
       email: "",
       dateOfBirth: "",
       gender: "",
@@ -234,7 +247,10 @@ export default function POSPage() {
     setCreatePatientForm({
       firstName: "",
       lastName: "",
-      phone: "",
+      phoneCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+      phoneNational: "",
+      mobileCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+      mobileNational: "",
       email: "",
       dateOfBirth: "",
       gender: "",
@@ -267,6 +283,22 @@ export default function POSPage() {
       setCreatePatientError("Registration branch, city, and village are required");
       return;
     }
+    const phoneErr = validateClientPhoneNational(
+      createPatientForm.phoneCountryIso2,
+      createPatientForm.phoneNational
+    );
+    if (phoneErr) {
+      setCreatePatientError(phoneErr);
+      return;
+    }
+    const mobileErr = validateOptionalClientPhoneNational(
+      createPatientForm.mobileCountryIso2,
+      createPatientForm.mobileNational
+    );
+    if (mobileErr) {
+      setCreatePatientError(mobileErr);
+      return;
+    }
     setCreatePatientSubmitting(true);
     try {
       const res = await authFetch("/api/patients", {
@@ -275,7 +307,14 @@ export default function POSPage() {
         body: JSON.stringify({
           firstName: createPatientForm.firstName.trim(),
           lastName: createPatientForm.lastName.trim(),
-          phone: createPatientForm.phone.trim() || null,
+          phone: formatInternationalPhoneForStorage(
+            createPatientForm.phoneCountryIso2,
+            createPatientForm.phoneNational
+          ),
+          mobile: formatInternationalPhoneForStorage(
+            createPatientForm.mobileCountryIso2,
+            createPatientForm.mobileNational
+          ),
           email: createPatientForm.email.trim() || null,
           dateOfBirth: createPatientForm.dateOfBirth.trim() || null,
           gender: createPatientForm.gender.trim() || null,
@@ -2189,30 +2228,27 @@ export default function POSPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-end">
-                  <div className="lg:col-span-5">
-                    <DateField
-                      id="pos-new-patient-dob"
-                      label="Date of birth"
-                      value={createPatientForm.dateOfBirth}
-                      onChange={(v) => setCreatePatientForm((f) => ({ ...f, dateOfBirth: v }))}
-                      appendToBody
-                    />
-                  </div>
-                  <div className="lg:col-span-3">
+                <div className="space-y-5">
+                  <DateOfBirthSplitFields
+                    idPrefix="pos-new-patient-dob"
+                    label="Date of birth"
+                    value={createPatientForm.dateOfBirth}
+                    onChange={(v) => setCreatePatientForm((f) => ({ ...f, dateOfBirth: v }))}
+                  />
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:items-end sm:gap-x-8">
                     <AgeReadonlyInput dateOfBirth={createPatientForm.dateOfBirth} idSuffix="pos" />
-                  </div>
-                  <div className="lg:col-span-4">
-                    <Label>Gender</Label>
-                    <select
-                      value={createPatientForm.gender}
-                      onChange={(e) => setCreatePatientForm((f) => ({ ...f, gender: e.target.value }))}
-                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                    >
-                      <option value="">—</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
+                    <div>
+                      <Label>Gender</Label>
+                      <select
+                        value={createPatientForm.gender}
+                        onChange={(e) => setCreatePatientForm((f) => ({ ...f, gender: e.target.value }))}
+                        className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                      >
+                        <option value="">—</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </ClientFormCard>
@@ -2277,15 +2313,18 @@ export default function POSPage() {
 
               <ClientFormCard title="Contact details" description="How we reach the client.">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label>Phone</Label>
-                    <input
-                      value={createPatientForm.phone}
-                      onChange={(e) => setCreatePatientForm((f) => ({ ...f, phone: e.target.value }))}
-                      className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                      placeholder="Optional"
-                    />
-                  </div>
+                  <ClientPhoneFields
+                    label="Phone"
+                    countryIso2={createPatientForm.phoneCountryIso2}
+                    national={createPatientForm.phoneNational}
+                    onCountryIso2Change={(phoneCountryIso2) =>
+                      setCreatePatientForm((f) => ({ ...f, phoneCountryIso2 }))
+                    }
+                    onNationalChange={(phoneNational) =>
+                      setCreatePatientForm((f) => ({ ...f, phoneNational }))
+                    }
+                    nationalInputId="pos-create-client-phone-national"
+                  />
                   <div>
                     <Label>Email</Label>
                     <input
@@ -2294,6 +2333,21 @@ export default function POSPage() {
                       onChange={(e) => setCreatePatientForm((f) => ({ ...f, email: e.target.value }))}
                       className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
                       placeholder="Optional"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <ClientPhoneFields
+                      label="Mobile (optional)"
+                      optionalMobile
+                      countryIso2={createPatientForm.mobileCountryIso2}
+                      national={createPatientForm.mobileNational}
+                      onCountryIso2Change={(mobileCountryIso2) =>
+                        setCreatePatientForm((f) => ({ ...f, mobileCountryIso2 }))
+                      }
+                      onNationalChange={(mobileNational) =>
+                        setCreatePatientForm((f) => ({ ...f, mobileNational }))
+                      }
+                      nationalInputId="pos-create-client-mobile-national"
                     />
                   </div>
                 </div>

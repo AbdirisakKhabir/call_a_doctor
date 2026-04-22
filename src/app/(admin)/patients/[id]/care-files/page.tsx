@@ -162,7 +162,7 @@ export default function PatientCareFilesPage() {
           {starting ? "Starting…" : "Start new client file"}
         </Button>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          New appointments and visit cards attach to the open file (or open one automatically). Starting new here closes
+          New calendar bookings and visit cards attach to the open file (or open one automatically). Starting new here closes
           any other open file for this client.
         </p>
       </div>
@@ -188,7 +188,7 @@ export default function PatientCareFilesPage() {
               {files.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                    No client files yet. They are created when you book the first appointment or add a visit card.
+                    No client files yet. They are created when you add the first booking from the calendar or add a visit card.
                   </td>
                 </tr>
               ) : (

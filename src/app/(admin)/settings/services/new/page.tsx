@@ -62,17 +62,35 @@ export default function NewServicePage() {
 
   return (
     <ServiceForm
-      title="Create a service for appointments and billing."
+      title="Create a service for the calendar and billing."
       breadcrumbTitle="New service"
       backHref="/settings/services"
       branches={branches}
       initialValues={emptyForm(defaultBranch)}
+      initialDisposableBranchId={defaultBranch}
+      canManageDisposables={canCreate}
       submitLabel="Create service"
-      onSubmit={async (form) => {
+      onSubmit={async (form, meta) => {
+        const body: Record<string, unknown> = {
+          name: form.name,
+          description: form.description,
+          price: form.price,
+          durationMinutes: form.durationMinutes,
+          branchId: form.branchId,
+          color: form.color,
+        };
+        const list = meta?.initialDisposables;
+        if (list && list.length > 0) {
+          body.initialDisposables = list.map((d) => ({
+            productCode: d.productCode,
+            unitsPerService: d.unitsPerService,
+            deductionUnitKey: d.deductionUnitKey,
+          }));
+        }
         const res = await authFetch("/api/services", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         if (!res.ok) return { error: data.error || "Failed to create" };

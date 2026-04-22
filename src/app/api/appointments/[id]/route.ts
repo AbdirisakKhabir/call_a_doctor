@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       select: { status: true },
     });
     if (!existingForGuard) {
-      return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
+      return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
     if (Array.isArray(services)) {
@@ -179,7 +179,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ ...appointment, patient: serializePatient(appointment.patient) });
   } catch (e) {
     if (e instanceof Error && e.message === "NOT_FOUND") {
-      return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
+      return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
     if (e instanceof Error && e.message.startsWith("DISPOSABLE:")) {
       return NextResponse.json({ error: e.message.replace(/^DISPOSABLE:/, "").trim() }, { status: 400 });

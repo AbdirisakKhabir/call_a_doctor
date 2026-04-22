@@ -307,7 +307,7 @@ export default function NewAppointmentForm() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to create appointment");
+        setError(data.error || "Failed to create booking");
         return;
       }
       router.push("/appointments");
@@ -319,8 +319,8 @@ export default function NewAppointmentForm() {
   if (!canCreate) {
     return (
       <div>
-        <PageBreadCrumb pageTitle="New appointment" />
-        <p className="mt-4 text-sm text-gray-500">You do not have permission to create appointments.</p>
+        <PageBreadCrumb pageTitle="New booking" />
+        <p className="mt-4 text-sm text-gray-500">You do not have permission to add calendar bookings.</p>
       </div>
     );
   }
@@ -336,9 +336,9 @@ export default function NewAppointmentForm() {
   if (branches.length === 0) {
     return (
       <div>
-        <PageBreadCrumb pageTitle="New appointment" />
+        <PageBreadCrumb pageTitle="New booking" />
         <div className="mt-6 rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center dark:border-gray-800 dark:bg-white/3">
-          <p className="text-gray-600 dark:text-gray-400">Add at least one branch in Settings before creating appointments.</p>
+          <p className="text-gray-600 dark:text-gray-400">Add at least one branch in Settings before adding calendar bookings.</p>
           <Button className="mt-4" size="sm" onClick={() => router.push("/settings/branches")}>
             Branches & access
           </Button>
@@ -350,7 +350,7 @@ export default function NewAppointmentForm() {
   return (
     <div>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <PageBreadCrumb pageTitle="New appointment" />
+        <PageBreadCrumb pageTitle="New booking" />
         <Button type="button" variant="outline" size="sm" onClick={() => router.push("/appointments")}>
           Back to calendar
         </Button>
@@ -456,7 +456,7 @@ export default function NewAppointmentForm() {
             )}
             {form.patientId && !openCareFileLabel && !startNewCareFile && (
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                No open file yet — a client file will be created when you save this appointment.
+                No open file yet — a client file will be created when you save this booking.
               </p>
             )}
             {form.patientId && (
@@ -598,7 +598,7 @@ export default function NewAppointmentForm() {
                 <div className="border-t pt-2">
                   <div className="font-semibold">Total: ${totalCharge.toFixed(2)}</div>
                   {totalCharge > 0 && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">This total is charged to the client&apos;s account balance when the appointment is saved.</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">This total is charged to the client&apos;s account balance when the booking is saved.</p>
                   )}
                 </div>
               )}
@@ -606,7 +606,7 @@ export default function NewAppointmentForm() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Appointment notes</label>
+            <label className="mb-1 block text-sm font-medium">Booking notes</label>
             <textarea
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
@@ -620,7 +620,7 @@ export default function NewAppointmentForm() {
               Cancel
             </Button>
             <Button type="submit" disabled={submitting} size="sm">
-              {submitting ? "Booking…" : "Book appointment"}
+              {submitting ? "Saving…" : "Save booking"}
             </Button>
           </div>
         </form>

@@ -37,3 +37,6 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Full DB snapshots (may contain PHI — do not commit)
+/prisma/seed-data/snapshot.json

@@ -16,7 +16,7 @@ export function parseTimeToMinutes(t: string | null | undefined): number | null 
 /** Default slot length when end time is missing (minutes). */
 export const DEFAULT_APPOINTMENT_DURATION_MIN = 30;
 
-/** Calendar grid & booking time-step options (Settings → Appointment calendar). */
+/** Calendar grid & booking time-step options (Settings → Calendar settings). */
 export const APPOINTMENT_CALENDAR_SLOT_MINUTES = [15, 30] as const;
 export type AppointmentCalendarSlotMinutes = (typeof APPOINTMENT_CALENDAR_SLOT_MINUTES)[number];
 

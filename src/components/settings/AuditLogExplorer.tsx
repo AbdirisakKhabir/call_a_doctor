@@ -183,7 +183,7 @@ export default function AuditLogExplorer({ variant }: Props) {
           </>
         ) : (
           <>
-            Sign-ins and recorded actions across pharmacy, clients, appointments, visit cards, payments, and
+            Sign-ins and recorded actions across pharmacy, clients, calendar, visit cards, payments, and
             other modules. Filter by date, user, module, or action.
           </>
         )}

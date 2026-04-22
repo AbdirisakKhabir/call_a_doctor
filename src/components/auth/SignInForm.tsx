@@ -115,7 +115,7 @@ export default function SignInForm() {
                 </h1>
                 <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
                   Sign in to <span className="font-medium text-gray-700 dark:text-gray-300">Call a Doctor</span>{" "}
-                  to manage appointments, clients, and pharmacy.
+                  to manage the calendar, clients, and pharmacy.
                 </p>
               </div>
 

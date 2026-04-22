@@ -434,7 +434,7 @@ export default function AppointmentsPage() {
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
       <div className="mb-3 shrink-0 sm:mb-4">
-        <PageBreadCrumb pageTitle="Appointments (calendar)" />
+        <PageBreadCrumb pageTitle="Calendar" />
       </div>
 
       <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-white/3">
@@ -504,7 +504,7 @@ export default function AppointmentsPage() {
                 href="/appointments/new"
                 className="inline-flex h-9 items-center justify-center rounded-lg bg-brand-500 px-3 text-sm font-medium text-white hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
               >
-                New appointment
+                New booking
               </Link>
             )}
           </div>

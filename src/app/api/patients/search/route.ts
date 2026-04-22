@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
               { lastName: { contains: q } },
               { patientCode: { contains: q } },
               { phone: { contains: q } },
+              { mobile: { contains: q } },
             ],
           }
         : { isActive: true },
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
         firstName: true,
         lastName: true,
         phone: true,
+        mobile: true,
       },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
       take: limit,

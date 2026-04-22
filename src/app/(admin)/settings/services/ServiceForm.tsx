@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
+import ServiceDisposablesFields, {
+  type ServiceDisposableDraft,
+} from "@/components/settings/ServiceDisposablesFields";
 
 export type ServiceFormValues = {
   name: string;
@@ -13,6 +16,10 @@ export type ServiceFormValues = {
   durationMinutes: string;
   branchId: string;
   color: string;
+};
+
+export type ServiceFormSubmitMeta = {
+  initialDisposables: ServiceDisposableDraft[];
 };
 
 type Branch = { id: number; name: string };
@@ -24,7 +31,14 @@ type Props = {
   initialValues: ServiceFormValues;
   branches: Branch[];
   submitLabel: string;
-  onSubmit: (values: ServiceFormValues) => Promise<{ error?: string } | void>;
+  /** Existing service id when editing; omit when creating (disposables block is draft-only). */
+  serviceId?: number;
+  initialDisposableBranchId?: string;
+  canManageDisposables: boolean;
+  onSubmit: (
+    values: ServiceFormValues,
+    meta?: ServiceFormSubmitMeta
+  ) => Promise<{ error?: string } | void>;
 };
 
 export default function ServiceForm({
@@ -34,18 +48,33 @@ export default function ServiceForm({
   initialValues,
   branches,
   submitLabel,
+  serviceId,
+  initialDisposableBranchId = "",
+  canManageDisposables,
   onSubmit,
 }: Props) {
   const [form, setForm] = useState<ServiceFormValues>(initialValues);
+  const [disposableBranchId, setDisposableBranchId] = useState(initialDisposableBranchId);
+  const [draftDisposables, setDraftDisposables] = useState<ServiceDisposableDraft[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setForm(initialValues);
+  }, [initialValues]);
+
+  useEffect(() => {
+    setDisposableBranchId(initialDisposableBranchId);
+  }, [initialDisposableBranchId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      const result = await onSubmit(form);
+      const meta: ServiceFormSubmitMeta | undefined =
+        serviceId === undefined ? { initialDisposables: draftDisposables } : undefined;
+      const result = await onSubmit(form, meta);
       if (result && typeof result === "object" && result.error) {
         setError(result.error);
       }
@@ -125,7 +154,7 @@ export default function ServiceForm({
           <div>
             <Label>Calendar color</Label>
             <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-              Used as the background for this client on the appointment calendar when this service is booked.
+              Used as the background for this client on the calendar when this service is booked.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <input
@@ -160,6 +189,18 @@ export default function ServiceForm({
               className="mt-1 min-h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
             />
           </div>
+
+          <div className="border-t border-gray-200 pt-6 dark:border-gray-800">
+            <ServiceDisposablesFields
+              serviceId={serviceId}
+              branches={branches}
+              disposableBranchId={disposableBranchId}
+              onDisposableBranchIdChange={setDisposableBranchId}
+              canEdit={canManageDisposables}
+              onDraftDisposablesChange={serviceId === undefined ? setDraftDisposables : undefined}
+            />
+          </div>
+
           <div className="flex justify-end gap-3 border-t border-gray-200 pt-6 dark:border-gray-800">
             <Link
               href={backHref}

@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
             { lastName: { contains: search } },
             { patientCode: { contains: search } },
             { phone: { contains: search } },
+            { mobile: { contains: search } },
             { email: { contains: search } },
           ],
         }
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
       firstName,
       lastName,
       phone,
+      mobile,
       email,
       dateOfBirth,
       gender,
@@ -132,6 +134,7 @@ export async function POST(req: NextRequest) {
         firstName: fn,
         lastName: ln,
         phone: phone ? String(phone).trim() : null,
+        mobile: mobile ? String(mobile).trim() : null,
         email: email ? String(email).trim() : null,
         dateOfBirth: dob,
         age: calculateAgeFromDate(dob),

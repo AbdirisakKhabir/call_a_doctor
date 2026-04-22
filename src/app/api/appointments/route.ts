@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
       });
     });
     if (!appointment) {
-      return NextResponse.json({ error: "Failed to create appointment" }, { status: 500 });
+      return NextResponse.json({ error: "Failed to create booking" }, { status: 500 });
     }
     await logAuditFromRequest(req, {
       userId: auth.userId,

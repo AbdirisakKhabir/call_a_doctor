@@ -65,7 +65,7 @@ export default function RevenueSummaryCard() {
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600 dark:text-gray-300">Appointments</span>
+            <span className="text-gray-600 dark:text-gray-300">Calendar</span>
             <span>
               ${appointments.toLocaleString(undefined, { minimumFractionDigits: 2 })} ({appointmentsPct}%)
             </span>
@@ -86,7 +86,7 @@ export default function RevenueSummaryCard() {
             Pharmacy POS →
           </Link>
           <Link href="/appointments" className="text-sm font-medium text-amber-500 hover:underline">
-            Appointments →
+            Calendar →
           </Link>
         </div>
       </div>

@@ -6,10 +6,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
-import DateField from "@/components/form/DateField";
+import DateOfBirthSplitFields from "@/components/form/DateOfBirthSplitFields";
 import AgeReadonlyInput from "@/components/form/AgeReadonlyInput";
 import ClientFormCard from "@/components/patients/ClientFormCard";
+import ClientPhoneFields from "@/components/patients/ClientPhoneFields";
 import { authFetch } from "@/lib/api";
+import {
+  DEFAULT_PHONE_COUNTRY_ISO2,
+  formatInternationalPhoneForStorage,
+  validateClientPhoneNational,
+  validateOptionalClientPhoneNational,
+} from "@/lib/phone-country";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
 
@@ -21,7 +28,10 @@ type BranchOpt = { id: number; name: string };
 const emptyForm = {
   firstName: "",
   lastName: "",
-  phone: "",
+  phoneCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+  phoneNational: "",
+  mobileCountryIso2: DEFAULT_PHONE_COUNTRY_ISO2,
+  mobileNational: "",
   email: "",
   dateOfBirth: "",
   gender: "",
@@ -133,10 +143,32 @@ export default function NewPatientPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    const phoneErr = validateClientPhoneNational(form.phoneCountryIso2, form.phoneNational);
+    if (phoneErr) {
+      setError(phoneErr);
+      return;
+    }
+    const mobileErr = validateOptionalClientPhoneNational(
+      form.mobileCountryIso2,
+      form.mobileNational
+    );
+    if (mobileErr) {
+      setError(mobileErr);
+      return;
+    }
     setSubmitting(true);
     try {
+      const {
+        phoneCountryIso2,
+        phoneNational,
+        mobileCountryIso2,
+        mobileNational,
+        ...formRest
+      } = form;
       const payload = {
-        ...form,
+        ...formRest,
+        phone: formatInternationalPhoneForStorage(phoneCountryIso2, phoneNational),
+        mobile: formatInternationalPhoneForStorage(mobileCountryIso2, mobileNational),
         referralSourceId: form.referralSourceId ? Number(form.referralSourceId) : null,
         cityId: form.cityId ? Number(form.cityId) : null,
         villageId: form.villageId ? Number(form.villageId) : null,
@@ -189,7 +221,7 @@ export default function NewPatientPage() {
           href={returnToNewAppointment ? appointmentReturnHref(apptDateParam) : "/patients"}
           className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
-          {returnToNewAppointment ? "← Back to new appointment" : "← Back to clients"}
+          {returnToNewAppointment ? "← Back to new booking" : "← Back to clients"}
         </Link>
       </div>
 
@@ -249,30 +281,27 @@ export default function NewPatientPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-end">
-            <div className="lg:col-span-5">
-              <DateField
-                id="new-patient-dob"
-                label="Date of birth"
-                value={form.dateOfBirth}
-                onChange={(v) => setForm((f) => ({ ...f, dateOfBirth: v }))}
-                appendToBody
-              />
-            </div>
-            <div className="lg:col-span-3">
+          <div className="space-y-5">
+            <DateOfBirthSplitFields
+              idPrefix="new-patient-dob"
+              label="Date of birth"
+              value={form.dateOfBirth}
+              onChange={(v) => setForm((f) => ({ ...f, dateOfBirth: v }))}
+            />
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:items-end sm:gap-x-8">
               <AgeReadonlyInput dateOfBirth={form.dateOfBirth} idSuffix="new" />
-            </div>
-            <div className="lg:col-span-4">
-              <Label>Gender</Label>
-              <select
-                value={form.gender}
-                onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
-                className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-              >
-                <option value="">Select</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-              </select>
+              <div>
+                <Label>Gender</Label>
+                <select
+                  value={form.gender}
+                  onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                >
+                  <option value="">Select</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
             </div>
           </div>
         </ClientFormCard>
@@ -335,16 +364,14 @@ export default function NewPatientPage() {
 
         <ClientFormCard title="Contact details" description="How we reach the client.">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <Label>Phone</Label>
-              <input
-                value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                placeholder="+1234567890"
-                autoComplete="tel"
-              />
-            </div>
+            <ClientPhoneFields
+              label="Phone"
+              countryIso2={form.phoneCountryIso2}
+              national={form.phoneNational}
+              onCountryIso2Change={(phoneCountryIso2) => setForm((f) => ({ ...f, phoneCountryIso2 }))}
+              onNationalChange={(phoneNational) => setForm((f) => ({ ...f, phoneNational }))}
+              nationalInputId="new-client-phone-national"
+            />
             <div>
               <Label>Email</Label>
               <input
@@ -354,6 +381,19 @@ export default function NewPatientPage() {
                 className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
                 placeholder="email@example.com"
                 autoComplete="email"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <ClientPhoneFields
+                label="Mobile (optional)"
+                optionalMobile
+                countryIso2={form.mobileCountryIso2}
+                national={form.mobileNational}
+                onCountryIso2Change={(mobileCountryIso2) =>
+                  setForm((f) => ({ ...f, mobileCountryIso2 }))
+                }
+                onNationalChange={(mobileNational) => setForm((f) => ({ ...f, mobileNational }))}
+                nationalInputId="new-client-mobile-national"
               />
             </div>
           </div>

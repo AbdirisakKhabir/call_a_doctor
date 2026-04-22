@@ -40,7 +40,7 @@ export default function StatsPercentagesCard() {
       <div className="space-y-6">
         <div>
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600 dark:text-gray-300">Appointment Completion Rate</span>
+            <span className="text-sm text-gray-600 dark:text-gray-300">Calendar completion rate</span>
             <span className="text-lg font-bold text-green-600 dark:text-green-400">{completionRate}%</span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">

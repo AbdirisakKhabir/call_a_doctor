@@ -137,6 +137,8 @@ model Patient {
   firstName       String
   lastName        String
   phone           String?
+  /// Optional second contact number (e.g. mobile); stored E.164 when set.
+  mobile          String?
   email           String?
   dateOfBirth     DateTime?
   /// Full years; recalculated from `dateOfBirth` whenever the client is saved.

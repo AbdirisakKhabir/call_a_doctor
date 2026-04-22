@@ -18,6 +18,7 @@ import {
   PieChartIcon,
   PlugInIcon,
   TableIcon,
+  TaskIcon,
   UserCircleIcon,
 } from "../icons/index";
 
@@ -57,6 +58,7 @@ type MenuCategory =
   | "prescriptions"
   | "financial"
   | "accounting"
+  | "services"
   | "settings"
   | "activities";
 
@@ -72,16 +74,16 @@ const mainItems: NavItem[] = [
   },
 ];
 
-// Appointments (calendar + setup only — visit cards are a separate menu)
+// Calendar (week schedule + new booking — visit cards are a separate menu)
 const appointmentsItems: NavItem[] = [
   {
     icon: <CalenderIcon />,
-    name: "Appointments",
+    name: "Calendar",
     path: "/appointments",
     permission: "appointments.view",
     subItems: [
-      { name: "All Appointments", path: "/appointments", permission: "appointments.view", exact: true },
-      { name: "New appointment", path: "/appointments/new", permission: "appointments.view" },
+      { name: "Schedule", path: "/appointments", permission: "appointments.view", exact: true },
+      { name: "New booking", path: "/appointments/new", permission: "appointments.view" },
     ],
   },
 ];
@@ -219,6 +221,11 @@ const reportsItems: NavItem[] = [
         path: "/reports/outstanding-balances",
         permissionAny: ["accounts.deposit", "pharmacy.pos", "patients.view"],
       },
+      {
+        name: "Calendar visits & services",
+        path: "/reports/calendar-visits",
+        permission: "appointments.view",
+      },
     ],
   },
 ];
@@ -262,7 +269,21 @@ const accountingItems: NavItem[] = [
   },
 ];
 
-// Settings: branches, doctors, services, system preferences (settings.* + appointments.* for clinic setup)
+// Services: catalog (routes remain under /settings/services)
+const servicesItems: NavItem[] = [
+  {
+    icon: <TaskIcon />,
+    name: "Services",
+    path: "/settings/services",
+    permission: "appointments.view",
+    subItems: [
+      { name: "All services", path: "/settings/services", permission: "appointments.view" },
+      { name: "New service", path: "/settings/services/new", permission: "appointments.view" },
+    ],
+  },
+];
+
+// Settings: branches, doctors, system preferences (settings.* + appointments.* for clinic setup)
 const settingsItems: NavItem[] = [
   {
     icon: <PlugInIcon />,
@@ -275,9 +296,8 @@ const settingsItems: NavItem[] = [
       { name: "Referred from", path: "/settings/referral-sources", permission: "settings.manage" },
       { name: "Cities & villages", path: "/settings/cities-villages", permission: "settings.manage" },
       { name: "Doctors", path: "/settings/doctors", permission: "appointments.view" },
-      { name: "Services", path: "/settings/services", permission: "appointments.view" },
       {
-        name: "Appointment calendar",
+        name: "Calendar settings",
         path: "/settings/appointment-calendar",
         permissionAny: ["settings.manage", "appointments.view"],
       },
@@ -365,6 +385,7 @@ const AppSidebar: React.FC = () => {
   const prescriptionsNav = useMemo(() => filterByPermission(prescriptionsItems, hasPermission), [hasPermission]);
   const financialNav = useMemo(() => filterByPermission(financialItems, hasPermission), [hasPermission]);
   const accountingNav = useMemo(() => filterByPermission(accountingItems, hasPermission), [hasPermission]);
+  const servicesNav = useMemo(() => filterByPermission(servicesItems, hasPermission), [hasPermission]);
   const settingsNav = useMemo(() => filterByPermission(settingsItems, hasPermission), [hasPermission]);
   const activitiesNav = useMemo(() => filterByPermission(activitiesItems, hasPermission), [hasPermission]);
 
@@ -413,6 +434,7 @@ const AppSidebar: React.FC = () => {
       "outreachReports",
       "financial",
       "accounting",
+      "services",
       "settings",
       "activities",
     ];
@@ -439,9 +461,11 @@ const AppSidebar: React.FC = () => {
                           ? financialNav
                           : menuType === "accounting"
                             ? accountingNav
-                            : menuType === "settings"
-                              ? settingsNav
-                              : activitiesNav;
+                            : menuType === "services"
+                              ? servicesNav
+                              : menuType === "settings"
+                                ? settingsNav
+                                : activitiesNav;
 
       items.forEach((nav, index) => {
         if (nav.subItems) {
@@ -475,6 +499,7 @@ const AppSidebar: React.FC = () => {
     prescriptionsNav,
     financialNav,
     accountingNav,
+    servicesNav,
     settingsNav,
     activitiesNav,
     isActive,
@@ -632,7 +657,7 @@ const AppSidebar: React.FC = () => {
                 <h2
                   className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Appointments" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Calendar" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(appointmentsNav, "appointments")}
               </div>
@@ -723,6 +748,17 @@ const AppSidebar: React.FC = () => {
                   {isExpanded || isHovered || isMobileOpen ? "Accounting" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(accountingNav, "accounting")}
+              </div>
+            )}
+
+            {servicesNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Services" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(servicesNav, "services")}
               </div>
             )}
 

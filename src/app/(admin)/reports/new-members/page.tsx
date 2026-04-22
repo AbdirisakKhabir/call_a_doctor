@@ -64,6 +64,7 @@ type ReportPayload = {
     lastName: string;
     gender: string;
     phone: string;
+    mobile: string;
     email: string;
     city: string;
     village: string;
@@ -404,6 +405,7 @@ export default function ClientRegistrationReportPage() {
           "Last name": r.lastName,
           Gender: r.gender,
           Phone: r.phone,
+          Mobile: r.mobile,
           Email: r.email,
           City: r.city,
           Village: r.village,

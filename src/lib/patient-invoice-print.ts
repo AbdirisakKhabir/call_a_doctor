@@ -9,7 +9,7 @@ export function escapeHtml(s: string) {
 }
 
 export function printConsolidatedInvoice(payload: {
-  patient: { patientCode: string; name: string; phone?: string | null };
+  patient: { patientCode: string; name: string; phone?: string | null; mobile?: string | null };
   generatedAt: string;
   pharmacyLabel?: string;
   dateRangeLabel?: string;
@@ -69,7 +69,7 @@ export function printConsolidatedInvoice(payload: {
 </style></head><body>
   <h1>Medication invoice — consolidated</h1>
   <p class="meta">${metaBits.join(" · ")}</p>
-  <p><strong>${escapeHtml(payload.patient.name)}</strong> (${escapeHtml(payload.patient.patientCode)})${payload.patient.phone ? ` · ${escapeHtml(payload.patient.phone)}` : ""}</p>
+  <p><strong>${escapeHtml(payload.patient.name)}</strong> (${escapeHtml(payload.patient.patientCode)})${[payload.patient.phone, payload.patient.mobile].filter(Boolean).length ? ` · ${[payload.patient.phone, payload.patient.mobile].filter(Boolean).map((s) => escapeHtml(String(s))).join(" · ")}` : ""}</p>
   <p class="muted" style="margin-bottom:16px">Prescriptions included: ${payload.prescriptions.map((p) => "#" + p.id + " (" + p.prescriptionDate + ")").join(", ")}</p>
   <table>
     <thead>

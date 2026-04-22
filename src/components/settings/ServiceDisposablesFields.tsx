@@ -31,12 +31,31 @@ type SavedDisposableRow = {
   stockUnit: string | null;
 };
 
+export type ServiceDisposableDraft = {
+  productCode: string;
+  unitsPerService: number;
+  deductionUnitKey: string;
+};
+
+type DraftPendingRow = ServiceDisposableDraft & {
+  key: string;
+  productName: string | null;
+  deductionUnitLabel: string;
+};
+
+function normalizeProductCodeClient(code: string): string {
+  return code.trim().toUpperCase();
+}
+
 type Props = {
-  serviceId: number;
+  /** Omit for “create service” flow: draft-only, no list until the service exists. */
+  serviceId?: number;
   branches: BranchOpt[];
   disposableBranchId: string;
   onDisposableBranchIdChange: (id: string) => void;
   canEdit: boolean;
+  /** When `serviceId` is omitted, reports disposables to create with the service. */
+  onDraftDisposablesChange?: (drafts: ServiceDisposableDraft[]) => void;
 };
 
 export default function ServiceDisposablesFields({
@@ -45,6 +64,7 @@ export default function ServiceDisposablesFields({
   disposableBranchId,
   onDisposableBranchIdChange,
   canEdit,
+  onDraftDisposablesChange,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [productHints, setProductHints] = useState<ProductSearchHit[]>([]);
@@ -60,6 +80,7 @@ export default function ServiceDisposablesFields({
   const [dispError, setDispError] = useState("");
   const [savedRows, setSavedRows] = useState<SavedDisposableRow[]>([]);
   const [dispLoading, setDispLoading] = useState(false);
+  const [draftPendingRows, setDraftPendingRows] = useState<DraftPendingRow[]>([]);
 
   const loadSaved = useCallback(
     async (sid: number, branchIdForLookup: string) => {
@@ -81,6 +102,19 @@ export default function ServiceDisposablesFields({
   );
 
   useEffect(() => {
+    if (serviceId === undefined) {
+      setSavedRows([]);
+      setDispLoading(false);
+      setDraftPendingRows([]);
+      setSearchQuery("");
+      setProductHints([]);
+      setPickedProduct(null);
+      setNewUnits("1");
+      setNewUnitKey("base");
+      setDispError("");
+      setCodeUnits([]);
+      return;
+    }
     loadSaved(serviceId, disposableBranchId);
     setSearchQuery("");
     setProductHints([]);
@@ -90,6 +124,17 @@ export default function ServiceDisposablesFields({
     setDispError("");
     setCodeUnits([]);
   }, [serviceId, disposableBranchId, loadSaved]);
+
+  useEffect(() => {
+    if (serviceId !== undefined || !onDraftDisposablesChange) return;
+    onDraftDisposablesChange(
+      draftPendingRows.map((r) => ({
+        productCode: r.productCode,
+        unitsPerService: r.unitsPerService,
+        deductionUnitKey: r.deductionUnitKey,
+      }))
+    );
+  }, [draftPendingRows, serviceId, onDraftDisposablesChange]);
 
   useEffect(() => {
     const bid = disposableBranchId ? Number(disposableBranchId) : null;
@@ -178,6 +223,34 @@ export default function ServiceDisposablesFields({
       setDispError("Enter a positive number for units per service.");
       return;
     }
+    const norm = normalizeProductCodeClient(codeRaw);
+    const unitOptions = codeUnits.length
+      ? codeUnits
+      : [{ unitKey: "base", label: "Base (pcs)", baseUnitsEach: 1 }];
+    const unitPick = unitOptions.find((u) => u.unitKey === newUnitKey);
+    const deductionUnitLabel = unitPick?.label ?? newUnitKey;
+
+    if (serviceId === undefined) {
+      if (draftPendingRows.some((r) => normalizeProductCodeClient(r.productCode) === norm)) {
+        setDispError("This product is already in the list.");
+        return;
+      }
+      setDraftPendingRows((prev) => [
+        ...prev,
+        {
+          key: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          productCode: norm,
+          productName: pickedProduct?.name ?? null,
+          unitsPerService: units,
+          deductionUnitKey: newUnitKey,
+          deductionUnitLabel,
+        },
+      ]);
+      clearProductPick();
+      setNewUnits("1");
+      return;
+    }
+
     const res = await authFetch(`/api/services/${serviceId}/disposables`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -197,8 +270,12 @@ export default function ServiceDisposablesFields({
     setNewUnits("1");
   }
 
+  function removeDraftPending(key: string) {
+    setDraftPendingRows((prev) => prev.filter((r) => r.key !== key));
+  }
+
   async function removeDisposable(id: number) {
-    if (!canEdit) return;
+    if (!canEdit || serviceId === undefined) return;
     const res = await authFetch(`/api/services/${serviceId}/disposables/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const j = await res.json();
@@ -208,9 +285,16 @@ export default function ServiceDisposablesFields({
     await loadSaved(serviceId, disposableBranchId);
   }
 
+  const isCreateFlow = serviceId === undefined;
+
   return (
     <div>
-      <h2 className="text-base font-semibold text-gray-900 dark:text-white">Service disposables</h2>
+      <h2 className="text-base font-semibold text-gray-900 dark:text-white">Pharmacy disposables</h2>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        {isCreateFlow
+          ? "Optional: link retail products deducted from pharmacy stock when this service is completed. Choose a branch, add one or more lines, then save the service."
+          : "Products deducted from pharmacy stock when a booking with this service is marked completed."}
+      </p>
 
       <div className="mt-4 max-w-md">
         <Label>Branch for product lookup</Label>
@@ -312,12 +396,7 @@ export default function ServiceDisposablesFields({
                 )}
               </select>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              onClick={addDisposable}
-              disabled={!searchQuery.trim()}
-            >
+            <Button type="button" size="sm" onClick={() => void addDisposable()} disabled={!searchQuery.trim()}>
               Add disposable
             </Button>
           </div>
@@ -329,7 +408,47 @@ export default function ServiceDisposablesFields({
       )}
 
       <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-        {dispLoading ? (
+        {isCreateFlow ? (
+          draftPendingRows.length === 0 ? (
+            <p className="p-4 text-sm text-gray-500 dark:text-gray-400">
+              No disposables in this list yet. Use Add disposable above, or leave empty.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableCell isHeader>Code</TableCell>
+                  <TableCell isHeader>Product</TableCell>
+                  <TableCell isHeader>Units / service</TableCell>
+                  <TableCell isHeader>Deduct as</TableCell>
+                  {canEdit ? <TableCell isHeader className="w-16"> </TableCell> : null}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {draftPendingRows.map((r) => (
+                  <TableRow key={r.key}>
+                    <TableCell className="font-mono text-xs">{r.productCode}</TableCell>
+                    <TableCell className="text-sm">{r.productName ?? "—"}</TableCell>
+                    <TableCell>{r.unitsPerService}</TableCell>
+                    <TableCell>{r.deductionUnitLabel}</TableCell>
+                    {canEdit && (
+                      <TableCell>
+                        <button
+                          type="button"
+                          onClick={() => removeDraftPending(r.key)}
+                          className="text-error-600 hover:underline dark:text-error-400"
+                          aria-label="Remove"
+                        >
+                          <TrashBinIcon className="h-4 w-4" />
+                        </button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )
+        ) : dispLoading ? (
           <p className="p-4 text-sm text-gray-500">Loading…</p>
         ) : savedRows.length === 0 ? (
           <p className="p-4 text-sm text-gray-500">No disposables configured for this service.</p>
