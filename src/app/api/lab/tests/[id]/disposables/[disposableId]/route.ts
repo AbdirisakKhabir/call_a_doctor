@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
-import { normalizeLabUnitKey } from "@/lib/lab-inventory-units";
+import { ensureLabPackagingUnitsFromPharmacyProduct, normalizeLabUnitKey } from "@/lib/lab-inventory-units";
+
+function normalizeProductCode(code: string): string {
+  return code.trim().toUpperCase();
+}
 
 export async function PATCH(
   req: NextRequest,
@@ -24,6 +28,7 @@ export async function PATCH(
     const unitsPerTest = body.unitsPerTest != null ? Number(body.unitsPerTest) : NaN;
     const deductionUnitKeyIn =
       typeof body.deductionUnitKey === "string" ? normalizeLabUnitKey(body.deductionUnitKey) : undefined;
+    const branchId = body.branchId != null ? Number(body.branchId) : NaN;
 
     const data: { unitsPerTest?: number; deductionUnitKey?: string } = {};
     if (body.unitsPerTest !== undefined) {
@@ -39,14 +44,43 @@ export async function PATCH(
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
 
-    const row = await prisma.labTestDisposable.updateMany({
-      where: { id: did, labTestId },
-      data,
+    if (deductionUnitKeyIn !== undefined) {
+      if (!Number.isInteger(branchId) || branchId <= 0) {
+        return NextResponse.json({ error: "branchId is required when changing deduction unit" }, { status: 400 });
+      }
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.labTestDisposable.findFirst({
+        where: { id: did, labTestId },
+        select: { productCode: true },
+      });
+      if (!existing) return null;
+
+      if (deductionUnitKeyIn !== undefined && Number.isInteger(branchId) && branchId > 0) {
+        const ensured = await ensureLabPackagingUnitsFromPharmacyProduct(tx, {
+          branchId,
+          productCode: normalizeProductCode(existing.productCode),
+        });
+        if (!ensured.ok) {
+          throw new Error(`ENSURE_FAILED:${ensured.error}`);
+        }
+      }
+
+      const row = await tx.labTestDisposable.updateMany({
+        where: { id: did, labTestId },
+        data,
+      });
+      if (row.count === 0) return null;
+      return tx.labTestDisposable.findFirst({ where: { id: did } });
     });
-    if (row.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const updated = await prisma.labTestDisposable.findFirst({ where: { id: did } });
+
+    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(updated);
   } catch (e) {
+    if (e instanceof Error && e.message.startsWith("ENSURE_FAILED:")) {
+      return NextResponse.json({ error: e.message.replace(/^ENSURE_FAILED:/, "") }, { status: 400 });
+    }
     console.error("Lab test disposable PATCH error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }

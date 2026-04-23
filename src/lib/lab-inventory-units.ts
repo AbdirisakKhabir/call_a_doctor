@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { normalizeSaleUnitKey } from "@/lib/product-sale-units";
 
 export function normalizeLabUnitKey(raw: string | null | undefined): string {
   if (raw == null || !String(raw).trim()) return "base";
@@ -112,4 +113,103 @@ export function labUnitsToBaseQuantity(unitsPerTest: number, baseUnitsEach: numb
   if (!Number.isFinite(u) || u <= 0) return 0;
   const raw = u * e;
   return Math.max(1, Math.ceil(raw - 1e-12));
+}
+
+export type PackagingOption = { unitKey: string; label: string; baseUnitsEach: number };
+
+/** Lab-configured units win on key collision; pharmacy-only keys are appended for UI and sync. */
+export function mergeLabUnitsWithPharmacySaleUnits(
+  labUnits: { unitKey: string; label: string; baseUnitsEach: number; sortOrder?: number }[],
+  pharmacySaleUnits: { unitKey: string; label: string; baseUnitsEach: number; sortOrder?: number }[]
+): PackagingOption[] {
+  type Row = PackagingOption & { _sort: number };
+  const map = new Map<string, Row>();
+  for (const u of labUnits) {
+    const k = normalizeLabUnitKey(u.unitKey);
+    if (map.has(k)) continue;
+    const so = typeof u.sortOrder === "number" ? u.sortOrder : map.size;
+    map.set(k, {
+      unitKey: k,
+      label: String(u.label ?? "").trim() || k,
+      baseUnitsEach: Math.max(1, Math.floor(Number(u.baseUnitsEach) || 1)),
+      _sort: so,
+    });
+  }
+  let extra = 0;
+  for (const u of pharmacySaleUnits) {
+    const k = normalizeLabUnitKey(normalizeSaleUnitKey(u.unitKey));
+    if (map.has(k)) continue;
+    const so =
+      typeof u.sortOrder === "number" ? 10_000 + u.sortOrder : 10_000 + extra++;
+    map.set(k, {
+      unitKey: k,
+      label: String(u.label ?? "").trim() || k,
+      baseUnitsEach: Math.max(1, Math.floor(Number(u.baseUnitsEach) || 1)),
+      _sort: so,
+    });
+  }
+  return [...map.values()]
+    .sort((a, b) => a._sort - b._sort)
+    .map(({ _sort, ...rest }) => rest);
+}
+
+function normalizeProductCodeUpper(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+/**
+ * Creates missing `LabInventoryUnit` rows on the lab line from the pharmacy product’s sale units
+ * so disposable deduction can resolve the same packaging keys.
+ */
+export async function ensureLabPackagingUnitsFromPharmacyProduct(
+  tx: Prisma.TransactionClient,
+  args: { branchId: number; productCode: string }
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const code = normalizeProductCodeUpper(args.productCode);
+  const labItem = await tx.labInventoryItem.findFirst({
+    where: { branchId: args.branchId, code, isActive: true },
+    select: { id: true },
+  });
+  if (!labItem) {
+    return {
+      ok: false,
+      error: `No lab inventory line with code "${code}" at this branch. Add it under Lab inventory first.`,
+    };
+  }
+
+  const product = await tx.product.findFirst({
+    where: { branchId: args.branchId, code, isActive: true },
+    select: {
+      saleUnits: {
+        orderBy: { sortOrder: "asc" },
+        select: { unitKey: true, label: true, baseUnitsEach: true, sortOrder: true },
+      },
+    },
+  });
+  if (!product?.saleUnits.length) {
+    return { ok: true };
+  }
+
+  const existing = await tx.labInventoryUnit.findMany({
+    where: { labInventoryItemId: labItem.id },
+    select: { unitKey: true },
+  });
+  const have = new Set(existing.map((e) => normalizeLabUnitKey(e.unitKey)));
+
+  for (const su of product.saleUnits) {
+    const k = normalizeLabUnitKey(normalizeSaleUnitKey(su.unitKey));
+    if (have.has(k)) continue;
+    await tx.labInventoryUnit.create({
+      data: {
+        labInventoryItemId: labItem.id,
+        unitKey: k,
+        label: String(su.label ?? "").trim() || k,
+        baseUnitsEach: Math.max(1, Math.floor(Number(su.baseUnitsEach) || 1)),
+        sortOrder: typeof su.sortOrder === "number" ? su.sortOrder : 0,
+      },
+    });
+    have.add(k);
+  }
+
+  return { ok: true };
 }

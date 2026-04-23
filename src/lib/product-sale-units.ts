@@ -32,6 +32,36 @@ export async function getSaleUnitForProduct(
 
 export type SaleUnitInput = { unitKey: string; label: string; baseUnitsEach: number; sortOrder?: number };
 
+/**
+ * Next alternate packaging row for the editor: picks a unit key not already used (normalized).
+ * Every alternate must have baseUnitsEach &gt; 1 so only the `base` row counts as the single “1 base unit” step.
+ */
+export function suggestNewAlternateSaleUnitRow(existing: { unitKey: string }[]): {
+  unitKey: string;
+  label: string;
+  baseUnitsEach: number;
+} {
+  const keys = new Set(existing.map((r) => normalizeSaleUnitKey(r.unitKey)));
+  const presets: { key: string; label: string; each: number }[] = [
+    { key: "box", label: "Box", each: 100 },
+    { key: "strip", label: "Strip", each: 10 },
+    { key: "pack", label: "Pack", each: 10 },
+    { key: "pair", label: "Pair", each: 2 },
+    { key: "carton", label: "Carton", each: 20 },
+    { key: "case", label: "Case", each: 50 },
+    { key: "bottle", label: "Bottle", each: 30 },
+  ];
+  for (const p of presets) {
+    const nk = normalizeSaleUnitKey(p.key);
+    if (!keys.has(nk)) {
+      return { unitKey: nk, label: p.label, baseUnitsEach: p.each };
+    }
+  }
+  let n = 2;
+  while (keys.has(`alt${n}`)) n += 1;
+  return { unitKey: `alt${n}`, label: `Packaging ${n}`, baseUnitsEach: 10 };
+}
+
 export function validateSaleUnitsPayload(rows: SaleUnitInput[] | undefined): { ok: true; rows: SaleUnitInput[] } | { ok: false; error: string } {
   if (!rows || rows.length === 0) {
     return { ok: false, error: "At least one sale unit is required (include base)." };
@@ -71,6 +101,25 @@ export function validateSaleUnitsPayload(rows: SaleUnitInput[] | undefined): { o
   if (!baseRow || baseRow.unitKey !== "base") {
     return { ok: false, error: "The smallest unit must use unit key \"base\" with 1 base unit each." };
   }
+
+  const baseLabelLower = baseRow.label.toLowerCase();
+  const baseLabelImpliesWholeBox = /\bbox(?:es)?\b/.test(baseLabelLower);
+  if (baseLabelImpliesWholeBox) {
+    for (const u of normalized) {
+      if (u.unitKey === "base") continue;
+      const labelLower = u.label.toLowerCase();
+      const uk = normalizeSaleUnitKey(u.unitKey);
+      const looksLikePair = uk === "pair" || /\bpair(?:s)?\b/.test(labelLower);
+      if (looksLikePair) {
+        return {
+          ok: false,
+          error:
+            'The base row is labeled like a whole box, but you also added a "pair" unit. One pair is smaller than one box; stock only supports whole multiples of the base step (not "1 pair = 1/150 box"). Fix: keep key base as your smallest sellable step—label it Pair (1 base = 1 pair). Add a second row with key box and Base units each = pairs per box (e.g. 150). Purchasing 3 boxes adds 450 to quantity. Selling 1 pair at POS deducts 1.',
+        };
+      }
+    }
+  }
+
   return { ok: true, rows: normalized.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) };
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
@@ -131,7 +132,10 @@ function unitSellingPrice(p: Product, unitKey: string): number {
   return p.sellingPrice * u.baseUnitsEach;
 }
 
-export default function POSPage() {
+function POSPageInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const handledPosQuery = useRef<string | null>(null);
   const { hasPermission } = useAuth();
   const { seesAllBranches, hasMultipleAssignedBranches } = useBranchScope();
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -684,6 +688,9 @@ export default function POSPage() {
         setSalesError("Outreach sales cannot be edited here. Use outreach return if stock comes back to the pharmacy.");
         return;
       }
+      if (data.branchId != null) {
+        setBranchId(String(data.branchId));
+      }
       setEditOpen(true);
       if (data.depositTransaction) {
         setEditHasDeposit(true);
@@ -753,6 +760,33 @@ export default function POSPage() {
       setEditLoading(false);
     }
   }
+
+  useEffect(() => {
+    const v = searchParams.get("viewSale")?.trim();
+    const e = searchParams.get("editSale")?.trim();
+    const key = `${v ?? ""}|${e ?? ""}`;
+    if (!v && !e) {
+      handledPosQuery.current = null;
+      return;
+    }
+    if (handledPosQuery.current === key) return;
+    handledPosQuery.current = key;
+
+    const sid = Number(v || e);
+    if (!Number.isInteger(sid) || sid <= 0) return;
+
+    const q = new URLSearchParams(searchParams.toString());
+    q.delete("viewSale");
+    q.delete("editSale");
+    const nextPath = q.toString() ? `/pharmacy/pos?${q}` : "/pharmacy/pos";
+
+    if (v) {
+      void openViewSale(sid);
+    } else if (e && (hasPermission("pharmacy.edit") || hasPermission("pharmacy.pos"))) {
+      void openEditSale(sid);
+    }
+    router.replace(nextPath, { scroll: false });
+  }, [searchParams, router, hasPermission]);
 
   const editSubtotal = editCart.reduce((s, c) => s + c.totalAmount, 0);
   const editDiscountAmount = Math.min(editSubtotal, Math.max(0, Number(editDiscountValue) || 0));
@@ -2731,5 +2765,19 @@ export default function POSPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function POSPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-brand-500 dark:border-gray-700 dark:border-t-brand-400" />
+        </div>
+      }
+    >
+      <POSPageInner />
+    </Suspense>
   );
 }

@@ -312,7 +312,14 @@ export default function LabInventoryPage() {
                         disabled={row.unitKey === "base"}
                         onChange={(e) =>
                           setPackRows((prev) =>
-                            prev.map((x, i) => (i === idx ? { ...x, unitKey: e.target.value.trim().toLowerCase() } : x))
+                            prev.map((x, i) => (i === idx ? { ...x, unitKey: e.target.value } : x))
+                          )
+                        }
+                        onBlur={(e) =>
+                          setPackRows((prev) =>
+                            prev.map((x, i) =>
+                              i === idx ? { ...x, unitKey: e.target.value.trim().toLowerCase() } : x
+                            )
                           )
                         }
                         className="mt-1 h-10 w-full rounded border border-gray-200 px-2 font-mono text-xs dark:border-gray-600 dark:bg-gray-900"

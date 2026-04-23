@@ -3,7 +3,11 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { pharmacyProductMetaByNormalizedCodes } from "@/lib/pharmacy-product-meta-by-codes";
-import { normalizeLabUnitKey } from "@/lib/lab-inventory-units";
+import {
+  ensureLabPackagingUnitsFromPharmacyProduct,
+  mergeLabUnitsWithPharmacySaleUnits,
+  normalizeLabUnitKey,
+} from "@/lib/lab-inventory-units";
 
 function normalizeProductCode(code: string): string {
   return code.trim().toUpperCase();
@@ -38,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const codeUniq = [...new Set(codes)];
 
-    const [labByCode, pharmacyByCode] = await Promise.all([
+    const [labByCode, pharmacyByCode, productsWithSaleUnits] = await Promise.all([
       hasBranch && codeUniq.length > 0
         ? prisma.labInventoryItem
             .findMany({
@@ -47,13 +51,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
                 code: true,
                 name: true,
                 unit: true,
-                labUnits: { orderBy: { sortOrder: "asc" }, select: { unitKey: true, label: true, baseUnitsEach: true } },
+                labUnits: {
+                  orderBy: { sortOrder: "asc" },
+                  select: { unitKey: true, label: true, baseUnitsEach: true, sortOrder: true },
+                },
               },
             })
             .then((list) => {
               const m = new Map<
                 string,
-                { name: string; unit: string; labUnits: { unitKey: string; label: string; baseUnitsEach: number }[] }
+                {
+                  name: string;
+                  unit: string;
+                  labUnits: {
+                    unitKey: string;
+                    label: string;
+                    baseUnitsEach: number;
+                    sortOrder: number;
+                  }[];
+                }
               >();
               for (const it of list) {
                 m.set(normalizeProductCode(it.code), {
@@ -63,6 +79,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
                     unitKey: u.unitKey,
                     label: u.label,
                     baseUnitsEach: u.baseUnitsEach,
+                    sortOrder: u.sortOrder,
                   })),
                 });
               }
@@ -71,20 +88,49 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         : Promise.resolve(
             new Map<
               string,
-              { name: string; unit: string; labUnits: { unitKey: string; label: string; baseUnitsEach: number }[] }
+              {
+                name: string;
+                unit: string;
+                labUnits: {
+                  unitKey: string;
+                  label: string;
+                  baseUnitsEach: number;
+                  sortOrder: number;
+                }[];
+              }
             >()
           ),
       hasBranch && codeUniq.length > 0
         ? pharmacyProductMetaByNormalizedCodes(branchId!, codeUniq)
         : Promise.resolve(new Map<string, { name: string; unit: string }>()),
+      hasBranch && codeUniq.length > 0
+        ? prisma.product.findMany({
+            where: { branchId: branchId!, isActive: true, code: { in: codeUniq } },
+            select: {
+              code: true,
+              saleUnits: {
+                orderBy: { sortOrder: "asc" },
+                select: { unitKey: true, label: true, baseUnitsEach: true, sortOrder: true },
+              },
+            },
+          })
+        : Promise.resolve([] as { code: string; saleUnits: { unitKey: string; label: string; baseUnitsEach: number; sortOrder: number }[] }[]),
     ]);
+
+    const pharmacySaleUnitsByCode = new Map(
+      productsWithSaleUnits.map((p) => [normalizeProductCode(p.code), p.saleUnits] as const)
+    );
 
     const enriched = rows.map((r) => {
       const code = normalizeProductCode(r.productCode);
       const lab = labByCode.get(code);
       const rx = pharmacyByCode.get(code);
       const ukey = normalizeLabUnitKey(r.deductionUnitKey);
-      const unitPick = lab?.labUnits.find((u) => u.unitKey === ukey);
+      const labUnitsMerged = mergeLabUnitsWithPharmacySaleUnits(
+        lab?.labUnits ?? [],
+        pharmacySaleUnitsByCode.get(code) ?? []
+      );
+      const unitPick = labUnitsMerged.find((u) => u.unitKey === ukey);
       return {
         id: r.id,
         labTestId: r.labTestId,
@@ -92,7 +138,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         unitsPerTest: r.unitsPerTest,
         deductionUnitKey: r.deductionUnitKey,
         deductionUnitLabel: unitPick?.label ?? ukey,
-        labUnits: lab?.labUnits ?? [],
+        labUnits: labUnitsMerged,
         productName: lab?.name ?? rx?.name ?? null,
         stockUnit: lab?.unit ?? rx?.unit ?? null,
       };
@@ -126,23 +172,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const deductionUnitKey = normalizeLabUnitKey(
       typeof body.deductionUnitKey === "string" ? body.deductionUnitKey : "base"
     );
+    const branchId = body.branchId != null ? Number(body.branchId) : NaN;
     if (!productCode) {
       return NextResponse.json({ error: "Product code is required" }, { status: 400 });
     }
     if (!Number.isFinite(unitsPerTest) || unitsPerTest <= 0) {
       return NextResponse.json({ error: "Units per test must be a positive number" }, { status: 400 });
     }
+    if (!Number.isInteger(branchId) || branchId <= 0) {
+      return NextResponse.json({ error: "branchId is required for lab disposables" }, { status: 400 });
+    }
 
-    const row = await prisma.labTestDisposable.create({
-      data: {
-        labTestId,
-        productCode,
-        unitsPerTest,
-        deductionUnitKey,
-      },
+    const row = await prisma.$transaction(async (tx) => {
+      const ensured = await ensureLabPackagingUnitsFromPharmacyProduct(tx, { branchId, productCode });
+      if (!ensured.ok) {
+        throw new Error(`ENSURE_FAILED:${ensured.error}`);
+      }
+      return tx.labTestDisposable.create({
+        data: {
+          labTestId,
+          productCode,
+          unitsPerTest,
+          deductionUnitKey,
+        },
+      });
     });
     return NextResponse.json(row);
   } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("ENSURE_FAILED:")) {
+      return NextResponse.json({ error: e.message.replace(/^ENSURE_FAILED:/, "") }, { status: 400 });
+    }
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002") {
       return NextResponse.json({ error: "This product code is already linked to this test" }, { status: 400 });
     }

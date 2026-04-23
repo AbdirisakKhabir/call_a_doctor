@@ -337,7 +337,7 @@ export async function PATCH(
       return NextResponse.json(
         {
           error:
-            `Product ${id} is internal stock (not for sale). Use internal usage to adjust stock.`,
+            `Product ${id} is internal stock (not for sale). Use POS with customer Lab for lab moves, or adjust stock via purchases and service-linked deductions.`,
         },
         { status: 400 }
       );

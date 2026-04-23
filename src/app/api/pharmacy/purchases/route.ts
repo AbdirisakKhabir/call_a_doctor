@@ -416,11 +416,17 @@ export async function POST(req: NextRequest) {
 
         let newSelling = prod.sellingPrice;
         if (prod.forSale && denom > 0) {
-          const lineSell =
-            it.sellingPriceLine !== undefined && it.sellingPriceLine !== null
-              ? it.sellingPriceLine
-              : prod.sellingPrice;
-          newSelling = (oldPcs * prod.sellingPrice + baseUnits * lineSell) / denom;
+          const suForSell = await getSaleUnitForProduct(tx, it.productId, it.purchaseUnit);
+          if (!suForSell) {
+            throw new Error("BAD_REQUEST:Sale unit missing for retail average.");
+          }
+          const eachSell = Math.max(1, Math.floor(Number(suForSell.baseUnitsEach) || 1));
+          /** Line retail is entered per purchase unit; catalog `sellingPrice` is always per base (smallest) unit. */
+          let lineSellPerBase = prod.sellingPrice;
+          if (it.sellingPriceLine !== undefined && it.sellingPriceLine !== null) {
+            lineSellPerBase = it.sellingPriceLine / eachSell;
+          }
+          newSelling = (oldPcs * prod.sellingPrice + baseUnits * lineSellPerBase) / denom;
         }
 
         await tx.product.update({

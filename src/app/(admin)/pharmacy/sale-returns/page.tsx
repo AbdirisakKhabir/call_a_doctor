@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
@@ -27,7 +28,9 @@ type SaleDetail = {
   items: SaleLine[];
 };
 
-export default function PharmacySaleReturnsPage() {
+function PharmacySaleReturnsInner() {
+  const searchParams = useSearchParams();
+  const processedUrlKey = useRef<string | null>(null);
   const { hasPermission } = useAuth();
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([]);
   const [branchId, setBranchId] = useState("");
@@ -58,49 +61,74 @@ export default function PharmacySaleReturnsPage() {
     });
   }, [hasPermission]);
 
-  const loadSale = useCallback(async () => {
-    setError("");
-    setSuccess("");
-    const sid = Number(saleIdInput.trim());
-    if (!Number.isInteger(sid) || sid <= 0) {
-      setError("Enter a valid sale number.");
+  const loadSale = useCallback(
+    async (opts?: { saleId?: string; branchIdForValidate?: string | null }) => {
+      setError("");
+      setSuccess("");
+      const raw = (opts?.saleId ?? saleIdInput).trim();
+      const sid = Number(raw);
+      if (!Number.isInteger(sid) || sid <= 0) {
+        setError("Enter a valid sale number.");
+        return;
+      }
+      const branchForValidate =
+        opts?.branchIdForValidate !== undefined ? opts.branchIdForValidate : branchId;
+      setLoadingSale(true);
+      try {
+        const [saleRes, retRes] = await Promise.all([
+          authFetch(`/api/pharmacy/sales/${sid}`),
+          authFetch(`/api/pharmacy/sale-returns?saleId=${sid}`),
+        ]);
+        const saleData = await saleRes.json();
+        if (!saleRes.ok) {
+          setSale(null);
+          setError(saleData.error || "Could not load sale");
+          return;
+        }
+        if (saleData.outreachTeamId != null || saleData.customerType === "outreach") {
+          setSale(null);
+          setError(
+            "This sale is an outreach transfer. Use Pharmacy → Outreach return to put stock back on the shelf."
+          );
+          return;
+        }
+        if (
+          branchForValidate &&
+          saleData.branchId != null &&
+          String(saleData.branchId) !== String(branchForValidate)
+        ) {
+          setError("This sale belongs to a different branch. Switch branch or check the sale #.");
+          return;
+        }
+        setSale(saleData as SaleDetail);
+        const retJson = retRes.ok ? await retRes.json() : { returnedBySaleItemId: {} };
+        setReturnedMap(retJson.returnedBySaleItemId || {});
+        const initial: Record<number, number> = {};
+        for (const it of (saleData as SaleDetail).items) {
+          initial[it.id] = 0;
+        }
+        setQtyByLine(initial);
+      } finally {
+        setLoadingSale(false);
+      }
+    },
+    [saleIdInput, branchId]
+  );
+
+  useEffect(() => {
+    const sid = searchParams.get("saleId")?.trim();
+    if (!sid) {
+      processedUrlKey.current = null;
       return;
     }
-    setLoadingSale(true);
-    try {
-      const [saleRes, retRes] = await Promise.all([
-        authFetch(`/api/pharmacy/sales/${sid}`),
-        authFetch(`/api/pharmacy/sale-returns?saleId=${sid}`),
-      ]);
-      const saleData = await saleRes.json();
-      if (!saleRes.ok) {
-        setSale(null);
-        setError(saleData.error || "Could not load sale");
-        return;
-      }
-      if (saleData.outreachTeamId != null || saleData.customerType === "outreach") {
-        setSale(null);
-        setError(
-          "This sale is an outreach transfer. Use Pharmacy → Outreach return to put stock back on the shelf."
-        );
-        return;
-      }
-      if (branchId && saleData.branchId != null && String(saleData.branchId) !== branchId) {
-        setError("This sale belongs to a different branch. Switch branch or check the sale #.");
-        return;
-      }
-      setSale(saleData as SaleDetail);
-      const retJson = retRes.ok ? await retRes.json() : { returnedBySaleItemId: {} };
-      setReturnedMap(retJson.returnedBySaleItemId || {});
-      const initial: Record<number, number> = {};
-      for (const it of (saleData as SaleDetail).items) {
-        initial[it.id] = 0;
-      }
-      setQtyByLine(initial);
-    } finally {
-      setLoadingSale(false);
-    }
-  }, [saleIdInput, branchId]);
+    const bid = searchParams.get("branchId")?.trim() ?? "";
+    const key = `${sid}|${bid}`;
+    if (processedUrlKey.current === key) return;
+    processedUrlKey.current = key;
+    if (bid) setBranchId(bid);
+    setSaleIdInput(sid);
+    void loadSale({ saleId: sid, branchIdForValidate: bid ? bid : null });
+  }, [searchParams, loadSale]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -192,7 +220,7 @@ export default function PharmacySaleReturnsPage() {
               </select>
             </div>
           ) : null}
-          <div className="flex flex-1 flex-wrap items-end gap-2 min-w-[240px]">
+          <div className="flex min-w-[240px] flex-1 flex-wrap items-end gap-2">
             <div className="min-w-0 flex-1">
               <Label>Sale #</Label>
               <input
@@ -202,7 +230,7 @@ export default function PharmacySaleReturnsPage() {
                 className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 font-mono text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
               />
             </div>
-            <Button type="button" variant="outline" size="sm" className="h-11" onClick={loadSale} disabled={loadingSale}>
+            <Button type="button" variant="outline" size="sm" className="h-11" onClick={() => loadSale()} disabled={loadingSale}>
               {loadingSale ? "Loading…" : "Load sale"}
             </Button>
           </div>
@@ -290,5 +318,22 @@ export default function PharmacySaleReturnsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PharmacySaleReturnsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div>
+          <PageBreadCrumb pageTitle="Pharmacy sale returns" />
+          <div className="mt-12 flex justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-brand-500 dark:border-gray-700 dark:border-t-brand-400" />
+          </div>
+        </div>
+      }
+    >
+      <PharmacySaleReturnsInner />
+    </Suspense>
   );
 }

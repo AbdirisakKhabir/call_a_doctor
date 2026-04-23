@@ -221,7 +221,10 @@ export async function POST(req: NextRequest) {
       }
       if (!product.forSale && !isLab) {
         return NextResponse.json(
-          { error: "This product is internal stock (not for sale). Use internal usage to deduct stock, or choose Lab as customer to send stock to lab inventory." },
+          {
+            error:
+              "This product is internal stock (not for sale). Use POS with customer Lab to move stock into lab inventory, or stock is reduced when linked services are completed.",
+          },
           { status: 400 }
         );
       }
@@ -373,6 +376,15 @@ export async function POST(req: NextRequest) {
                 unit: prod.unit || "pcs",
                 quantity: 0,
                 sellingPrice: 0,
+              },
+            });
+            await tx.labInventoryUnit.create({
+              data: {
+                labInventoryItemId: labRow.id,
+                unitKey: "base",
+                label: (prod.unit || "pcs").slice(0, 191),
+                baseUnitsEach: 1,
+                sortOrder: 0,
               },
             });
           }

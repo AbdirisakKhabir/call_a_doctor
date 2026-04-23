@@ -84,6 +84,10 @@ export default function NewLabTestPage() {
           unit: form.unit,
           normalRange: form.normalRange,
           price: form.price === "" ? 0 : Number(form.price),
+          disposableBranchId:
+            pendingDisposables.length > 0 && disposableBranchId
+              ? Number(disposableBranchId)
+              : undefined,
           disposables: pendingDisposables.map((d) => ({
             productCode: d.productCode,
             unitsPerTest: d.unitsPerTest,

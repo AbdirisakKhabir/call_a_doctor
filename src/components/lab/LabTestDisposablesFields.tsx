@@ -131,7 +131,7 @@ export default function LabTestDisposablesFields(props: Props) {
             return;
           }
           const j = await r.json();
-          const u = j?.item?.labUnits;
+          const u = Array.isArray(j?.packagingOptions) ? j.packagingOptions : j?.item?.labUnits;
           const list: LabUnitOpt[] = Array.isArray(u)
             ? u.map((x: { unitKey: string; label: string; baseUnitsEach: number }) => ({
                 unitKey: x.unitKey,
@@ -190,6 +190,11 @@ export default function LabTestDisposablesFields(props: Props) {
       setDispError("Enter a product code and a positive number of units per test.");
       return;
     }
+    const branchId = Number(disposableBranchId);
+    if (!Number.isInteger(branchId) || branchId <= 0) {
+      setDispError("Select a branch before adding disposables.");
+      return;
+    }
     const res = await authFetch(`/api/lab/tests/${props.testId}/disposables`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -197,6 +202,7 @@ export default function LabTestDisposablesFields(props: Props) {
         productCode: newDispCode.trim(),
         unitsPerTest: units,
         deductionUnitKey: newDeductionUnitKey,
+        branchId,
       }),
     });
     const data = await res.json();
@@ -216,10 +222,19 @@ export default function LabTestDisposablesFields(props: Props) {
     patch: { deductionUnitKey?: string; unitsPerTest?: number }
   ) {
     if (props.mode !== "saved" || !props.canEdit) return;
+    const body: Record<string, unknown> = { ...patch };
+    if (patch.deductionUnitKey !== undefined) {
+      const branchId = Number(disposableBranchId);
+      if (!Number.isInteger(branchId) || branchId <= 0) {
+        setDispError("Select a branch before changing the deduction unit.");
+        return;
+      }
+      body.branchId = branchId;
+    }
     const res = await authFetch(`/api/lab/tests/${props.testId}/disposables/${disposableId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
+      body: JSON.stringify(body),
     });
     if (res.ok) await loadSaved(props.testId, disposableBranchId);
     else setDispError((await res.json()).error || "Failed to update");

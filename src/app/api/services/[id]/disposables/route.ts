@@ -68,7 +68,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const rx = pharmacyByCode.get(code);
       const prod = productByNormCode.get(code);
       const ukey = normalizeSaleUnitKey(r.deductionUnitKey);
-      const unitPick = prod?.saleUnits.find((u) => u.unitKey === ukey);
+      const unitPick = prod?.saleUnits.find((u) => normalizeSaleUnitKey(u.unitKey) === ukey);
       return {
         id: r.id,
         serviceId: r.serviceId,

@@ -2,7 +2,12 @@
 
 import React from "react";
 import Label from "@/components/form/Label";
-import { validateSaleUnitsPayload, type SaleUnitInput } from "@/lib/product-sale-units";
+import { pharmacyBaseUnitRowLabel } from "@/lib/pharmacy-base-unit-presets";
+import {
+  suggestNewAlternateSaleUnitRow,
+  validateSaleUnitsPayload,
+  type SaleUnitInput,
+} from "@/lib/product-sale-units";
 
 /** One row of POS/purchase packaging (maps to {@link ProductSaleUnit}). */
 export type ProductSaleUnitRow = {
@@ -13,15 +18,13 @@ export type ProductSaleUnitRow = {
 
 /** Default single base unit; label follows the product base unit dropdown (pcs → Piece). */
 export function defaultProductSaleUnitRows(unitField: string): ProductSaleUnitRow[] {
-  const u = (unitField || "pcs").trim().toLowerCase();
-  const label = u === "pcs" ? "Piece" : u.charAt(0).toUpperCase() + u.slice(1);
+  const label = pharmacyBaseUnitRowLabel(unitField);
   return [{ unitKey: "base", label, baseUnitsEach: 1 }];
 }
 
 /** Sync only the base row’s label when the parent “unit” preset changes (pcs, box, …). */
 export function syncBaseSaleUnitLabel(rows: ProductSaleUnitRow[], unitField: string): ProductSaleUnitRow[] {
-  const u = (unitField || "pcs").trim().toLowerCase();
-  const label = u === "pcs" ? "Piece" : u.charAt(0).toUpperCase() + u.slice(1);
+  const label = pharmacyBaseUnitRowLabel(unitField);
   return rows.map((r) => (r.unitKey === "base" ? { ...r, label } : r));
 }
 
@@ -57,7 +60,7 @@ export default function ProductSaleUnitsEditor({ rows, onChange, disabled, class
       <div className="space-y-3">
         {rows.map((row, idx) => (
           <div
-            key={`${row.unitKey}-${idx}`}
+            key={idx}
             className="grid gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700 sm:grid-cols-3"
           >
             <div>
@@ -65,10 +68,16 @@ export default function ProductSaleUnitsEditor({ rows, onChange, disabled, class
               <input
                 value={row.unitKey}
                 disabled={disabled || row.unitKey === "base"}
-                onChange={(e) => updateRow(idx, { unitKey: e.target.value.trim().toLowerCase() })}
+                onChange={(e) => updateRow(idx, { unitKey: e.target.value })}
+                onBlur={(e) => updateRow(idx, { unitKey: e.target.value.trim().toLowerCase() })}
                 className="mt-1 h-10 w-full rounded-lg border border-gray-200 px-2 font-mono text-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 placeholder="base, box, strip…"
               />
+              {row.unitKey !== "base" ? (
+                <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
+                  Unique ID for POS (lowercase). The label is shown to staff; changing label does not change this key.
+                </p>
+              ) : null}
             </div>
             <div>
               <Label>Label</Label>
@@ -110,18 +119,9 @@ export default function ProductSaleUnitsEditor({ rows, onChange, disabled, class
           <button
             type="button"
             className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-            onClick={() =>
-              onChange([
-                ...rows,
-                {
-                  unitKey: "box",
-                  label: "Box",
-                  baseUnitsEach: 100,
-                },
-              ])
-            }
+            onClick={() => onChange([...rows, suggestNewAlternateSaleUnitRow(rows)])}
           >
-            + Add packaging (e.g. box)
+            + Add alternate unit (e.g. box)
           </button>
         ) : null}
       </div>

@@ -23,7 +23,7 @@ export async function userCanAccessBranch(
 }
 
 /**
- * Sales, purchases, and internal usage may target a branch’s inventory.
+ * Sales and purchases may target a branch’s inventory.
  * Users with `settings.manage` may allocate to any active branch; others only to branches they’re assigned to.
  */
 export async function userCanTransactInventoryAtBranch(

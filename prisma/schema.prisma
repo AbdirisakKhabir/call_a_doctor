@@ -11,37 +11,37 @@ datasource db {
 }
 
 model User {
-  id                         Int                  @id @default(autoincrement())
-  email                      String               @unique
-  password                   String
-  name                       String?
-  roleId                     Int
-  role                       Role                 @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  isActive                   Boolean              @default(true)
-  purchases                  Purchase[]
-  sales                      Sale[]
-  appointments               Appointment[]
-  labOrdersCreated           LabOrder[]           @relation("LabOrderCreatedBy")
-  labResultsRecorded         LabOrderItem[]       @relation("LabResultRecordedBy")
-  prescriptionsCreated       Prescription[]       @relation("PrescriptionCreatedBy")
-  expensesCreated            Expense[]            @relation("ExpenseCreatedBy")
-  branches                   UserBranch[]
-  financeTransactions        AccountTransaction[] @relation("FinanceTransactionCreatedBy")
-  internalStockLogs          InternalStockLog[]
-  unsellableStockLogsCreated UnsellableStockLog[] @relation("UnsellableStockLogCreatedBy")
-  outreachReturnsCreated     OutreachReturn[]     @relation("OutreachReturnCreatedBy")
-  outreachDispensesCreated   OutreachDispense[]   @relation("OutreachDispenseCreatedBy")
-  patientPaymentsCreated     PatientPayment[]     @relation("PatientPaymentCreatedBy")
-  pharmacySaleReturnsCreated PharmacySaleReturn[] @relation("PharmacySaleReturnCreatedBy")
-  doctorProfile              Doctor?
-  visitCardsCreated          DoctorVisitCard[]    @relation("VisitCardCreatedBy")
-  auditLogs                  AuditLog[]
-  labSalesCreated            LabSale[]            @relation("LabSaleCreatedBy")
-  labStockMovementsCreated   LabStockMovement[]   @relation("LabStockMovementCreatedBy")
-  customFormsCreated         CustomForm[]         @relation("CustomFormCreatedBy")
+  id                           Int                  @id @default(autoincrement())
+  email                        String               @unique
+  password                     String
+  name                         String?
+  roleId                       Int
+  role                         Role                 @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  isActive                     Boolean              @default(true)
+  purchases                    Purchase[]
+  sales                        Sale[]
+  appointments                 Appointment[]
+  labOrdersCreated             LabOrder[]           @relation("LabOrderCreatedBy")
+  labResultsRecorded           LabOrderItem[]       @relation("LabResultRecordedBy")
+  prescriptionsCreated         Prescription[]       @relation("PrescriptionCreatedBy")
+  expensesCreated              Expense[]            @relation("ExpenseCreatedBy")
+  branches                     UserBranch[]
+  financeTransactions          AccountTransaction[] @relation("FinanceTransactionCreatedBy")
+  internalStockLogs            InternalStockLog[]
+  unsellableStockLogsCreated   UnsellableStockLog[] @relation("UnsellableStockLogCreatedBy")
+  outreachReturnsCreated       OutreachReturn[]     @relation("OutreachReturnCreatedBy")
+  outreachDispensesCreated     OutreachDispense[]   @relation("OutreachDispenseCreatedBy")
+  patientPaymentsCreated       PatientPayment[]     @relation("PatientPaymentCreatedBy")
+  pharmacySaleReturnsCreated   PharmacySaleReturn[] @relation("PharmacySaleReturnCreatedBy")
+  doctorProfile                Doctor?
+  visitCardsCreated            DoctorVisitCard[]    @relation("VisitCardCreatedBy")
+  auditLogs                    AuditLog[]
+  labSalesCreated              LabSale[]            @relation("LabSaleCreatedBy")
+  labStockMovementsCreated     LabStockMovement[]   @relation("LabStockMovementCreatedBy")
+  customFormsCreated           CustomForm[]         @relation("CustomFormCreatedBy")
   customFormResponsesSubmitted CustomFormResponse[] @relation("CustomFormResponseSubmittedBy")
-  createdAt                  DateTime             @default(now())
-  updatedAt                  DateTime             @updatedAt
+  createdAt                    DateTime             @default(now())
+  updatedAt                    DateTime             @updatedAt
 
   @@map("users")
 }
@@ -134,46 +134,46 @@ model Village {
 // --- Patients ---
 
 model Patient {
-  id                 Int                @id @default(autoincrement())
-  patientCode        String             @unique
-  firstName          String
-  lastName           String
-  phone              String?
+  id                  Int                  @id @default(autoincrement())
+  patientCode         String               @unique
+  firstName           String
+  lastName            String
+  phone               String?
   /// Optional second contact number (e.g. mobile); stored E.164 when set.
-  mobile             String?
-  email              String?
-  dateOfBirth        DateTime?
+  mobile              String?
+  email               String?
+  dateOfBirth         DateTime?
   /// Full years; recalculated from `dateOfBirth` whenever the client is saved.
-  age                Int?
-  gender             String?
+  age                 Int?
+  gender              String?
   /// Optional street / extra detail; city and village identify locality.
-  address            String?
-  cityId             Int?
-  villageId          Int?
-  city               City?              @relation(fields: [cityId], references: [id], onDelete: SetNull)
-  village            Village?           @relation(fields: [villageId], references: [id], onDelete: SetNull)
+  address             String?
+  cityId              Int?
+  villageId           Int?
+  city                City?                @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  village             Village?             @relation(fields: [villageId], references: [id], onDelete: SetNull)
   /// Branch where the client was first registered (required on new registrations).
-  registeredBranchId Int?
-  registeredBranch   Branch?            @relation("PatientRegisteredBranch", fields: [registeredBranchId], references: [id], onDelete: SetNull)
-  notes              String?
-  referralSourceId   Int?
-  referralSource     ReferralSource?    @relation(fields: [referralSourceId], references: [id], onDelete: SetNull)
+  registeredBranchId  Int?
+  registeredBranch    Branch?              @relation("PatientRegisteredBranch", fields: [registeredBranchId], references: [id], onDelete: SetNull)
+  notes               String?
+  referralSourceId    Int?
+  referralSource      ReferralSource?      @relation(fields: [referralSourceId], references: [id], onDelete: SetNull)
   /// Balance owed by patient (e.g. outreach medication charges).
-  accountBalance     Float              @default(0)
-  isActive           Boolean            @default(true)
-  sales              Sale[]
-  appointments       Appointment[]
-  patientHistories   PatientHistory[]
-  labOrders          LabOrder[]
-  prescriptions      Prescription[]
-  outreachDispenses  OutreachDispense[]
-  patientPayments    PatientPayment[]
-  doctorVisitCards   DoctorVisitCard[]
-  labSales             LabSale[]
-  careFiles            PatientCareFile[]
-  customFormResponses  CustomFormResponse[]
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  accountBalance      Float                @default(0)
+  isActive            Boolean              @default(true)
+  sales               Sale[]
+  appointments        Appointment[]
+  patientHistories    PatientHistory[]
+  labOrders           LabOrder[]
+  prescriptions       Prescription[]
+  outreachDispenses   OutreachDispense[]
+  patientPayments     PatientPayment[]
+  doctorVisitCards    DoctorVisitCard[]
+  labSales            LabSale[]
+  careFiles           PatientCareFile[]
+  customFormResponses CustomFormResponse[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@map("patients")
 }
@@ -449,7 +449,7 @@ model Product {
   unit                   String                  @default("pcs")
   /// Optional batch / lot expiry (e.g. for medicines).
   expiryDate             DateTime?
-  /// When false, item is not sold at POS (lab supplies, cleaning, etc.); stock tracked via purchases + internal usage.
+  /// When false, item is not sold at POS (lab supplies, cleaning, etc.); stock tracked via purchases, service disposables, and lab transfers.
   forSale                Boolean                 @default(true)
   /// laboratory | cleaning | general — relevant when forSale is false
   internalPurpose        String?
@@ -1188,16 +1188,16 @@ model CustomForm {
 }
 
 model CustomFormField {
-  id          Int                 @id @default(autoincrement())
+  id          Int        @id @default(autoincrement())
   formId      Int
-  form        CustomForm          @relation(fields: [formId], references: [id], onDelete: Cascade)
-  sortOrder   Int                 @default(0)
+  form        CustomForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  sortOrder   Int        @default(0)
   /// SHORT_TEXT | LONG_TEXT | EMAIL | NUMBER | DATE | CHECKBOX | RADIO | SELECT | MULTI_CHECK
   fieldType   String
   label       String
   placeholder String?
-  helpText    String?             @db.Text
-  required    Boolean             @default(false)
+  helpText    String?    @db.Text
+  required    Boolean    @default(false)
   /// JSON array of option labels for RADIO, SELECT, MULTI_CHECK
   options     Json?
 

@@ -3,7 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
-import { normalizeLabUnitKey } from "@/lib/lab-inventory-units";
+import { ensureLabPackagingUnitsFromPharmacyProduct, normalizeLabUnitKey } from "@/lib/lab-inventory-units";
 
 function normalizeProductCode(code: string): string {
   return code.trim().toUpperCase();
@@ -62,7 +62,12 @@ export async function POST(req: NextRequest) {
       normalRange,
       price,
       disposables: disposablesRaw,
+      disposableBranchId: disposableBranchIdRaw,
     } = body;
+    const disposableBranchId =
+      disposableBranchIdRaw != null && disposableBranchIdRaw !== ""
+        ? Number(disposableBranchIdRaw)
+        : NaN;
     if (!categoryId || !name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Category and name are required" }, { status: 400 });
     }
@@ -97,6 +102,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (disposablesIn.length > 0) {
+      if (!Number.isInteger(disposableBranchId) || disposableBranchId <= 0) {
+        return NextResponse.json(
+          { error: "disposableBranchId is required when the test has disposables" },
+          { status: 400 }
+        );
+      }
+    }
+
     const test = await prisma.$transaction(async (tx) => {
       const created = await tx.labTest.create({
         data: {
@@ -110,6 +124,13 @@ export async function POST(req: NextRequest) {
       });
 
       for (const d of disposablesIn) {
+        const ensured = await ensureLabPackagingUnitsFromPharmacyProduct(tx, {
+          branchId: disposableBranchId,
+          productCode: d.productCode,
+        });
+        if (!ensured.ok) {
+          throw new Error(`ENSURE_FAILED:${ensured.error}`);
+        }
         await tx.labTestDisposable.create({
           data: {
             labTestId: created.id,
@@ -128,6 +149,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(test);
   } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("ENSURE_FAILED:")) {
+      return NextResponse.json({ error: e.message.replace(/^ENSURE_FAILED:/, "") }, { status: 400 });
+    }
     console.error("Create lab test error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }

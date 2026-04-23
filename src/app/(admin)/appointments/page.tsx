@@ -222,7 +222,7 @@ export default function AppointmentsPage() {
   /** Horizontal scrollport for the calendar grid (paired with vertical-only inner scroll). */
   const calendarHScrollRef = useRef<HTMLDivElement>(null);
   const [slotMinutes, setSlotMinutes] = useState<15 | 30>(15);
-  const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
+  const [viewMode, setViewMode] = useState<CalendarViewMode>("week");
   /** Focus date for week/day views (ISO YYYY-MM-DD). */
   const [anchorDate, setAnchorDate] = useState(() => new Date().toISOString().slice(0, 10));
 

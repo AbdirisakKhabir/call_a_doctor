@@ -19,7 +19,8 @@ import { TrashBinIcon } from "@/icons";
 import ProductPurchaseSearch from "@/components/pharmacy/ProductPurchaseSearch";
 import ProductBarcodeLabel from "@/components/pharmacy/ProductBarcodeLabel";
 import { suggestBarcodeValue } from "@/lib/barcode";
-import ProductSaleUnitsEditor, {
+import ProductUnitConversionPanel from "@/components/pharmacy/ProductUnitConversionPanel";
+import {
   defaultProductSaleUnitRows,
   saleUnitRowsToPayload,
   syncBaseSaleUnitLabel,
@@ -35,8 +36,26 @@ type Product = {
   costPrice: number;
   forSale: boolean;
   sellingPrice: number;
+  unit?: string;
   saleUnits?: ProductSaleUnitRow[];
 };
+
+/** Catalog `sellingPrice` is per base unit; convert to price for the chosen purchase packaging. */
+function catalogRetailPerPurchaseUnit(
+  catalogPerBase: number,
+  units: ProductSaleUnitRow[],
+  purchaseUnitKey: string
+): string {
+  const u =
+    units.find((x) => x.unitKey === purchaseUnitKey) ??
+    units.find((x) => x.unitKey === "base") ??
+    units[0];
+  if (!u) return Number.isFinite(catalogPerBase) ? String(Math.round(catalogPerBase * 100) / 100) : "";
+  const each = Math.max(1, Math.floor(Number(u.baseUnitsEach) || 1));
+  const v = Number(catalogPerBase) * each;
+  if (!Number.isFinite(v)) return "";
+  return String(Math.round(v * 100) / 100);
+}
 type Branch = { id: number; name: string };
 type Category = { id: number; name: string };
 
@@ -191,6 +210,7 @@ export default function NewPurchasePage() {
       if (!res.ok) return;
       const p: Product = await res.json();
       setProductDetails((prev) => ({ ...prev, [p.id]: p }));
+      const units = p.saleUnits?.length ? p.saleUnits : defaultProductSaleUnitRows(p.unit ?? "pcs");
       setForm((f) => ({
         ...f,
         items: f.items.map((row, i) =>
@@ -200,7 +220,7 @@ export default function NewPurchasePage() {
                 productId,
                 purchaseUnitKey: "base",
                 unitPrice: String(p.costPrice ?? ""),
-                sellingPrice: p.forSale ? String(p.sellingPrice ?? "") : "",
+                sellingPrice: p.forSale ? catalogRetailPerPurchaseUnit(p.sellingPrice ?? 0, units, "base") : "",
               }
             : row
         ),
@@ -221,7 +241,26 @@ export default function NewPurchasePage() {
     const fromDetail = productDetails[id];
     return fromDetail?.saleUnits?.length
       ? fromDetail.saleUnits
-      : [{ unitKey: "base", label: "Unit", baseUnitsEach: 1 }];
+      : defaultProductSaleUnitRows(fromDetail?.unit ?? "pcs");
+  }
+
+  function setPurchaseUnitForLine(idx: number, purchaseUnitKey: string) {
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((row, i) => {
+        if (i !== idx) return row;
+        const next = { ...row, purchaseUnitKey };
+        if (!row.isNewProduct && row.productId) {
+          const pid = Number(row.productId);
+          const d = productDetails[pid];
+          if (d?.forSale) {
+            const u = saleUnitsForLine(next);
+            next.sellingPrice = catalogRetailPerPurchaseUnit(d.sellingPrice ?? 0, u, purchaseUnitKey);
+          }
+        }
+        return next;
+      }),
+    }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -451,9 +490,6 @@ export default function NewPurchasePage() {
                   </div>
                   <div>
                     <Label>Supplier</Label>
-                    <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-                      Optional — leave empty for donations, transfers, or informal receipts without a vendor.
-                    </p>
                     <select
                       value={form.supplierId}
                       onChange={(e) => setForm((f) => ({ ...f, supplierId: e.target.value }))}
@@ -518,7 +554,10 @@ export default function NewPurchasePage() {
                         Unit cost *
                       </TableCell>
                       <TableCell isHeader className="min-w-[7rem] whitespace-nowrap">
-                        Price
+                        <span className="block">Retail</span>
+                        <span className="block text-[10px] font-normal normal-case text-gray-500 dark:text-gray-400">
+                          per purchase unit
+                        </span>
                       </TableCell>
                       <TableCell isHeader className="w-12 text-right">
                         {" "}
@@ -655,9 +694,9 @@ export default function NewPurchasePage() {
                                 )}
                                 <div className="mt-2 max-w-md rounded-lg border border-gray-200 bg-gray-50/80 p-2 dark:border-gray-700 dark:bg-gray-900/30">
                                   <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                    POS &amp; purchase units
+                                    Unit conversion
                                   </p>
-                                  <ProductSaleUnitsEditor
+                                  <ProductUnitConversionPanel
                                     rows={it.saleUnits}
                                     onChange={(rows) => {
                                       setForm((f) => ({
@@ -697,7 +736,7 @@ export default function NewPurchasePage() {
                                     ? it.purchaseUnitKey
                                     : "base"
                                 }
-                                onChange={(e) => updateItem(idx, "purchaseUnitKey", e.target.value)}
+                                onChange={(e) => setPurchaseUnitForLine(idx, e.target.value)}
                                 className="h-9 min-w-[7rem] rounded-lg border border-gray-200 bg-transparent px-2 text-sm dark:border-gray-700 dark:text-white"
                               >
                                 {units.map((u) => (
@@ -748,7 +787,12 @@ export default function NewPurchasePage() {
                                 min="0"
                                 value={it.sellingPrice}
                                 onChange={(e) => updateItem(idx, "sellingPrice", e.target.value)}
-                                placeholder={detail ? `Was ${detail.sellingPrice.toFixed(2)}` : "Optional"}
+                                placeholder={
+                                  detail
+                                    ? `Cat. ${catalogRetailPerPurchaseUnit(detail.sellingPrice, units, it.purchaseUnitKey)}`
+                                    : "Optional"
+                                }
+                                title="Retail price for one row of the selected purchase unit (e.g. one box). Stored per smallest stock unit."
                                 className="h-9 w-28 rounded-lg border border-gray-200 bg-transparent px-2 text-sm dark:border-gray-700 dark:text-white"
                               />
                             ) : (

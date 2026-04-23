@@ -191,16 +191,33 @@ export default function ServiceDisposablesFields({
     };
   }, [searchQuery, disposableBranchId, pickedProduct]);
 
-  function selectProductFromSearch(p: ProductSearchHit) {
-    const su = p.saleUnits.length
-      ? p.saleUnits
+  function applyPickedProduct(code: string, name: string, saleUnitsRaw: SaleUnitOpt[]) {
+    const su = saleUnitsRaw.length
+      ? saleUnitsRaw
       : [{ unitKey: "base", label: "Base (pcs)", baseUnitsEach: 1 }];
-    setPickedProduct({ code: p.code, name: p.name, saleUnits: su });
+    setPickedProduct({ code, name, saleUnits: su });
     setCodeUnits(su);
-    setSearchQuery(`${p.name} (${p.code})`);
+    setSearchQuery(`${name} (${code})`);
     setProductHints([]);
     const keys = su.map((u) => u.unitKey);
     setNewUnitKey(keys.includes("base") ? "base" : keys[0] ?? "base");
+  }
+
+  async function selectProductFromSearch(p: ProductSearchHit) {
+    setSearchQuery(`${p.name} (${p.code})`);
+    setProductHints([]);
+    try {
+      const r = await authFetch(`/api/pharmacy/products/${p.id}`);
+      if (r.ok) {
+        const detail = (await r.json()) as { saleUnits?: SaleUnitOpt[] };
+        const fromApi = Array.isArray(detail.saleUnits) ? detail.saleUnits : [];
+        applyPickedProduct(p.code, p.name, fromApi.length ? fromApi : p.saleUnits);
+        return;
+      }
+    } catch {
+      /* fallback below */
+    }
+    applyPickedProduct(p.code, p.name, p.saleUnits);
   }
 
   function clearProductPick() {

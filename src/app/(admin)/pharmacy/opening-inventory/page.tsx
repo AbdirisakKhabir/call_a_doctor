@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
@@ -11,13 +11,17 @@ import { PlusIcon } from "@/icons";
 import Image from "next/image";
 import ProductBarcodeLabel from "@/components/pharmacy/ProductBarcodeLabel";
 import { suggestBarcodeValue } from "@/lib/barcode";
-import ProductSaleUnitsEditor, {
+import { PHARMACY_BASE_UNIT_PRESET_OPTIONS } from "@/lib/pharmacy-base-unit-presets";
+import ProductUnitConversionPanel from "@/components/pharmacy/ProductUnitConversionPanel";
+import {
   defaultProductSaleUnitRows,
   saleUnitRowsToPayload,
   syncBaseSaleUnitLabel,
   validateSaleUnitRowsClient,
   type ProductSaleUnitRow,
 } from "@/components/pharmacy/ProductSaleUnitsEditor";
+import { getBaseUnitLabel } from "@/lib/product-unit-conversion";
+import { formatQuantityAsBundledBase } from "@/lib/product-stock-display";
 
 type Category = { id: number; name: string };
 type Branch = { id: number; name: string };
@@ -43,11 +47,15 @@ export default function OpeningInventoryPage() {
     quantity: "",
     unit: "pcs",
     categoryId: "",
-    forSale: true,
-    internalPurpose: "general" as "laboratory" | "cleaning" | "general",
     expiryDate: "",
   });
   const [saleUnitRows, setSaleUnitRows] = useState<ProductSaleUnitRow[]>(() => defaultProductSaleUnitRows("pcs"));
+
+  const baseUnitPhrase = useMemo(() => getBaseUnitLabel(saleUnitRows), [saleUnitRows]);
+  const bundledQtyHint = useMemo(() => {
+    const q = Math.max(0, Math.floor(Number(form.quantity) || 0));
+    return formatQuantityAsBundledBase(q, saleUnitRows);
+  }, [form.quantity, saleUnitRows]);
 
   const canManageSettings = hasPermission("settings.manage");
 
@@ -153,12 +161,11 @@ export default function OpeningInventoryPage() {
           imageUrl,
           imagePublicId,
           costPrice: Number(form.costPrice) || 0,
-          sellingPrice: form.forSale ? Number(form.sellingPrice) || 0 : 0,
+          sellingPrice: Number(form.sellingPrice) || 0,
           quantity: Math.max(0, Math.floor(Number(form.quantity) || 0)),
           unit: form.unit,
           categoryId: form.categoryId ? Number(form.categoryId) : null,
-          forSale: form.forSale,
-          internalPurpose: form.forSale ? undefined : form.internalPurpose,
+          forSale: true,
           expiryDate: form.expiryDate.trim() ? form.expiryDate : undefined,
           saleUnits: saleUnitRowsToPayload(saleUnitRows),
         }),
@@ -177,8 +184,6 @@ export default function OpeningInventoryPage() {
         quantity: "",
         unit: "pcs",
         categoryId: "",
-        forSale: true,
-        internalPurpose: "general",
         expiryDate: "",
       });
       setSaleUnitRows(defaultProductSaleUnitRows("pcs"));
@@ -206,9 +211,6 @@ export default function OpeningInventoryPage() {
       <PageBreadCrumb pageTitle="Opening Inventory" />
       <div className="mt-6 max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/3">
         <h2 className="mb-6 text-lg font-semibold text-gray-800 dark:text-white/90">Add Product to Opening Inventory</h2>
-        <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
-          Retail items appear on POS. Internal supplies (lab, cleaning) are tracked separately and use the Internal usage screen to deduct stock. Stock is added for the branch you select below.
-        </p>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <Label>Branch *</Label>
@@ -233,52 +235,6 @@ export default function OpeningInventoryPage() {
           {error && (
             <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">{error}</div>
           )}
-          <div>
-            <Label>Inventory type *</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, forSale: true }))}
-                className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                  form.forSale
-                    ? "bg-brand-500 text-white"
-                    : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                }`}
-              >
-                For sale (retail / POS)
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, forSale: false }))}
-                className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                  !form.forSale
-                    ? "bg-brand-500 text-white"
-                    : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                }`}
-              >
-                Internal (not for sale)
-              </button>
-            </div>
-            {!form.forSale && (
-              <div className="mt-3">
-                <Label className="text-xs">Purpose *</Label>
-                <select
-                  value={form.internalPurpose}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      internalPurpose: e.target.value as "laboratory" | "cleaning" | "general",
-                    }))
-                  }
-                  className="mt-1 h-11 w-full max-w-md rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                >
-                  <option value="laboratory">Laboratory</option>
-                  <option value="cleaning">Cleaning</option>
-                  <option value="general">General / other</option>
-                </select>
-              </div>
-            )}
-          </div>
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <Label>Product Name *</Label>
@@ -366,21 +322,20 @@ export default function OpeningInventoryPage() {
               />
             </div>
             <div>
-              <Label>{form.forSale ? "Selling Price *" : "Selling (N/A)"}</Label>
+              <Label>Selling Price *</Label>
               <input
                 type="number"
                 step="0.01"
                 min="0"
-                required={form.forSale}
-                disabled={!form.forSale}
-                value={form.forSale ? form.sellingPrice : "0"}
+                required
+                value={form.sellingPrice}
                 onChange={(e) => setForm((f) => ({ ...f, sellingPrice: e.target.value }))}
                 placeholder="0.00"
-                className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-white dark:placeholder:text-gray-500"
+                className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:text-white dark:placeholder:text-gray-500"
               />
             </div>
             <div>
-              <Label>Initial quantity (pieces) *</Label>
+              <Label>Initial quantity ({baseUnitPhrase} — base step) *</Label>
               <input
                 type="number"
                 min="0"
@@ -393,25 +348,25 @@ export default function OpeningInventoryPage() {
             </div>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Stock is tracked in pieces (pcs).
+            Enter the total count in your smallest stock step (the row with key base). Example: 3 boxes of 150 pairs →
+            enter <strong>450</strong> if base = Pair and box has Base units each 150.
           </p>
+          {bundledQtyHint ? (
+            <p className="text-xs font-medium text-brand-700 dark:text-brand-300">{bundledQtyHint}</p>
+          ) : null}
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <Label>Base unit preset</Label>
-              <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-                Stored on the product record; the <strong className="font-medium">base</strong> packaging row below uses this for its label.
-              </p>
               <select
                 value={form.unit}
                 onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm text-gray-800 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:text-white"
               >
-                <option value="pcs">Pieces</option>
-                <option value="box">Box</option>
-                <option value="bottle">Bottle</option>
-                <option value="pack">Pack</option>
-                <option value="strip">Strip</option>
-                <option value="ml">ml</option>
+                {PHARMACY_BASE_UNIT_PRESET_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -429,8 +384,8 @@ export default function OpeningInventoryPage() {
             </div>
           </div>
           <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/40">
-            <Label className="mb-3 text-sm">POS &amp; purchase packaging</Label>
-            <ProductSaleUnitsEditor rows={saleUnitRows} onChange={setSaleUnitRows} disabled={submitting} />
+            <Label className="mb-3 text-sm">Unit conversion</Label>
+            <ProductUnitConversionPanel rows={saleUnitRows} onChange={setSaleUnitRows} disabled={submitting} />
           </div>
           <div>
             <DateField

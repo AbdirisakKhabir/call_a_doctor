@@ -10,7 +10,18 @@ import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import ProductBarcodeLabel from "@/components/pharmacy/ProductBarcodeLabel";
 import { suggestBarcodeValue } from "@/lib/barcode";
+import { PHARMACY_BASE_UNIT_PRESET_OPTIONS } from "@/lib/pharmacy-base-unit-presets";
+import { getBaseUnitLabel } from "@/lib/product-unit-conversion";
 import { computeBaseQuantityFromPackagingLines } from "@/lib/product-quantity-lines";
+import { formatQuantityAsBundledBase } from "@/lib/product-stock-display";
+import ProductUnitConversionPanel from "@/components/pharmacy/ProductUnitConversionPanel";
+import {
+  defaultProductSaleUnitRows,
+  saleUnitRowsToPayload,
+  syncBaseSaleUnitLabel,
+  validateSaleUnitRowsClient,
+  type ProductSaleUnitRow,
+} from "@/components/pharmacy/ProductSaleUnitsEditor";
 
 type Product = {
   id: number;
@@ -45,6 +56,7 @@ export default function EditInventoryProductPage() {
     internalPurpose: "general" as "laboratory" | "cleaning" | "general",
     expiryDate: "",
   });
+  const [saleUnitRows, setSaleUnitRows] = useState<ProductSaleUnitRow[]>(() => defaultProductSaleUnitRows("pcs"));
   const [useMixedStock, setUseMixedStock] = useState(false);
   const [stockLines, setStockLines] = useState<{ unitKey: string; qty: string }[]>([{ unitKey: "base", qty: "" }]);
   const [submitting, setSubmitting] = useState(false);
@@ -99,6 +111,11 @@ export default function EditInventoryProductPage() {
         });
         setUseMixedStock(false);
         const units = p.saleUnits ?? [];
+        setSaleUnitRows(
+          units.length > 0
+            ? units.map((u) => ({ unitKey: u.unitKey, label: u.label, baseUnitsEach: u.baseUnitsEach }))
+            : defaultProductSaleUnitRows(p.unit)
+        );
         const baseKey = units.find((u) => u.unitKey === "base")?.unitKey ?? units[0]?.unitKey ?? "base";
         setStockLines([{ unitKey: baseKey, qty: String(p.quantity) }]);
 
@@ -118,14 +135,35 @@ export default function EditInventoryProductPage() {
     };
   }, [productId]);
 
+  useEffect(() => {
+    setSaleUnitRows((rows) => syncBaseSaleUnitLabel(rows, form.unit));
+  }, [form.unit]);
+
+  useEffect(() => {
+    const keys = new Set(saleUnitRows.map((r) => r.unitKey));
+    setStockLines((lines) =>
+      lines.map((l) => (keys.has(l.unitKey) ? l : { ...l, unitKey: "base" }))
+    );
+  }, [saleUnitRows]);
+
   const mixedStockBasePreview = useMemo(() => {
-    if (!useMixedStock || !editingProduct?.saleUnits?.length) return null;
+    if (!useMixedStock || !saleUnitRows.length) return null;
     const lines = stockLines
       .map((l) => ({ unitKey: l.unitKey, quantity: Math.floor(Number(l.qty) || 0) }))
       .filter((l) => l.quantity > 0);
     if (!lines.length) return { ok: true as const, base: 0 };
-    return computeBaseQuantityFromPackagingLines(lines, editingProduct.saleUnits);
-  }, [useMixedStock, editingProduct, stockLines]);
+    return computeBaseQuantityFromPackagingLines(lines, saleUnitRows);
+  }, [useMixedStock, saleUnitRows, stockLines]);
+
+  const baseUnitPhrase = useMemo(() => getBaseUnitLabel(saleUnitRows), [saleUnitRows]);
+  const quantityBaseForHint = useMemo(() => {
+    if (useMixedStock && mixedStockBasePreview?.ok) return mixedStockBasePreview.base;
+    return Math.max(0, Math.floor(Number(form.quantity) || 0));
+  }, [useMixedStock, mixedStockBasePreview, form.quantity]);
+  const bundledQtyHint = useMemo(
+    () => formatQuantityAsBundledBase(quantityBaseForHint, saleUnitRows),
+    [quantityBaseForHint, saleUnitRows]
+  );
 
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
@@ -133,7 +171,14 @@ export default function EditInventoryProductPage() {
     setError("");
     setSubmitting(true);
     try {
-      const units = editingProduct.saleUnits ?? [];
+      const uCheck = validateSaleUnitRowsClient(saleUnitRows);
+      if (!uCheck.ok) {
+        setError(uCheck.error);
+        setSubmitting(false);
+        return;
+      }
+
+      const units = saleUnitRows;
       const canMixed = units.length > 1;
 
       let quantityPayload: { quantity?: number; quantityLines?: { unitKey: string; quantity: number }[] };
@@ -167,6 +212,7 @@ export default function EditInventoryProductPage() {
           sellingPrice: form.forSale ? Number(form.sellingPrice) || 0 : 0,
           ...quantityPayload,
           unit: form.unit,
+          saleUnits: saleUnitRowsToPayload(saleUnitRows),
           categoryId: form.categoryId ? Number(form.categoryId) : null,
           forSale: form.forSale,
           internalPurpose: form.forSale ? null : form.internalPurpose,
@@ -224,7 +270,7 @@ export default function EditInventoryProductPage() {
       {!canEdit ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">You do not have permission to edit inventory.</p>
       ) : (
-        <form onSubmit={handleUpdate} className="mx-auto max-w-md space-y-4">
+        <form onSubmit={handleUpdate} className="mx-auto max-w-2xl space-y-4">
           {error && (
             <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
               {error}
@@ -304,6 +350,27 @@ export default function EditInventoryProductPage() {
               <ProductBarcodeLabel value={form.code} />
             </div>
           </div>
+          <div>
+            <Label>Base unit preset</Label>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Updates the label on the base conversion row; stock is still tracked in base units.
+            </p>
+            <select
+              value={form.unit}
+              onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
+              className="mt-1.5 h-11 w-full max-w-md rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+            >
+              {PHARMACY_BASE_UNIT_PRESET_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+            <Label className="mb-2 text-sm">Unit conversion</Label>
+            <ProductUnitConversionPanel rows={saleUnitRows} onChange={setSaleUnitRows} disabled={submitting} />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Cost Price</Label>
@@ -330,8 +397,8 @@ export default function EditInventoryProductPage() {
             </div>
           </div>
           <div>
-            <Label>Quantity (base pieces on hand)</Label>
-            {editingProduct.saleUnits && editingProduct.saleUnits.length > 1 ? (
+            <Label>Quantity ({baseUnitPhrase} on hand — base step)</Label>
+            {saleUnitRows.length > 1 ? (
               <div className="space-y-3">
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <input
@@ -345,7 +412,8 @@ export default function EditInventoryProductPage() {
                 {useMixedStock ? (
                   <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
                     <p className="mb-2 text-xs text-gray-600 dark:text-gray-400">
-                      Each row is a count in that packaging. Totals convert to base pieces using your sale units.
+                      Each row is a count in that packaging. Totals convert to {baseUnitPhrase.toLowerCase()} using your
+                      sale units.
                     </p>
                     <ul className="space-y-2">
                       {stockLines.map((line, idx) => (
@@ -358,9 +426,9 @@ export default function EditInventoryProductPage() {
                             }}
                             className="h-10 min-w-32 flex-1 rounded-lg border border-gray-200 bg-white px-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                           >
-                            {editingProduct.saleUnits!.map((u) => (
+                            {saleUnitRows.map((u) => (
                               <option key={u.unitKey} value={u.unitKey}>
-                                {u.label} ({u.baseUnitsEach} pcs each)
+                                {u.label} ({u.baseUnitsEach} base each)
                               </option>
                             ))}
                           </select>
@@ -394,8 +462,7 @@ export default function EditInventoryProductPage() {
                           ...rows,
                           {
                             unitKey:
-                              editingProduct.saleUnits!.find((u) => u.unitKey === "base")?.unitKey ??
-                              editingProduct.saleUnits![0].unitKey,
+                              saleUnitRows.find((u) => u.unitKey === "base")?.unitKey ?? saleUnitRows[0]?.unitKey ?? "base",
                             qty: "",
                           },
                         ])
@@ -407,7 +474,7 @@ export default function EditInventoryProductPage() {
                     {mixedStockBasePreview && (
                       <p className="mt-2 text-sm font-medium text-gray-800 dark:text-gray-200">
                         {mixedStockBasePreview.ok
-                          ? `Total in base pieces: ${mixedStockBasePreview.base}`
+                          ? `Total base step: ${mixedStockBasePreview.base} ${baseUnitPhrase}`
                           : mixedStockBasePreview.error}
                       </p>
                     )}
@@ -422,7 +489,8 @@ export default function EditInventoryProductPage() {
                       className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
                     />
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Single total in base pieces. Turn on “multiple units” to split by packaging.
+                      Single total in base steps ({baseUnitPhrase.toLowerCase()}). Turn on “multiple units” to split by
+                      packaging.
                     </p>
                   </>
                 )}
@@ -437,10 +505,14 @@ export default function EditInventoryProductPage() {
                   className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Inventory is tracked in base pieces (pcs). Add sale units on the product to enter mixed packagings.
+                  Inventory is tracked in base steps ({baseUnitPhrase.toLowerCase()}). Add alternate units above to enter
+                  mixed packaging counts.
                 </p>
               </>
             )}
+            {bundledQtyHint ? (
+              <p className="mt-2 text-xs font-medium text-brand-700 dark:text-brand-300">{bundledQtyHint}</p>
+            ) : null}
           </div>
           <div>
             <Label>Category</Label>

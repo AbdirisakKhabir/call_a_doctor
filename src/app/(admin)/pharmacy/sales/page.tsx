@@ -28,6 +28,8 @@ type SaleRow = {
   discount: number;
   paymentMethod: string;
   customerType: string;
+  outreachTeamId?: number | null;
+  branchId?: number | null;
   branch: { id: number; name: string } | null;
   patient: { id: number; patientCode: string; name: string } | null;
   createdBy: { id: number; name: string | null } | null;
@@ -60,6 +62,9 @@ export default function PharmacySalesListPage() {
   const [error, setError] = useState("");
 
   const canViewPos = hasPermission("pharmacy.pos");
+  const canEditSale = hasPermission("pharmacy.edit") || hasPermission("pharmacy.pos");
+  const canReturnSale = hasPermission("pharmacy.pos");
+  const showSaleActions = hasPermission("pharmacy.view") || canEditSale || canReturnSale;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -185,6 +190,11 @@ export default function PharmacySalesListPage() {
                 <TableCell isHeader>Payment</TableCell>
                 <TableCell isHeader>Recorded by</TableCell>
                 <TableCell isHeader>Status</TableCell>
+                {showSaleActions && (
+                  <TableCell isHeader className="whitespace-nowrap">
+                    Actions
+                  </TableCell>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -194,6 +204,14 @@ export default function PharmacySalesListPage() {
                     ? `${s.patient.name} (${s.patient.patientCode})`
                     : "Walking";
                 const hasDep = Boolean(s.depositTransaction?.id);
+                const isOutreach = s.customerType === "outreach" || s.outreachTeamId != null;
+                const branchPk = s.branch?.id ?? s.branchId;
+                const viewHref = `/pharmacy/pos?viewSale=${s.id}`;
+                const editHref = `/pharmacy/pos?editSale=${s.id}`;
+                const returnHref =
+                  branchPk != null
+                    ? `/pharmacy/sale-returns?saleId=${s.id}&branchId=${branchPk}`
+                    : `/pharmacy/sale-returns?saleId=${s.id}`;
                 return (
                   <TableRow key={s.id}>
                     <TableCell>{new Date(s.saleDate).toLocaleString()}</TableCell>
@@ -213,6 +231,33 @@ export default function PharmacySalesListPage() {
                         <span className="text-xs text-gray-500">—</span>
                       )}
                     </TableCell>
+                    {showSaleActions && (
+                      <TableCell className="whitespace-nowrap">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {hasPermission("pharmacy.view") && (
+                            <Link href={viewHref}>
+                              <Button size="sm" variant="outline">
+                                View
+                              </Button>
+                            </Link>
+                          )}
+                          {canEditSale && !isOutreach && (
+                            <Link href={editHref}>
+                              <Button size="sm" variant="outline">
+                                Edit
+                              </Button>
+                            </Link>
+                          )}
+                          {canReturnSale && !isOutreach && (
+                            <Link href={returnHref}>
+                              <Button size="sm" variant="outline">
+                                Return
+                              </Button>
+                            </Link>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}

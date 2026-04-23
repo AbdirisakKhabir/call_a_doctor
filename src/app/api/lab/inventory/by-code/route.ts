@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
+import { mergeLabUnitsWithPharmacySaleUnits } from "@/lib/lab-inventory-units";
 
 function normalizeCode(code: string): string {
   return code.trim().toUpperCase();
@@ -33,7 +34,22 @@ export async function GET(req: NextRequest) {
     if (!item) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    return NextResponse.json({ item });
+
+    const pharmacyProduct = await prisma.product.findFirst({
+      where: { branchId, code, isActive: true },
+      select: {
+        saleUnits: {
+          orderBy: { sortOrder: "asc" },
+          select: { unitKey: true, label: true, baseUnitsEach: true, sortOrder: true },
+        },
+      },
+    });
+    const packagingOptions = mergeLabUnitsWithPharmacySaleUnits(
+      item.labUnits,
+      pharmacyProduct?.saleUnits ?? []
+    );
+
+    return NextResponse.json({ item, packagingOptions });
   } catch (e) {
     console.error("Lab inventory by-code GET error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });

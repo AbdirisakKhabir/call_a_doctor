@@ -21,7 +21,6 @@ export type PharmacyReportId =
   | "sales"
   | "purchases"
   | "inventory"
-  | "internal_usage"
   | "categories"
   | "suppliers"
   | "opening_inventory";
@@ -33,7 +32,6 @@ const REPORT_META: Record<
   sales: { label: "Sales report", description: "Retail POS sales by date, branch, and payment." },
   purchases: { label: "Purchase report", description: "Stock purchases from suppliers and payment account." },
   inventory: { label: "Inventory report", description: "Current products, quantities, retail vs internal." },
-  internal_usage: { label: "Internal usage report", description: "Non-sale stock used for lab, cleaning, or general." },
   categories: { label: "Categories report", description: "Product categories and item counts." },
   suppliers: { label: "Suppliers report", description: "Suppliers and purchase totals in the selected period." },
   opening_inventory: {
@@ -91,17 +89,6 @@ export function PharmacyReportPanel({ report }: Props) {
       createdAt: string;
     }[]
   >([]);
-  const [internalLogs, setInternalLogs] = useState<
-    {
-      id: number;
-      quantity: number;
-      purpose: string;
-      createdAt: string;
-      product: { name: string; code: string; unit: string };
-      branch: { name: string } | null;
-      createdBy: { name: string | null; email: string } | null;
-    }[]
-  >([]);
   const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: number; name: string; phone: string | null }[]>([]);
 
@@ -115,15 +102,13 @@ export function PharmacyReportPanel({ report }: Props) {
   const branchScopedReports =
     report === "sales" ||
     report === "purchases" ||
-    report === "internal_usage" ||
     report === "inventory" ||
     report === "categories" ||
     report === "suppliers" ||
     report === "opening_inventory";
 
-  /** Transaction reports (sales / purchases / internal) can use “all branches”; catalog reports always scope to one branch. */
-  const transactionReports =
-    report === "sales" || report === "purchases" || report === "internal_usage";
+  /** Transaction reports (sales / purchases) can use “all branches”; catalog reports always scope to one branch. */
+  const transactionReports = report === "sales" || report === "purchases";
   const showReportBranchFilter =
     branchScopedReports &&
     (seesAllBranches || hasMultipleAssignedBranches || hasPermission("settings.manage")) &&
@@ -175,12 +160,6 @@ export function PharmacyReportPanel({ report }: Props) {
         const res = await authFetch(`/api/pharmacy/purchases${q}`);
         if (!res.ok) throw new Error("Failed to load purchases");
         setPurchases(await res.json());
-        return;
-      }
-      if (report === "internal_usage") {
-        const res = await authFetch(`/api/pharmacy/internal-usage${q}`);
-        if (!res.ok) throw new Error("Failed to load internal usage");
-        setInternalLogs(await res.json());
         return;
       }
       const catalogBranchId =
@@ -504,43 +483,6 @@ export function PharmacyReportPanel({ report }: Props) {
                       <ExpiryDateBadge expiryDate={p.expiryDate} />
                     </TableCell>
                     <TableCell className="text-right">{p.forSale ? `$${p.sellingPrice.toFixed(2)}` : "—"}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        ) : report === "internal_usage" ? (
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-transparent! hover:bg-transparent!">
-                <TableCell isHeader>Date</TableCell>
-                <TableCell isHeader>Product</TableCell>
-                <TableCell isHeader>Branch</TableCell>
-                <TableCell isHeader>Qty</TableCell>
-                <TableCell isHeader>Purpose</TableCell>
-                <TableCell isHeader>By</TableCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {internalLogs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-12 text-center text-sm text-gray-500">
-                    No internal usage in this period.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                internalLogs.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="whitespace-nowrap text-sm">{new Date(row.createdAt).toLocaleString()}</TableCell>
-                    <TableCell>
-                      {row.product.name} <span className="font-mono text-xs text-gray-500">{row.product.code}</span>
-                    </TableCell>
-                    <TableCell>{row.branch?.name ?? "—"}</TableCell>
-                    <TableCell>
-                      {row.quantity} {row.product.unit}
-                    </TableCell>
-                    <TableCell className="capitalize">{row.purpose}</TableCell>
-                    <TableCell className="text-sm">{row.createdBy?.name || row.createdBy?.email || "—"}</TableCell>
                   </TableRow>
                 ))
               )}

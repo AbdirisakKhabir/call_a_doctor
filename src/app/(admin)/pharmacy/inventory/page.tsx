@@ -328,9 +328,6 @@ export default function InventoryPage() {
           <Link href="/pharmacy/opening-inventory">
             <Button startIcon={<PlusIcon />} size="sm">Add Product</Button>
           </Link>
-          <Link href="/pharmacy/internal-usage">
-            <Button size="sm" variant="outline">Internal usage</Button>
-          </Link>
           <Link href="/pharmacy/unsellable-stock">
             <Button size="sm" variant="outline">Unsellable stock</Button>
           </Link>

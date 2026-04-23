@@ -8,6 +8,7 @@ export const LAB_BASE_UNIT_OPTIONS: readonly { value: string; label: string }[] 
   { value: "tube", label: "tube" },
   { value: "bottle", label: "bottle" },
   { value: "box", label: "box" },
+  { value: "pack", label: "pack" },
   { value: "strip", label: "strip" },
   { value: "kit", label: "kit" },
   { value: "pair", label: "pair" },
