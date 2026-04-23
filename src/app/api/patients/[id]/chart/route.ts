@@ -42,14 +42,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
-    const [canNotes, canLabs, canRx] = await Promise.all([
+    const [canNotes, canLabs, canRx, canFormResponses] = await Promise.all([
       userHasPermission(auth.userId, "patient_history.view") ||
         userHasPermission(auth.userId, "patient_history.create"),
       userHasPermission(auth.userId, "lab.view"),
       userHasPermission(auth.userId, "prescriptions.view"),
+      userHasPermission(auth.userId, "patient_history.view") ||
+        userHasPermission(auth.userId, "patient_history.create") ||
+        userHasPermission(auth.userId, "forms.view"),
     ]);
 
-    const [clinicalNotes, labOrders, prescriptions] = await Promise.all([
+    const [clinicalNotes, labOrders, prescriptions, formResponses] = await Promise.all([
       canNotes
         ? prisma.patientHistory.findMany({
             where: { patientId },
@@ -111,6 +114,26 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
             },
           })
         : [],
+      canFormResponses
+        ? prisma.customFormResponse.findMany({
+            where: { patientId },
+            orderBy: { submittedAt: "desc" },
+            take: 100,
+            include: {
+              form: { select: { id: true, title: true } },
+              appointment: {
+                select: {
+                  id: true,
+                  appointmentDate: true,
+                  startTime: true,
+                  branch: { select: { id: true, name: true } },
+                },
+              },
+              submittedBy: { select: { id: true, name: true, email: true } },
+              answers: { orderBy: { id: "asc" } },
+            },
+          })
+        : [],
     ]);
 
     return NextResponse.json({
@@ -118,9 +141,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       clinicalNotes,
       labOrders,
       prescriptions,
+      formResponses,
       canViewNotes: canNotes,
       canViewLabs: canLabs,
       canViewPrescriptions: canRx,
+      canViewFormResponses: canFormResponses,
     });
   } catch (e) {
     console.error("Patient chart error:", e);

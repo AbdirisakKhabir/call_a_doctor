@@ -58,6 +58,10 @@ const DEFAULT_PERMISSIONS = [
     description: "View audit log for Administrator accounts only (oversight without full staff log)",
     module: "audit",
   },
+  { name: "forms.view", description: "View custom forms", module: "forms" },
+  { name: "forms.create", description: "Create custom forms", module: "forms" },
+  { name: "forms.edit", description: "Edit custom forms", module: "forms" },
+  { name: "forms.delete", description: "Delete custom forms", module: "forms" },
 ];
 
 async function main() {
@@ -145,7 +149,14 @@ async function main() {
     create: { name: "Doctor", description: "Sees only assigned visit cards" },
     update: {},
   });
-  for (const perm of [visitViewOwn, dashboardPerm].filter(Boolean) as { id: number }[]) {
+  for (const perm of [
+    visitViewOwn,
+    dashboardPerm,
+    allPermissions.find((p) => p.name === "patient_history.view"),
+    allPermissions.find((p) => p.name === "patient_history.create"),
+    allPermissions.find((p) => p.name === "forms.view"),
+    allPermissions.find((p) => p.name === "appointments.view"),
+  ].filter(Boolean) as { id: number }[]) {
     await prisma.rolePermission.upsert({
       where: { roleId_permissionId: { roleId: doctorRole.id, permissionId: perm.id } },
       create: { roleId: doctorRole.id, permissionId: perm.id },
@@ -168,6 +179,9 @@ async function main() {
     allPermissions.find((p) => p.name === "patients.view"),
     allPermissions.find((p) => p.name === "patients.create"),
     allPermissions.find((p) => p.name === "appointments.view"),
+    allPermissions.find((p) => p.name === "patient_history.view"),
+    allPermissions.find((p) => p.name === "patient_history.create"),
+    allPermissions.find((p) => p.name === "forms.view"),
   ].filter(Boolean) as { id: number }[]) {
     await prisma.rolePermission.upsert({
       where: { roleId_permissionId: { roleId: receptionRole.id, permissionId: perm.id } },

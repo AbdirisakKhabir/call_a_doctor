@@ -11,35 +11,37 @@ datasource db {
 }
 
 model User {
-  id               Int           @id @default(autoincrement())
-  email            String        @unique
-  password         String
-  name             String?
-  roleId           Int
-  role             Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  isActive         Boolean       @default(true)
-  purchases        Purchase[]
-  sales            Sale[]
-  appointments     Appointment[]
-  labOrdersCreated LabOrder[]    @relation("LabOrderCreatedBy")
-  labResultsRecorded LabOrderItem[] @relation("LabResultRecordedBy")
-  prescriptionsCreated Prescription[] @relation("PrescriptionCreatedBy")
-  expensesCreated  Expense[]     @relation("ExpenseCreatedBy")
-  branches         UserBranch[]
-  financeTransactions AccountTransaction[] @relation("FinanceTransactionCreatedBy")
-  internalStockLogs InternalStockLog[]
+  id                         Int                  @id @default(autoincrement())
+  email                      String               @unique
+  password                   String
+  name                       String?
+  roleId                     Int
+  role                       Role                 @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  isActive                   Boolean              @default(true)
+  purchases                  Purchase[]
+  sales                      Sale[]
+  appointments               Appointment[]
+  labOrdersCreated           LabOrder[]           @relation("LabOrderCreatedBy")
+  labResultsRecorded         LabOrderItem[]       @relation("LabResultRecordedBy")
+  prescriptionsCreated       Prescription[]       @relation("PrescriptionCreatedBy")
+  expensesCreated            Expense[]            @relation("ExpenseCreatedBy")
+  branches                   UserBranch[]
+  financeTransactions        AccountTransaction[] @relation("FinanceTransactionCreatedBy")
+  internalStockLogs          InternalStockLog[]
   unsellableStockLogsCreated UnsellableStockLog[] @relation("UnsellableStockLogCreatedBy")
-  outreachReturnsCreated OutreachReturn[] @relation("OutreachReturnCreatedBy")
-  outreachDispensesCreated OutreachDispense[] @relation("OutreachDispenseCreatedBy")
-  patientPaymentsCreated PatientPayment[] @relation("PatientPaymentCreatedBy")
+  outreachReturnsCreated     OutreachReturn[]     @relation("OutreachReturnCreatedBy")
+  outreachDispensesCreated   OutreachDispense[]   @relation("OutreachDispenseCreatedBy")
+  patientPaymentsCreated     PatientPayment[]     @relation("PatientPaymentCreatedBy")
   pharmacySaleReturnsCreated PharmacySaleReturn[] @relation("PharmacySaleReturnCreatedBy")
-  doctorProfile    Doctor?
-  visitCardsCreated DoctorVisitCard[] @relation("VisitCardCreatedBy")
-  auditLogs        AuditLog[]
-  labSalesCreated  LabSale[]     @relation("LabSaleCreatedBy")
-  labStockMovementsCreated LabStockMovement[] @relation("LabStockMovementCreatedBy")
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  doctorProfile              Doctor?
+  visitCardsCreated          DoctorVisitCard[]    @relation("VisitCardCreatedBy")
+  auditLogs                  AuditLog[]
+  labSalesCreated            LabSale[]            @relation("LabSaleCreatedBy")
+  labStockMovementsCreated   LabStockMovement[]   @relation("LabStockMovementCreatedBy")
+  customFormsCreated         CustomForm[]         @relation("CustomFormCreatedBy")
+  customFormResponsesSubmitted CustomFormResponse[] @relation("CustomFormResponseSubmittedBy")
+  createdAt                  DateTime             @default(now())
+  updatedAt                  DateTime             @updatedAt
 
   @@map("users")
 }
@@ -76,13 +78,13 @@ model RolePermission {
 
 // Single-row global settings (id = 1).
 model AppSettings {
-  id                            Int      @id @default(1)
-  expirySoonMode                String   @default("days") // days | months
-  expirySoonDays                Int      @default(10)
-  expirySoonMonths              Int      @default(1) // 1 = through end of current month, 2 = through end of next month, etc.
+  id                             Int      @id @default(1)
+  expirySoonMode                 String   @default("days") // days | months
+  expirySoonDays                 Int      @default(10)
+  expirySoonMonths               Int      @default(1) // 1 = through end of current month, 2 = through end of next month, etc.
   /// Calendar grid & new-appointment time steps: 15 or 30 minutes.
-  appointmentCalendarSlotMinutes Int     @default(15)
-  updatedAt                     DateTime @updatedAt
+  appointmentCalendarSlotMinutes Int      @default(15)
+  updatedAt                      DateTime @updatedAt
 
   @@map("app_settings")
 }
@@ -115,15 +117,15 @@ model City {
 }
 
 model Village {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   cityId    Int
-  city      City     @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  city      City      @relation(fields: [cityId], references: [id], onDelete: Restrict)
   name      String
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
   patients  Patient[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@unique([cityId, name])
   @@map("villages")
@@ -132,70 +134,71 @@ model Village {
 // --- Patients ---
 
 model Patient {
-  id              Int              @id @default(autoincrement())
-  patientCode     String           @unique
-  firstName       String
-  lastName        String
-  phone           String?
+  id                 Int                @id @default(autoincrement())
+  patientCode        String             @unique
+  firstName          String
+  lastName           String
+  phone              String?
   /// Optional second contact number (e.g. mobile); stored E.164 when set.
-  mobile          String?
-  email           String?
-  dateOfBirth     DateTime?
+  mobile             String?
+  email              String?
+  dateOfBirth        DateTime?
   /// Full years; recalculated from `dateOfBirth` whenever the client is saved.
-  age             Int?
-  gender          String?
+  age                Int?
+  gender             String?
   /// Optional street / extra detail; city and village identify locality.
-  address         String?
-  cityId          Int?
-  villageId       Int?
-  city            City?            @relation(fields: [cityId], references: [id], onDelete: SetNull)
-  village         Village?         @relation(fields: [villageId], references: [id], onDelete: SetNull)
+  address            String?
+  cityId             Int?
+  villageId          Int?
+  city               City?              @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  village            Village?           @relation(fields: [villageId], references: [id], onDelete: SetNull)
   /// Branch where the client was first registered (required on new registrations).
   registeredBranchId Int?
-  registeredBranch   Branch?       @relation("PatientRegisteredBranch", fields: [registeredBranchId], references: [id], onDelete: SetNull)
-  notes           String?
-  referralSourceId Int?
-  referralSource   ReferralSource? @relation(fields: [referralSourceId], references: [id], onDelete: SetNull)
+  registeredBranch   Branch?            @relation("PatientRegisteredBranch", fields: [registeredBranchId], references: [id], onDelete: SetNull)
+  notes              String?
+  referralSourceId   Int?
+  referralSource     ReferralSource?    @relation(fields: [referralSourceId], references: [id], onDelete: SetNull)
   /// Balance owed by patient (e.g. outreach medication charges).
-  accountBalance  Float            @default(0)
-  isActive        Boolean          @default(true)
-  sales           Sale[]
-  appointments    Appointment[]
-  patientHistories PatientHistory[]
-  labOrders       LabOrder[]
-  prescriptions   Prescription[]
-  outreachDispenses OutreachDispense[]
-  patientPayments PatientPayment[]
-  doctorVisitCards DoctorVisitCard[]
-  labSales        LabSale[]
-  careFiles       PatientCareFile[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  accountBalance     Float              @default(0)
+  isActive           Boolean            @default(true)
+  sales              Sale[]
+  appointments       Appointment[]
+  patientHistories   PatientHistory[]
+  labOrders          LabOrder[]
+  prescriptions      Prescription[]
+  outreachDispenses  OutreachDispense[]
+  patientPayments    PatientPayment[]
+  doctorVisitCards   DoctorVisitCard[]
+  labSales             LabSale[]
+  careFiles            PatientCareFile[]
+  customFormResponses  CustomFormResponse[]
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   @@map("patients")
 }
 
 /// A running client file: appointments, lab, notes, prescriptions, and payments can be grouped for a single invoice.
 model PatientCareFile {
-  id          Int       @id @default(autoincrement())
-  patientId   Int
-  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  fileCode    String    @unique
-  title       String?
+  id               Int               @id @default(autoincrement())
+  patientId        Int
+  patient          Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  fileCode         String            @unique
+  title            String?
   /// open | closed
-  status      String    @default("open")
-  openedAt    DateTime  @default(now())
-  closedAt    DateTime?
-  invoicedAt  DateTime?
-  notes       String?
+  status           String            @default("open")
+  openedAt         DateTime          @default(now())
+  closedAt         DateTime?
+  invoicedAt       DateTime?
+  notes            String?
   appointments     Appointment[]
   labOrders        LabOrder[]
   prescriptions    Prescription[]
   patientHistories PatientHistory[]
   doctorVisitCards DoctorVisitCard[]
   patientPayments  PatientPayment[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([patientId, status])
   @@map("patient_care_files")
@@ -204,34 +207,34 @@ model PatientCareFile {
 // --- Branches ---
 
 model Branch {
-  id          Int           @id @default(autoincrement())
-  name        String
-  address     String?
-  phone       String?
-  email       String?
-  isActive    Boolean       @default(true)
-  doctors     Doctor[]
-  services    Service[]
-  appointments Appointment[]
-  users       UserBranch[]
-  purchases   Purchase[]
-  sales       Sale[]
-  internalStockLogs InternalStockLog[]
-  categories  Category[]
-  suppliers   Supplier[]
-  products    Product[]
-  outreachTeams OutreachTeam[]
-  outreachReturns OutreachReturn[]
-  outreachDispenses OutreachDispense[]
+  id                  Int                  @id @default(autoincrement())
+  name                String
+  address             String?
+  phone               String?
+  email               String?
+  isActive            Boolean              @default(true)
+  doctors             Doctor[]
+  services            Service[]
+  appointments        Appointment[]
+  users               UserBranch[]
+  purchases           Purchase[]
+  sales               Sale[]
+  internalStockLogs   InternalStockLog[]
+  categories          Category[]
+  suppliers           Supplier[]
+  products            Product[]
+  outreachTeams       OutreachTeam[]
+  outreachReturns     OutreachReturn[]
+  outreachDispenses   OutreachDispense[]
   pharmacySaleReturns PharmacySaleReturn[]
-  doctorVisitCards DoctorVisitCard[]
-  patientsRegistered Patient[] @relation("PatientRegisteredBranch")
-  labInventoryItems LabInventoryItem[]
-  labStockMovements LabStockMovement[]
-  labSales          LabSale[]
+  doctorVisitCards    DoctorVisitCard[]
+  patientsRegistered  Patient[]            @relation("PatientRegisteredBranch")
+  labInventoryItems   LabInventoryItem[]
+  labStockMovements   LabStockMovement[]
+  labSales            LabSale[]
   unsellableStockLogs UnsellableStockLog[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@map("branches")
 }
@@ -249,23 +252,23 @@ model UserBranch {
 // --- Doctors ---
 
 model Doctor {
-  id              Int              @id @default(autoincrement())
-  name            String
-  email           String?
-  phone           String?
-  specialty       String?
-  branchId        Int?
-  branch          Branch?          @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  isActive        Boolean          @default(true)
-  appointments    Appointment[]
+  id               Int               @id @default(autoincrement())
+  name             String
+  email            String?
+  phone            String?
+  specialty        String?
+  branchId         Int?
+  branch           Branch?           @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  isActive         Boolean           @default(true)
+  appointments     Appointment[]
   patientHistories PatientHistory[]
-  labOrders       LabOrder[]
-  prescriptions   Prescription[]
-  userId          Int?            @unique
-  user            User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  labOrders        LabOrder[]
+  prescriptions    Prescription[]
+  userId           Int?              @unique
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   doctorVisitCards DoctorVisitCard[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@map("doctors")
 }
@@ -273,34 +276,34 @@ model Doctor {
 // --- Services ---
 
 model Service {
-  id                  Int                 @id @default(autoincrement())
+  id                  Int                  @id @default(autoincrement())
   name                String
   /// Calendar / appointment UI: hex e.g. #dbeafe; null = use default styling
   color               String?
   description         String?
-  price               Float               @default(0)
-  durationMinutes     Int?                // e.g. 30, 60
+  price               Float                @default(0)
+  durationMinutes     Int? // e.g. 30, 60
   branchId            Int?
-  branch              Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  isActive            Boolean             @default(true)
+  branch              Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  isActive            Boolean              @default(true)
   appointmentServices AppointmentService[]
   disposables         ServiceDisposable[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@map("services")
 }
 
 /// Pharmacy product (by code at appointment branch) consumed when a booked service is completed.
 model ServiceDisposable {
-  id               Int     @id @default(autoincrement())
+  id               Int      @id @default(autoincrement())
   serviceId        Int
-  service          Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  service          Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   /// Matches `Product.code` at the appointment branch.
   productCode      String
   /// Consumption per one service line quantity step, in `deductionUnitKey` (see ProductSaleUnit).
-  unitsPerService  Float   @default(1)
-  deductionUnitKey String  @default("base")
+  unitsPerService  Float    @default(1)
+  deductionUnitKey String   @default("base")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -312,77 +315,78 @@ model ServiceDisposable {
 // --- Appointments ---
 
 model Appointment {
-  id             Int                 @id @default(autoincrement())
-  branchId       Int
-  branch         Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  doctorId       Int
-  doctor         Doctor              @relation(fields: [doctorId], references: [id], onDelete: Restrict)
-  patientId      Int
-  patient        Patient             @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  appointmentDate DateTime           @db.Date
-  startTime      String              // e.g. "09:00"
-  endTime        String?             // e.g. "09:30"
+  id                    Int                  @id @default(autoincrement())
+  branchId              Int
+  branch                Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  doctorId              Int
+  doctor                Doctor               @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  patientId             Int
+  patient               Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointmentDate       DateTime             @db.Date
+  startTime             String // e.g. "09:00"
+  endTime               String? // e.g. "09:30"
   /// Minutes before start to remind (e.g. 15, 60); null = no reminder
   reminderMinutesBefore Int?
-  status         String              @default("scheduled") // scheduled, completed, cancelled, no-show
-  notes          String?
-  totalAmount    Float               @default(0)
-  createdById    Int?
-  createdBy      User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  services       AppointmentService[]
-  patientHistories PatientHistory[]
-  labOrders      LabOrder[]
-  prescriptions  Prescription[]
-  careFileId     Int?
-  careFile       PatientCareFile?    @relation(fields: [careFileId], references: [id], onDelete: SetNull)
+  status                String               @default("scheduled") // scheduled, completed, cancelled, no-show
+  notes                 String?
+  totalAmount           Float                @default(0)
+  createdById           Int?
+  createdBy             User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  services              AppointmentService[]
+  patientHistories      PatientHistory[]
+  labOrders             LabOrder[]
+  prescriptions         Prescription[]
+  careFileId            Int?
+  careFile              PatientCareFile?     @relation(fields: [careFileId], references: [id], onDelete: SetNull)
   serviceDisposableLogs InternalStockLog[]
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  customFormResponses   CustomFormResponse[]
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
   @@index([careFileId])
   @@map("appointments")
 }
 
 model AppointmentService {
-  id             Int         @id @default(autoincrement())
-  appointmentId  Int
-  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  serviceId      Int
-  service        Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  quantity       Int         @default(1)
-  unitPrice      Float
-  totalAmount    Float
+  id                    Int         @id @default(autoincrement())
+  appointmentId         Int
+  appointment           Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  serviceId             Int
+  service               Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  quantity              Int         @default(1)
+  unitPrice             Float
+  totalAmount           Float
   /// Set when pharmacy disposables for this line were deducted (idempotent).
   disposablesDeductedAt DateTime?
-  createdAt      DateTime    @default(now())
+  createdAt             DateTime    @default(now())
 
   @@map("appointment_services")
 }
 
 /// Reception queue card: patient + doctor + visit date; doctor-linked users only see their cards.
 model DoctorVisitCard {
-  id                Int       @id @default(autoincrement())
-  cardNumber        String
-  branchId          Int
-  branch            Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  patientId         Int
-  patient           Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  doctorId          Int
-  doctor            Doctor    @relation(fields: [doctorId], references: [id], onDelete: Restrict)
-  visitDate         DateTime  @db.Date
-  status            String    @default("inWaiting") // inWaiting, inProgress, completed, cancelled
-  paymentStatus     String    @default("unpaid") // paid, unpaid, appointment, free
-  visitFee          Float     @default(0)
-  paymentMethodId   Int?
-  paymentMethod     LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
-  createdById       Int?
-  createdBy         User?     @relation("VisitCardCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  notes             String?
+  id                 Int                  @id @default(autoincrement())
+  cardNumber         String
+  branchId           Int
+  branch             Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  patientId          Int
+  patient            Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctorId           Int
+  doctor             Doctor               @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  visitDate          DateTime             @db.Date
+  status             String               @default("inWaiting") // inWaiting, inProgress, completed, cancelled
+  paymentStatus      String               @default("unpaid") // paid, unpaid, appointment, free
+  visitFee           Float                @default(0)
+  paymentMethodId    Int?
+  paymentMethod      LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  createdById        Int?
+  createdBy          User?                @relation("VisitCardCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  notes              String?
   depositTransaction AccountTransaction?
-  careFileId        Int?
-  careFile          PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  careFileId         Int?
+  careFile           PatientCareFile?     @relation(fields: [careFileId], references: [id], onDelete: SetNull)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@unique([branchId, cardNumber])
   @@index([careFileId])
@@ -409,60 +413,60 @@ model Category {
 }
 
 model Supplier {
-  id            Int       @id @default(autoincrement())
+  id            Int        @id @default(autoincrement())
   branchId      Int
-  branch        Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branch        Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
   name          String
   contactPerson String?
   email         String?
   phone         String?
   address       String?
-  isActive      Boolean   @default(true)
+  isActive      Boolean    @default(true)
   purchases     Purchase[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@index([branchId])
   @@map("suppliers")
 }
 
 model Product {
-  id                Int               @id @default(autoincrement())
-  branchId          Int
-  branch            Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  name              String
-  code              String
-  description       String?
-  imageUrl          String?
-  imagePublicId     String?
-  costPrice         Float             @default(0)
-  sellingPrice      Float             @default(0)
+  id                     Int                     @id @default(autoincrement())
+  branchId               Int
+  branch                 Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  name                   String
+  code                   String
+  description            String?
+  imageUrl               String?
+  imagePublicId          String?
+  costPrice              Float                   @default(0)
+  sellingPrice           Float                   @default(0)
   /// Stock on hand in base (smallest) units — see ProductSaleUnit with unitKey "base". Sellable shelf / POS quantity only.
-  quantity          Int               @default(0)
+  quantity               Int                     @default(0)
   /// Non-sellable quantity (expired, damaged, etc.) — excluded from POS; see UnsellableStockLog for movements.
-  unsellableQuantity Int              @default(0)
+  unsellableQuantity     Int                     @default(0)
   /// Label for the base stock unit (e.g. piece, tablet, pair).
-  unit              String            @default("pcs")
+  unit                   String                  @default("pcs")
   /// Optional batch / lot expiry (e.g. for medicines).
-  expiryDate        DateTime?
+  expiryDate             DateTime?
   /// When false, item is not sold at POS (lab supplies, cleaning, etc.); stock tracked via purchases + internal usage.
-  forSale           Boolean           @default(true)
+  forSale                Boolean                 @default(true)
   /// laboratory | cleaning | general — relevant when forSale is false
-  internalPurpose   String?
-  categoryId        Int?
-  category          Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  isActive          Boolean           @default(true)
-  purchaseItems     PurchaseItem[]
-  saleItems         SaleItem[]
-  prescriptionItems PrescriptionItem[]
-  internalStockLogs InternalStockLog[]
-  unsellableStockLogs UnsellableStockLog[]
+  internalPurpose        String?
+  categoryId             Int?
+  category               Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  isActive               Boolean                 @default(true)
+  purchaseItems          PurchaseItem[]
+  saleItems              SaleItem[]
+  prescriptionItems      PrescriptionItem[]
+  internalStockLogs      InternalStockLog[]
+  unsellableStockLogs    UnsellableStockLog[]
   outreachInventoryItems OutreachInventoryItem[]
   outreachReturnItems    OutreachReturnItem[]
   outreachDispenseItems  OutreachDispenseItem[]
-  saleUnits         ProductSaleUnit[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  saleUnits              ProductSaleUnit[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
 
   @@unique([branchId, code])
   @@map("products")
@@ -470,16 +474,16 @@ model Product {
 
 /// Defines how pharmacy counts stock (base unit) vs purchase/sale packaging (e.g. 1 box = 100 base units).
 model ProductSaleUnit {
-  id            Int     @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   productId     Int
-  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   /// Stable key for APIs/POS, e.g. "base", "box". Smallest stock step uses "base" with baseUnitsEach = 1.
   unitKey       String
   /// Display label (e.g. "Piece", "Box").
   label         String
   /// One purchase/sale count of this unit equals this many base units (stock quantity increments/decrements).
   baseUnitsEach Int
-  sortOrder     Int     @default(0)
+  sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -490,20 +494,20 @@ model ProductSaleUnit {
 
 /// Stock removed for internal operations (lab, cleaning) — not a retail sale.
 model InternalStockLog {
-  id          Int      @id @default(autoincrement())
-  productId   Int
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  branchId    Int?
-  branch      Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  quantity    Int
-  purpose     String
-  notes       String?
+  id                   Int          @id @default(autoincrement())
+  productId            Int
+  product              Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  branchId             Int?
+  branch               Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  quantity             Int
+  purpose              String
+  notes                String?
   /// When usage was triggered by completing an appointment service (reporting).
   relatedAppointmentId Int?
   relatedAppointment   Appointment? @relation(fields: [relatedAppointmentId], references: [id], onDelete: SetNull)
-  createdById Int?
-  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
+  createdById          Int?
+  createdBy            User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt            DateTime     @default(now())
 
   @@index([productId, createdAt])
   @@index([relatedAppointmentId])
@@ -519,7 +523,7 @@ model UnsellableStockLog {
   branchId    Int
   branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
   quantity    Int
-  reason      String   // expired | damaged | recall | other
+  reason      String // expired | damaged | recall | other
   notes       String?  @db.Text
   createdById Int?
   createdBy   User?    @relation("UnsellableStockLogCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -531,104 +535,104 @@ model UnsellableStockLog {
 }
 
 model Purchase {
-  id          Int           @id @default(autoincrement())
-  branchId    Int?
-  branch      Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  id                Int                  @id @default(autoincrement())
+  branchId          Int?
+  branch            Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
   /// Optional when stock is received without a vendor record (donation, transfer-in, etc.).
-  supplierId  Int?
-  supplier    Supplier?     @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  purchaseDate DateTime     @default(now())
-  totalAmount Float         @default(0)
-  status      String        @default("completed")
-  notes       String?
+  supplierId        Int?
+  supplier          Supplier?            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseDate      DateTime             @default(now())
+  totalAmount       Float                @default(0)
+  status            String               @default("completed")
+  notes             String?
   /// Ledger payment method used to pay the supplier (links to finance account).
-  paymentMethodId Int?
-  paymentMethod   LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
-  createdById Int?
-  createdBy   User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  items       PurchaseItem[]
+  paymentMethodId   Int?
+  paymentMethod     LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  createdById       Int?
+  createdBy         User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items             PurchaseItem[]
   ledgerTransaction AccountTransaction?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   @@map("purchases")
 }
 
 model PurchaseItem {
-  id         Int     @id @default(autoincrement())
-  purchaseId Int
-  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  productId  Int
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity   Int
+  id           Int      @id @default(autoincrement())
+  purchaseId   Int
+  purchase     Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId    Int
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity     Int
   /// Always pieces (pcs); column kept for schema compatibility.
-  purchaseUnit String @default("pcs")
-  unitPrice  Float
-  totalAmount Float
-  createdAt  DateTime @default(now())
+  purchaseUnit String   @default("pcs")
+  unitPrice    Float
+  totalAmount  Float
+  createdAt    DateTime @default(now())
 
   @@map("purchase_items")
 }
 
 model Sale {
-  id            Int       @id @default(autoincrement())
-  branchId      Int?
-  branch        Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  saleDate      DateTime  @default(now())
-  totalAmount   Float     @default(0)
-  discount      Float     @default(0)
-  paymentMethod String   @default("cash")
-  notes         String?
-  patientId     Int?
-  patient       Patient?  @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  id                  Int                  @id @default(autoincrement())
+  branchId            Int?
+  branch              Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  saleDate            DateTime             @default(now())
+  totalAmount         Float                @default(0)
+  discount            Float                @default(0)
+  paymentMethod       String               @default("cash")
+  notes               String?
+  patientId           Int?
+  patient             Patient?             @relation(fields: [patientId], references: [id], onDelete: SetNull)
   /// walking | patient | outreach
-  customerType  String   @default("walking")
-  outreachTeamId Int?
-  outreachTeam  OutreachTeam? @relation(fields: [outreachTeamId], references: [id], onDelete: SetNull)
+  customerType        String               @default("walking")
+  outreachTeamId      Int?
+  outreachTeam        OutreachTeam?        @relation(fields: [outreachTeamId], references: [id], onDelete: SetNull)
   /// Stock issued on credit to outreach team (no till deposit; increases team credit balance).
-  outreachOnCredit Boolean @default(false)
-  createdById   Int?
-  createdBy     User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  items         SaleItem[]
-  depositTransaction AccountTransaction?
+  outreachOnCredit    Boolean              @default(false)
+  createdById         Int?
+  createdBy           User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items               SaleItem[]
+  depositTransaction  AccountTransaction?
   pharmacySaleReturns PharmacySaleReturn[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@map("sales")
 }
 
 model SaleItem {
-  id         Int    @id @default(autoincrement())
-  saleId     Int
-  sale       Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  productId  Int
-  product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity   Int
+  id                      Int                      @id @default(autoincrement())
+  saleId                  Int
+  sale                    Sale                     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId               Int
+  product                 Product                  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity                Int
   /// Always pieces (pcs); column kept for schema compatibility.
-  saleUnit   String @default("pcs")
-  unitPrice  Float
-  totalAmount Float
+  saleUnit                String                   @default("pcs")
+  unitPrice               Float
+  totalAmount             Float
   pharmacySaleReturnItems PharmacySaleReturnItem[]
-  createdAt  DateTime @default(now())
+  createdAt               DateTime                 @default(now())
 
   @@map("sale_items")
 }
 
 /// Customer return of retail pharmacy sale lines — restores shelf inventory.
 model PharmacySaleReturn {
-  id          Int       @id @default(autoincrement())
+  id          Int                      @id @default(autoincrement())
   branchId    Int
-  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branch      Branch                   @relation(fields: [branchId], references: [id], onDelete: Restrict)
   saleId      Int
-  sale        Sale      @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  returnDate  DateTime  @default(now())
-  totalAmount Float     @default(0)
+  sale        Sale                     @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  returnDate  DateTime                 @default(now())
+  totalAmount Float                    @default(0)
   notes       String?
   createdById Int?
-  createdBy   User?     @relation("PharmacySaleReturnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?                    @relation("PharmacySaleReturnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   items       PharmacySaleReturnItem[]
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime                 @default(now())
 
   @@index([branchId, returnDate])
   @@index([saleId])
@@ -636,15 +640,15 @@ model PharmacySaleReturn {
 }
 
 model PharmacySaleReturnItem {
-  id          Int       @id @default(autoincrement())
+  id          Int                @id @default(autoincrement())
   returnId    Int
   return      PharmacySaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
   saleItemId  Int
-  saleItem    SaleItem  @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
+  saleItem    SaleItem           @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
   quantity    Int
   unitPrice   Float
   totalAmount Float
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime           @default(now())
 
   @@map("pharmacy_sale_return_items")
 }
@@ -652,138 +656,138 @@ model PharmacySaleReturnItem {
 // --- Outreach (home clinic / emergency medication bag) ---
 
 model OutreachTeam {
-  id            Int       @id @default(autoincrement())
+  id            Int                     @id @default(autoincrement())
   branchId      Int
-  branch        Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branch        Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
   name          String
   phone         String?
   notes         String?
   /// Amount this team owes the pharmacy for stock taken on credit (AR).
-  creditBalance Float     @default(0)
-  isActive      Boolean   @default(true)
+  creditBalance Float                   @default(0)
+  isActive      Boolean                 @default(true)
   members       OutreachTeamMember[]
   inventory     OutreachInventoryItem[]
   sales         Sale[]
   returns       OutreachReturn[]
   dispenses     OutreachDispense[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
 
   @@index([branchId])
   @@map("outreach_teams")
 }
 
 model OutreachTeamMember {
-  id        Int           @id @default(autoincrement())
+  id        Int          @id @default(autoincrement())
   teamId    Int
-  team      OutreachTeam  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team      OutreachTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
   name      String
   phone     String?
   role      String?
-  createdAt DateTime      @default(now())
+  createdAt DateTime     @default(now())
 
   @@index([teamId])
   @@map("outreach_team_members")
 }
 
 model OutreachInventoryItem {
-  id        Int           @id @default(autoincrement())
+  id        Int          @id @default(autoincrement())
   teamId    Int
-  team      OutreachTeam  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team      OutreachTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
   productId Int
-  product   Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity  Int           @default(0)
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int          @default(0)
 
   @@unique([teamId, productId])
   @@map("outreach_inventory_items")
 }
 
 model OutreachReturn {
-  id          Int       @id @default(autoincrement())
+  id          Int                  @id @default(autoincrement())
   teamId      Int
-  team        OutreachTeam @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  team        OutreachTeam         @relation(fields: [teamId], references: [id], onDelete: Restrict)
   branchId    Int
-  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  returnDate  DateTime  @default(now())
-  totalAmount Float     @default(0)
+  branch      Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  returnDate  DateTime             @default(now())
+  totalAmount Float                @default(0)
   notes       String?
   createdById Int?
-  createdBy   User?     @relation("OutreachReturnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?                @relation("OutreachReturnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   items       OutreachReturnItem[]
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime             @default(now())
 
   @@index([teamId, returnDate])
   @@map("outreach_returns")
 }
 
 model OutreachReturnItem {
-  id         Int     @id @default(autoincrement())
-  returnId   Int
-  return     OutreachReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
-  productId  Int
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity   Int
-  unitPrice  Float
+  id          Int            @id @default(autoincrement())
+  returnId    Int
+  return      OutreachReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  productId   Int
+  product     Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity    Int
+  unitPrice   Float
   totalAmount Float
-  createdAt  DateTime @default(now())
+  createdAt   DateTime       @default(now())
 
   @@map("outreach_return_items")
 }
 
 model OutreachDispense {
-  id          Int       @id @default(autoincrement())
+  id          Int                    @id @default(autoincrement())
   patientId   Int
-  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patient     Patient                @relation(fields: [patientId], references: [id], onDelete: Restrict)
   teamId      Int
-  team        OutreachTeam @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  team        OutreachTeam           @relation(fields: [teamId], references: [id], onDelete: Restrict)
   branchId    Int
-  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branch      Branch                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
   totalAmount Float
   notes       String?
   createdById Int?
-  createdBy   User?     @relation("OutreachDispenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?                  @relation("OutreachDispenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   items       OutreachDispenseItem[]
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime               @default(now())
 
   @@index([teamId, createdAt])
   @@map("outreach_dispenses")
 }
 
 model OutreachDispenseItem {
-  id          Int       @id @default(autoincrement())
+  id          Int              @id @default(autoincrement())
   dispenseId  Int
   dispense    OutreachDispense @relation(fields: [dispenseId], references: [id], onDelete: Cascade)
   productId   Int
-  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product     Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
   quantity    Int
   unitPrice   Float
   totalAmount Float
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime         @default(now())
 
   @@map("outreach_dispense_items")
 }
 
 model PatientPayment {
-  id         Int       @id @default(autoincrement())
-  patientId  Int
-  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  id              Int                  @id @default(autoincrement())
+  patientId       Int
+  patient         Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
   /// Cash/collected amount posted to the linked finance account (deposit).
-  amount     Float
+  amount          Float
   /// Discount/write-off applied toward the client balance on this transaction (no cash movement).
-  discount   Float     @default(0)
+  discount        Float                @default(0)
   /// medication | prescription | pharmacy_credit | laboratory — laboratory may link to a lab order
-  category   String    @default("medication")
+  category        String               @default("medication")
   paymentMethodId Int?
-  paymentMethod LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  paymentMethod   LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   /// When set, cash + discount settle this lab order fee (reception).
-  labOrderId Int?
-  labOrder   LabOrder? @relation(fields: [labOrderId], references: [id], onDelete: SetNull)
-  careFileId Int?
-  careFile   PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
-  notes      String?
-  createdById Int?
-  createdBy   User?    @relation("PatientPaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt  DateTime @default(now())
+  labOrderId      Int?
+  labOrder        LabOrder?            @relation(fields: [labOrderId], references: [id], onDelete: SetNull)
+  careFileId      Int?
+  careFile        PatientCareFile?     @relation(fields: [careFileId], references: [id], onDelete: SetNull)
+  notes           String?
+  createdById     Int?
+  createdBy       User?                @relation("PatientPaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime             @default(now())
 
   @@index([patientId, createdAt])
   @@index([labOrderId])
@@ -794,18 +798,18 @@ model PatientPayment {
 // --- Patient History (Doctor records) ---
 
 model PatientHistory {
-  id             Int          @id @default(autoincrement())
-  patientId      Int
-  patient        Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  appointmentId  Int?
-  appointment    Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
-  doctorId       Int
-  doctor         Doctor       @relation(fields: [doctorId], references: [id], onDelete: Restrict)
-  type           String       // chief_complaint, history, examination, diagnosis, notes
-  notes          String       @db.Text
-  careFileId     Int?
-  careFile       PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
-  createdAt      DateTime     @default(now())
+  id            Int              @id @default(autoincrement())
+  patientId     Int
+  patient       Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId Int?
+  appointment   Appointment?     @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  doctorId      Int
+  doctor        Doctor           @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  type          String // chief_complaint, history, examination, diagnosis, notes
+  notes         String           @db.Text
+  careFileId    Int?
+  careFile      PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
 
   @@index([careFileId])
   @@map("patient_histories")
@@ -826,37 +830,37 @@ model LabCategory {
 }
 
 model LabTest {
-  id          Int           @id @default(autoincrement())
+  id          Int                 @id @default(autoincrement())
   categoryId  Int
-  category    LabCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category    LabCategory         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   name        String
   code        String?
   unit        String?
-  normalRange String?       // e.g. "70-100 mg/dL"
+  normalRange String? // e.g. "70-100 mg/dL"
   /// Fee charged to the patient when this test is ordered (snapshot copied to order lines).
-  price       Float         @default(0)
-  isActive    Boolean       @default(true)
+  price       Float               @default(0)
+  isActive    Boolean             @default(true)
   orderItems  LabOrderItem[]
   disposables LabTestDisposable[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
   @@map("lab_tests")
 }
 
 /// Lab inventory consumed when a lab test result is completed (matched by LabInventoryItem.code per branch).
 model LabTestDisposable {
-  id           Int     @id @default(autoincrement())
-  labTestId    Int
-  labTest      LabTest @relation(fields: [labTestId], references: [id], onDelete: Cascade)
+  id               Int      @id @default(autoincrement())
+  labTestId        Int
+  labTest          LabTest  @relation(fields: [labTestId], references: [id], onDelete: Cascade)
   /// Matched to LabInventoryItem.code at the appointment branch; one unit = one quantity step (label = item.unit).
-  productCode  String
+  productCode      String
   /// Inventory units to deduct per completed test line, interpreted in `deductionUnitKey` (see LabInventoryUnit).
-  unitsPerTest Float
+  unitsPerTest     Float
   /// Which LabInventoryUnit.unitKey this line uses (e.g. base, pair, box). Stock is stored in base units.
-  deductionUnitKey String @default("base")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  deductionUnitKey String   @default("base")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([labTestId, productCode])
   @@index([labTestId])
@@ -864,76 +868,76 @@ model LabTestDisposable {
 }
 
 model LabOrder {
-  id             Int           @id @default(autoincrement())
-  appointmentId  Int
-  appointment    Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
-  patientId      Int
-  patient        Patient      @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  doctorId       Int
-  doctor         Doctor       @relation(fields: [doctorId], references: [id], onDelete: Restrict)
-  orderedById    Int?
-  orderedBy      User?        @relation("LabOrderCreatedBy", fields: [orderedById], references: [id], onDelete: SetNull)
-  status         String       @default("pending") // pending, completed, cancelled
-  notes          String?
+  id                   Int              @id @default(autoincrement())
+  appointmentId        Int
+  appointment          Appointment      @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  patientId            Int
+  patient              Patient          @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctorId             Int
+  doctor               Doctor           @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  orderedById          Int?
+  orderedBy            User?            @relation("LabOrderCreatedBy", fields: [orderedById], references: [id], onDelete: SetNull)
+  status               String           @default("pending") // pending, completed, cancelled
+  notes                String?
   /// Sum of line unit prices at order time (lab fee charged to patient account).
-  totalAmount    Float         @default(0)
+  totalAmount          Float            @default(0)
   /// Cash received at reception toward this order (see PatientPayment when linked).
-  labFeePaidAmount     Float   @default(0)
+  labFeePaidAmount     Float            @default(0)
   /// Discount/write-off applied at reception toward this order.
-  labFeeDiscountAmount Float   @default(0)
-  items          LabOrderItem[]
-  patientPayments PatientPayment[]
-  careFileId     Int?
-  careFile       PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  labFeeDiscountAmount Float            @default(0)
+  items                LabOrderItem[]
+  patientPayments      PatientPayment[]
+  careFileId           Int?
+  careFile             PatientCareFile? @relation(fields: [careFileId], references: [id], onDelete: SetNull)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
   @@index([careFileId])
   @@map("lab_orders")
 }
 
 model LabOrderItem {
-  id             Int       @id @default(autoincrement())
-  labOrderId     Int
-  labOrder       LabOrder  @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
-  labTestId      Int
-  labTest        LabTest   @relation(fields: [labTestId], references: [id], onDelete: Restrict)
+  id                    Int                @id @default(autoincrement())
+  labOrderId            Int
+  labOrder              LabOrder           @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+  labTestId             Int
+  labTest               LabTest            @relation(fields: [labTestId], references: [id], onDelete: Restrict)
   /// Test fee at time of order (from LabTest.price).
-  unitPrice      Float     @default(0)
-  resultValue    String?   @db.Text
-  resultUnit     String?
-  status         String    @default("pending") // pending, completed
-  recordedById   Int?
-  recordedBy     User?     @relation("LabResultRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
-  recordedAt     DateTime?
-  notes          String?
+  unitPrice             Float              @default(0)
+  resultValue           String?            @db.Text
+  resultUnit            String?
+  status                String             @default("pending") // pending, completed
+  recordedById          Int?
+  recordedBy            User?              @relation("LabResultRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedAt            DateTime?
+  notes                 String?
   /// Set when inventory disposables for this line were deducted (idempotent).
   disposablesDeductedAt DateTime?
-  createdAt      DateTime  @default(now())
-  stockMovements LabStockMovement[]
+  createdAt             DateTime           @default(now())
+  stockMovements        LabStockMovement[]
 
   @@map("lab_order_items")
 }
 
 /// Consumables and supplies held in the lab (separate from pharmacy Product stock).
 model LabInventoryItem {
-  id           Int       @id @default(autoincrement())
+  id           Int                @id @default(autoincrement())
   branchId     Int
-  branch       Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branch       Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
   name         String
   code         String
   /// Label for the smallest stock step (same as LabInventoryUnit key "base").
-  unit         String    @default("pcs")
+  unit         String             @default("pcs")
   /// On-hand quantity in base (smallest) units — see LabInventoryUnit with unitKey "base".
-  quantity     Int       @default(0)
+  quantity     Int                @default(0)
   /// Lab POS price per stock unit; default 0 for fee-free issue/sale tracking.
-  sellingPrice Float     @default(0)
-  isActive     Boolean   @default(true)
+  sellingPrice Float              @default(0)
+  isActive     Boolean            @default(true)
   labUnits     LabInventoryUnit[]
   movements    LabStockMovement[]
   labSaleItems LabSaleItem[]
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   @@unique([branchId, code])
   @@index([branchId])
@@ -985,23 +989,23 @@ model LabStockMovement {
 }
 
 model LabSale {
-  id            Int       @id @default(autoincrement())
-  branchId      Int
-  branch        Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  saleDate      DateTime  @default(now())
-  totalAmount   Float     @default(0)
+  id             Int                @id @default(autoincrement())
+  branchId       Int
+  branch         Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  saleDate       DateTime           @default(now())
+  totalAmount    Float              @default(0)
   /// Optional when totalAmount is 0 (fee-free).
-  paymentMethod String    @default("")
-  patientId     Int?
-  patient       Patient?  @relation(fields: [patientId], references: [id], onDelete: SetNull)
-  customerType  String    @default("walking")
-  notes         String?
-  createdById   Int?
-  createdBy     User?     @relation("LabSaleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  items         LabSaleItem[]
+  paymentMethod  String             @default("")
+  patientId      Int?
+  patient        Patient?           @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  customerType   String             @default("walking")
+  notes          String?
+  createdById    Int?
+  createdBy      User?              @relation("LabSaleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items          LabSaleItem[]
   stockMovements LabStockMovement[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   @@index([branchId, saleDate])
   @@map("lab_sales")
@@ -1024,24 +1028,24 @@ model LabSaleItem {
 // --- Prescriptions (Doctor prescribes from inventory) ---
 
 model Prescription {
-  id             Int                @id @default(autoincrement())
-  appointmentId  Int
-  appointment    Appointment        @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
-  patientId      Int
-  patient        Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  doctorId       Int
-  doctor         Doctor             @relation(fields: [doctorId], references: [id], onDelete: Restrict)
-  createdById    Int?
-  createdBy      User?              @relation("PrescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  id            Int                @id @default(autoincrement())
+  appointmentId Int
+  appointment   Appointment        @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  patientId     Int
+  patient       Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctorId      Int
+  doctor        Doctor             @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  createdById   Int?
+  createdBy     User?              @relation("PrescriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   /// Urgent / home-visit style Rx (multiple allowed per patient; filter on Patient invoice).
-  isEmergency    Boolean            @default(false)
-  status         String             @default("pending") // pending, dispensed, cancelled
-  notes          String?
-  items          PrescriptionItem[]
-  careFileId     Int?
-  careFile       PatientCareFile?  @relation(fields: [careFileId], references: [id], onDelete: SetNull)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  isEmergency   Boolean            @default(false)
+  status        String             @default("pending") // pending, dispensed, cancelled
+  notes         String?
+  items         PrescriptionItem[]
+  careFileId    Int?
+  careFile      PatientCareFile?   @relation(fields: [careFileId], references: [id], onDelete: SetNull)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
   @@index([careFileId])
   @@map("prescriptions")
@@ -1054,9 +1058,9 @@ model PrescriptionItem {
   productId      Int
   product        Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
   quantity       Int
-  dosage         String?      // e.g. "1 tablet twice daily"
+  dosage         String? // e.g. "1 tablet twice daily"
   instructions   String?
-  dispensedQty   Int?        @default(0) // how much was dispensed
+  dispensedQty   Int?         @default(0) // how much was dispensed
   createdAt      DateTime     @default(now())
 
   @@map("prescription_items")
@@ -1076,16 +1080,16 @@ model ExpenseCategory {
 }
 
 model Expense {
-  id          Int              @id @default(autoincrement())
+  id          Int             @id @default(autoincrement())
   categoryId  Int
-  category    ExpenseCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   amount      Float
-  expenseDate DateTime         @db.Date
+  expenseDate DateTime        @db.Date
   description String?
   createdById Int?
-  createdBy   User?            @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdBy   User?           @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   @@map("expenses")
 }
@@ -1093,55 +1097,55 @@ model Expense {
 // --- Finance: accounts, payment methods, ledger ---
 
 model FinanceAccount {
-  id              Int       @id @default(autoincrement())
-  name            String
-  code            String?   @unique
-  type            String    @default("cash") // cash, bank, mobile, other
-  openingBalance  Float     @default(0)
-  isActive        Boolean   @default(true)
-  paymentMethods  LedgerPaymentMethod[]
-  transactions    AccountTransaction[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             Int                   @id @default(autoincrement())
+  name           String
+  code           String?               @unique
+  type           String                @default("cash") // cash, bank, mobile, other
+  openingBalance Float                 @default(0)
+  isActive       Boolean               @default(true)
+  paymentMethods LedgerPaymentMethod[]
+  transactions   AccountTransaction[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   @@map("finance_accounts")
 }
 
 model LedgerPaymentMethod {
-  id        Int            @id @default(autoincrement())
-  name      String
-  accountId Int
-  account   FinanceAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  isActive  Boolean        @default(true)
-  transactions AccountTransaction[]
-  purchases Purchase[]
-  patientPayments PatientPayment[]
+  id               Int                  @id @default(autoincrement())
+  name             String
+  accountId        Int
+  account          FinanceAccount       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  isActive         Boolean              @default(true)
+  transactions     AccountTransaction[]
+  purchases        Purchase[]
+  patientPayments  PatientPayment[]
   doctorVisitCards DoctorVisitCard[]
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@map("ledger_payment_methods")
 }
 
 model AccountTransaction {
-  id                Int       @id @default(autoincrement())
+  id                Int                  @id @default(autoincrement())
   accountId         Int
-  account           FinanceAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  kind              String    // deposit | withdrawal
+  account           FinanceAccount       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  kind              String // deposit | withdrawal
   amount            Float
   description       String?
-  saleId            Int?      @unique
-  sale              Sale?     @relation(fields: [saleId], references: [id], onDelete: SetNull)
-  purchaseId        Int?      @unique
-  purchase          Purchase? @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  saleId            Int?                 @unique
+  sale              Sale?                @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  purchaseId        Int?                 @unique
+  purchase          Purchase?            @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
   paymentMethodId   Int?
   paymentMethod     LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
-  transactionDate   DateTime  @default(now())
+  transactionDate   DateTime             @default(now())
   createdById       Int?
-  createdBy         User?     @relation("FinanceTransactionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  doctorVisitCardId Int?      @unique
-  doctorVisitCard   DoctorVisitCard? @relation(fields: [doctorVisitCardId], references: [id], onDelete: SetNull)
-  createdAt         DateTime  @default(now())
+  createdBy         User?                @relation("FinanceTransactionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  doctorVisitCardId Int?                 @unique
+  doctorVisitCard   DoctorVisitCard?     @relation(fields: [doctorVisitCardId], references: [id], onDelete: SetNull)
+  createdAt         DateTime             @default(now())
 
   @@index([accountId, transactionDate])
   @@map("account_transactions")
@@ -1165,4 +1169,74 @@ model AuditLog {
   @@index([module, createdAt])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+/// Admin-built forms (Google Forms–style builder). Field types are stored as strings; see app validation.
+model CustomForm {
+  id          Int                  @id @default(autoincrement())
+  title       String
+  description String?              @db.Text
+  isPublished Boolean              @default(false)
+  createdById Int?
+  createdBy   User?                @relation("CustomFormCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  fields      CustomFormField[]
+  responses   CustomFormResponse[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@map("custom_forms")
+}
+
+model CustomFormField {
+  id          Int                 @id @default(autoincrement())
+  formId      Int
+  form        CustomForm          @relation(fields: [formId], references: [id], onDelete: Cascade)
+  sortOrder   Int                 @default(0)
+  /// SHORT_TEXT | LONG_TEXT | EMAIL | NUMBER | DATE | CHECKBOX | RADIO | SELECT | MULTI_CHECK
+  fieldType   String
+  label       String
+  placeholder String?
+  helpText    String?             @db.Text
+  required    Boolean             @default(false)
+  /// JSON array of option labels for RADIO, SELECT, MULTI_CHECK
+  options     Json?
+
+  @@index([formId, sortOrder])
+  @@map("custom_form_fields")
+}
+
+/// One filled instance of a custom form for a client (often linked to a booking).
+model CustomFormResponse {
+  id            Int                @id @default(autoincrement())
+  formId        Int
+  form          CustomForm         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  patientId     Int
+  patient       Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointmentId Int?
+  appointment   Appointment?       @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  submittedById Int?
+  submittedBy   User?              @relation("CustomFormResponseSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
+  answers       CustomFormAnswer[]
+  submittedAt   DateTime           @default(now())
+
+  @@index([formId, submittedAt])
+  @@index([patientId, submittedAt])
+  @@index([appointmentId])
+  @@map("custom_form_responses")
+}
+
+/// Answers store label/type snapshots so form definitions can change without breaking history.
+model CustomFormAnswer {
+  id         Int                @id @default(autoincrement())
+  responseId Int
+  response   CustomFormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  fieldId    Int
+  fieldLabel String
+  fieldType  String
+  /// Plain text, JSON array for MULTI_CHECK, "1"/"0" for CHECKBOX
+  value      String             @db.Text
+
+  @@unique([responseId, fieldId])
+  @@index([responseId])
+  @@map("custom_form_answers")
 }

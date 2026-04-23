@@ -3,8 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Swal from "sweetalert2";
-import "sweetalert2/dist/sweetalert2.min.css";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import DateField from "@/components/form/DateField";
 import { authFetch } from "@/lib/api";
@@ -465,22 +463,15 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
             </div>
           )}
           <div className="flex flex-wrap gap-2 border-t border-gray-200 pt-4 dark:border-gray-700">
-            {(hasPermission("patient_history.create") || hasPermission("patient_history.view")) && (
-              <button
-                type="button"
+            {(hasPermission("patient_history.create") ||
+              hasPermission("patient_history.view") ||
+              hasPermission("forms.view")) && (
+              <Link
+                href={`/appointments/${a.id}/clinic-forms`}
                 className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm text-white hover:bg-brand-600"
-                onClick={() => {
-                  void Swal.fire({
-                    icon: "info",
-                    title: "Sorry, please wait",
-                    text: "We are working on note forms.",
-                    confirmButtonText: "OK",
-                    confirmButtonColor: "#465fff",
-                  });
-                }}
               >
                 Clinic note
-              </button>
+              </Link>
             )}
             {(hasPermission("lab.create") || hasPermission("lab.view")) && (
               <Link
@@ -501,6 +492,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

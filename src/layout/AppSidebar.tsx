@@ -59,6 +59,7 @@ type MenuCategory =
   | "financial"
   | "accounting"
   | "services"
+  | "forms"
   | "settings"
   | "activities";
 
@@ -226,6 +227,11 @@ const reportsItems: NavItem[] = [
         path: "/reports/calendar-visits",
         permission: "appointments.view",
       },
+      {
+        name: "Form responses",
+        path: "/reports/form-submissions",
+        permission: "forms.view",
+      },
     ],
   },
 ];
@@ -283,6 +289,19 @@ const servicesItems: NavItem[] = [
   },
 ];
 
+const formsItems: NavItem[] = [
+  {
+    icon: <DocsIcon />,
+    name: "Forms",
+    path: "/forms",
+    permission: "forms.view",
+    subItems: [
+      { name: "All forms", path: "/forms", permission: "forms.view", exact: true },
+      { name: "New form", path: "/forms/new", permission: "forms.create" },
+    ],
+  },
+];
+
 // Settings: branches, doctors, system preferences (settings.* + appointments.* for clinic setup)
 const settingsItems: NavItem[] = [
   {
@@ -291,7 +310,7 @@ const settingsItems: NavItem[] = [
     path: "/settings",
     permissionAny: ["settings.view", "appointments.view", "audit.view", "audit.view_admins"],
     subItems: [
-      { name: "Overview", path: "/settings", permission: "settings.view" },
+      { name: "Overview", path: "/settings", permission: "settings.view", exact: true },
       { name: "Branches & access", path: "/settings/branches", permission: "settings.manage" },
       { name: "Referred from", path: "/settings/referral-sources", permission: "settings.manage" },
       { name: "Cities & villages", path: "/settings/cities-villages", permission: "settings.manage" },
@@ -386,6 +405,7 @@ const AppSidebar: React.FC = () => {
   const financialNav = useMemo(() => filterByPermission(financialItems, hasPermission), [hasPermission]);
   const accountingNav = useMemo(() => filterByPermission(accountingItems, hasPermission), [hasPermission]);
   const servicesNav = useMemo(() => filterByPermission(servicesItems, hasPermission), [hasPermission]);
+  const formsNav = useMemo(() => filterByPermission(formsItems, hasPermission), [hasPermission]);
   const settingsNav = useMemo(() => filterByPermission(settingsItems, hasPermission), [hasPermission]);
   const activitiesNav = useMemo(() => filterByPermission(activitiesItems, hasPermission), [hasPermission]);
 
@@ -435,6 +455,7 @@ const AppSidebar: React.FC = () => {
       "financial",
       "accounting",
       "services",
+      "forms",
       "settings",
       "activities",
     ];
@@ -463,9 +484,11 @@ const AppSidebar: React.FC = () => {
                             ? accountingNav
                             : menuType === "services"
                               ? servicesNav
-                              : menuType === "settings"
-                                ? settingsNav
-                                : activitiesNav;
+                              : menuType === "forms"
+                                ? formsNav
+                                : menuType === "settings"
+                                  ? settingsNav
+                                  : activitiesNav;
 
       items.forEach((nav, index) => {
         if (nav.subItems) {
@@ -500,6 +523,7 @@ const AppSidebar: React.FC = () => {
     financialNav,
     accountingNav,
     servicesNav,
+    formsNav,
     settingsNav,
     activitiesNav,
     isActive,
@@ -759,6 +783,17 @@ const AppSidebar: React.FC = () => {
                   {isExpanded || isHovered || isMobileOpen ? "Services" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(servicesNav, "services")}
+              </div>
+            )}
+
+            {formsNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Forms" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(formsNav, "forms")}
               </div>
             )}
 

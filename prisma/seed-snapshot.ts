@@ -77,6 +77,10 @@ export const SNAPSHOT_DELEGATES_ORDER = [
   "patientHistory",
   "accountTransaction",
   "auditLog",
+  "customForm",
+  "customFormField",
+  "customFormResponse",
+  "customFormAnswer",
 ] as const;
 
 /** Physical table names (@@map) — used for truncate/delete-all. */

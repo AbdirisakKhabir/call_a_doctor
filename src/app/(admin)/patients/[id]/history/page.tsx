@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { CalenderIcon, DocsIcon, ListIcon, UserCircleIcon, BoxCubeIcon } from "@/icons";
+import { CalenderIcon } from "@/icons";
 
 type ChartPatient = {
   id: number;
@@ -54,6 +54,28 @@ type LabOrderRow = {
   }[];
 };
 
+type FormAnswerRow = {
+  id: number;
+  fieldId: number;
+  fieldLabel: string;
+  fieldType: string;
+  value: string;
+};
+
+type FormResponseRow = {
+  id: number;
+  submittedAt: string;
+  form: { id: number; title: string };
+  appointment: {
+    id: number;
+    appointmentDate: string;
+    startTime: string;
+    branch: { id: number; name: string };
+  } | null;
+  submittedBy: { id: number; name: string | null; email: string } | null;
+  answers: FormAnswerRow[];
+};
+
 type PrescriptionRow = {
   id: number;
   status: string;
@@ -96,6 +118,19 @@ function formatDate(d: string) {
   });
 }
 
+function formatFormAnswerDisplay(fieldType: string, value: string): string {
+  if (fieldType === "CHECKBOX") return value === "1" ? "Yes" : "No";
+  if (fieldType === "MULTI_CHECK") {
+    try {
+      const a = JSON.parse(value) as unknown;
+      return Array.isArray(a) ? a.join(", ") : value;
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
 export default function PatientHistoryViewPage() {
   const params = useParams();
   const idParam = params?.id;
@@ -111,9 +146,11 @@ export default function PatientHistoryViewPage() {
     clinicalNotes: ClinicalNote[];
     labOrders: LabOrderRow[];
     prescriptions: PrescriptionRow[];
+    formResponses: FormResponseRow[];
     canViewNotes: boolean;
     canViewLabs: boolean;
     canViewPrescriptions: boolean;
+    canViewFormResponses: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -125,7 +162,13 @@ export default function PatientHistoryViewPage() {
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Failed to load");
-        if (!cancelled) setData(json);
+        if (!cancelled) {
+          setData({
+            ...json,
+            formResponses: Array.isArray(json.formResponses) ? json.formResponses : [],
+            canViewFormResponses: Boolean(json.canViewFormResponses),
+          });
+        }
       })
       .catch((e: Error) => {
         if (!cancelled) setError(e.message || "Failed to load");
@@ -185,54 +228,45 @@ export default function PatientHistoryViewPage() {
           {error}
         </div>
       ) : data ? (
-        <div className="space-y-8">
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900/40">
-            <div className="border-b border-gray-100 bg-gradient-to-r from-brand-500/10 to-violet-500/5 px-6 py-5 dark:border-gray-800">
-              <div className="flex flex-wrap items-start gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white shadow dark:bg-gray-800">
-                  <UserCircleIcon className="h-8 w-8 text-brand-500" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">{data.patient.name}</h1>
-                  <p className="mt-0.5 font-mono text-sm text-gray-500">{data.patient.patientCode}</p>
-                  <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
-                    {data.patient.phone && <span>Phone: {data.patient.phone}</span>}
-                    {data.patient.mobile && <span>Mobile: {data.patient.mobile}</span>}
-                    {data.patient.email && <span>{data.patient.email}</span>}
-                    {data.patient.gender && <span>{data.patient.gender}</span>}
-                    {data.patient.dateOfBirth && (
-                      <span>DOB {new Date(data.patient.dateOfBirth).toLocaleDateString()}</span>
-                    )}
-                    <span className="font-mono">Balance ${data.patient.accountBalance.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-              {data.patient.notes?.trim() && (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
-                  <span className="font-semibold">Chart alerts / demographics notes: </span>
-                  {data.patient.notes}
-                </div>
-              )}
+        <div className="space-y-6">
+          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-white/3 md:p-6">
+            <div className="mb-4 border-b border-gray-100 pb-3 dark:border-gray-800">
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{data.patient.name}</h1>
+              <p className="mt-0.5 font-mono text-sm text-gray-500 dark:text-gray-400">{data.patient.patientCode}</p>
             </div>
-          </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600 dark:text-gray-400">
+              {data.patient.phone && <span>Phone: {data.patient.phone}</span>}
+              {data.patient.mobile && <span>Mobile: {data.patient.mobile}</span>}
+              {data.patient.email && <span>{data.patient.email}</span>}
+              {data.patient.gender && <span>{data.patient.gender}</span>}
+              {data.patient.dateOfBirth && (
+                <span>DOB {new Date(data.patient.dateOfBirth).toLocaleDateString()}</span>
+              )}
+              <span className="font-medium text-gray-800 dark:text-gray-200">
+                Balance ${data.patient.accountBalance.toFixed(2)}
+              </span>
+            </div>
+            {data.patient.notes?.trim() && (
+              <div className="mt-4 rounded-lg border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/35 dark:bg-amber-950/25 dark:text-amber-100">
+                <span className="font-medium">Chart notes: </span>
+                {data.patient.notes}
+              </div>
+            )}
+          </section>
 
           {data.canViewNotes && (
-            <section className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900/40">
-            <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 dark:border-gray-800">
-              <ListIcon className="h-6 w-6 text-brand-500" />
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Clinical notes</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Encounter documentation by type and date</p>
-              </div>
+            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-white/3 md:p-6">
+            <div className="mb-4 border-b border-gray-100 pb-3 dark:border-gray-800">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">Clinical notes</h2>
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {data.clinicalNotes.length === 0 ? (
-                <p className="px-6 py-10 text-center text-sm text-gray-500">No clinical notes recorded yet.</p>
+                <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No clinical notes yet.</p>
               ) : (
                 data.clinicalNotes.map((n) => (
-                  <article key={n.id} className="px-6 py-4">
+                  <article key={n.id} className="py-4 first:pt-0">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                      <span className="rounded-md bg-gray-100 px-2 py-0.5 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
                         {noteTypeLabel(n.type)}
                       </span>
                       <span>{formatDate(n.createdAt)}</span>
@@ -252,32 +286,77 @@ export default function PatientHistoryViewPage() {
                 ))
               )}
             </div>
-          </section>
+            </section>
           )}
 
           {!data.canViewNotes && (
             <p className="text-sm text-gray-500 dark:text-gray-400">You do not have permission to view clinical notes.</p>
           )}
 
-          {data.canViewLabs && (
-            <section className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900/40">
-            <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 dark:border-gray-800">
-              <DocsIcon className="h-6 w-6 text-brand-500" />
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Laboratory orders &amp; results</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Tests, fees, and recorded results</p>
+          {data.canViewFormResponses && (
+            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-white/3 md:p-6">
+              <div className="mb-4 border-b border-gray-100 pb-3 dark:border-gray-800">
+                <h2 className="text-base font-semibold text-gray-900 dark:text-white">Custom forms</h2>
               </div>
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {data.formResponses.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No form responses yet.</p>
+                ) : (
+                  data.formResponses.map((r) => (
+                    <article key={r.id} className="py-4 first:pt-0">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <span className="rounded-md bg-gray-100 px-2 py-0.5 font-medium text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+                          {r.form.title}
+                        </span>
+                        <span>{formatDate(r.submittedAt)}</span>
+                        {r.submittedBy?.name || r.submittedBy?.email ? (
+                          <>
+                            <span>·</span>
+                            <span>{r.submittedBy?.name || r.submittedBy?.email}</span>
+                          </>
+                        ) : null}
+                        {r.appointment && (
+                          <>
+                            <span>·</span>
+                            <span>
+                              Visit {formatDate(r.appointment.appointmentDate)} {r.appointment.startTime} ·{" "}
+                              {r.appointment.branch.name}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <dl className="mt-3 space-y-1.5 text-sm">
+                        {r.answers.map((a) => (
+                          <div key={a.id} className="grid gap-0.5 sm:grid-cols-[minmax(0,12rem)_1fr] sm:gap-3">
+                            <dt className="font-medium text-gray-700 dark:text-gray-300">{a.fieldLabel}</dt>
+                            <dd className="whitespace-pre-wrap text-gray-800 dark:text-gray-200">
+                              {formatFormAnswerDisplay(a.fieldType, a.value)}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
+          )}
+
+          {data.canViewLabs && (
+            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-white/3 md:p-6">
+            <div className="mb-4 border-b border-gray-100 pb-3 dark:border-gray-800">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">Laboratory orders &amp; results</h2>
             </div>
-            <div className="space-y-4 p-6">
+            <div className="space-y-4">
               {data.labOrders.length === 0 ? (
-                <p className="text-center text-sm text-gray-500">No lab orders for this client.</p>
+                <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">No lab orders for this client.</p>
               ) : (
                 data.labOrders.map((order) => (
                   <div
                     key={order.id}
-                    className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-800/30"
+                    className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900/50">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-gray-800 dark:bg-gray-800/40">
                       <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                         <CalenderIcon className="h-4 w-4" />
                         {formatDate(order.appointment.appointmentDate)} · {order.appointment.startTime}
@@ -286,7 +365,7 @@ export default function PatientHistoryViewPage() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs text-gray-500">Dr. {order.doctor.name}</span>
-                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium uppercase dark:bg-gray-700">{order.status}</span>
+                        <span className="rounded-md bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-800 uppercase dark:bg-gray-700 dark:text-gray-200">{order.status}</span>
                         <span className="font-mono text-sm font-semibold text-gray-800 dark:text-gray-200">
                           ${(order.totalAmount ?? 0).toFixed(2)}
                         </span>
@@ -328,7 +407,7 @@ export default function PatientHistoryViewPage() {
                 ))
               )}
             </div>
-          </section>
+            </section>
           )}
 
           {!data.canViewLabs && (
@@ -336,24 +415,20 @@ export default function PatientHistoryViewPage() {
           )}
 
           {data.canViewPrescriptions && (
-            <section className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900/40">
-            <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 dark:border-gray-800">
-              <BoxCubeIcon className="h-6 w-6 text-brand-500" />
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Medications &amp; prescriptions</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Prescribed products, dose, and instructions</p>
-              </div>
+            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-white/3 md:p-6">
+            <div className="mb-4 border-b border-gray-100 pb-3 dark:border-gray-800">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">Medications &amp; prescriptions</h2>
             </div>
-            <div className="space-y-4 p-6">
+            <div className="space-y-4">
               {data.prescriptions.length === 0 ? (
-                <p className="text-center text-sm text-gray-500">No prescriptions for this client.</p>
+                <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">No prescriptions for this client.</p>
               ) : (
                 data.prescriptions.map((rx) => (
                   <div
                     key={rx.id}
-                    className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-800/30"
+                    className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900/50">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-gray-800 dark:bg-gray-800/40">
                       <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                         <CalenderIcon className="h-4 w-4" />
                         {formatDate(rx.appointment.appointmentDate)} · {rx.appointment.startTime}
@@ -363,11 +438,11 @@ export default function PatientHistoryViewPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs text-gray-500">Dr. {rx.doctor.name}</span>
                         {rx.isEmergency && (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                          <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
                             Emergency
                           </span>
                         )}
-                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium uppercase dark:bg-gray-700">{rx.status}</span>
+                        <span className="rounded-md bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-800 uppercase dark:bg-gray-700 dark:text-gray-200">{rx.status}</span>
                       </div>
                     </div>
                     {rx.notes?.trim() && (
@@ -390,7 +465,7 @@ export default function PatientHistoryViewPage() {
                 ))
               )}
             </div>
-          </section>
+            </section>
           )}
 
           {!data.canViewPrescriptions && (
