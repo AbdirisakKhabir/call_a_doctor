@@ -559,6 +559,13 @@ export default function PatientsPage() {
                           <>
                             <DropdownItem
                               tag="a"
+                              href={`/patients/${p.id}/work-progress`}
+                              onItemClick={() => setClientActionsMenuId(null)}
+                            >
+                              Work progress
+                            </DropdownItem>
+                            <DropdownItem
+                              tag="a"
                               href={`/patients/${p.id}/history`}
                               onItemClick={() => setClientActionsMenuId(null)}
                             >

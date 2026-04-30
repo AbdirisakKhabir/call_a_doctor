@@ -1,25 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { serializePatient } from "@/lib/patient-name";
+import { buildClientInvoicePayload } from "@/lib/client-invoice-build";
 
-export type ConsolidatedInvoiceLine = {
-  prescriptionId: number;
-  prescriptionDate: string;
-  doctorName: string;
-  branchName: string;
-  productId: number;
-  productName: string;
-  productCode: string;
-  quantity: number;
-  unitPrice: number;
-  lineTotal: number;
-  dosage: string | null;
-  instructions: string | null;
-};
+/** @deprecated Use types from @/lib/client-invoice-build */
+export type ConsolidatedInvoiceLine = import("@/lib/client-invoice-build").ClientInvoiceLine;
 
 /**
- * Build one consolidated medication invoice from multiple prescriptions (same patient, any dates).
+ * Legacy: consolidated invoice from prescriptions only.
+ * Prefer POST /api/finance/client-invoice/build for mixed billing.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -28,11 +17,9 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const idsRaw = body.prescriptionIds;
+    const includeVisitServiceFees = body.includeVisitServiceFees === true;
     if (!Array.isArray(idsRaw) || idsRaw.length === 0) {
-      return NextResponse.json(
-        { error: "Select at least one prescription." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Select at least one prescription." }, { status: 400 });
     }
 
     const prescriptionIds = [...new Set(idsRaw.map((x: unknown) => Number(x)).filter((n) => Number.isInteger(n) && n > 0))];
@@ -40,119 +27,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid prescription ids." }, { status: 400 });
     }
 
-    const prescriptions = await prisma.prescription.findMany({
-      where: { id: { in: prescriptionIds } },
-      include: {
-        patient: {
-          select: {
-            id: true,
-            patientCode: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
-            mobile: true,
-            email: true,
-            address: true,
-          },
-        },
-        doctor: { select: { id: true, name: true } },
-        appointment: {
-          include: {
-            branch: { select: { id: true, name: true, address: true, phone: true } },
-          },
-        },
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-                sellingPrice: true,
-                unit: true,
-              },
-            },
-          },
-        },
+    const first = await prisma.prescription.findFirst({
+      where: { id: prescriptionIds[0] },
+      select: {
+        patientId: true,
+        appointment: { select: { branchId: true } },
       },
     });
-
-    if (prescriptions.length !== prescriptionIds.length) {
-      return NextResponse.json(
-        { error: "One or more prescriptions were not found." },
-        { status: 400 }
-      );
+    if (!first) {
+      return NextResponse.json({ error: "Prescription not found." }, { status: 400 });
     }
 
-    const patientIds = new Set(prescriptions.map((p) => p.patientId));
-    if (patientIds.size !== 1) {
-      return NextResponse.json(
-        { error: "All selected prescriptions must be for the same client." },
-        { status: 400 }
-      );
-    }
+    const patientId = first.patientId;
+    const branchId = first.appointment.branchId;
 
-    const patient = prescriptions[0].patient;
-
-    const sorted = [...prescriptions].sort(
-      (a, b) =>
-        new Date(a.appointment.appointmentDate).getTime() -
-        new Date(b.appointment.appointmentDate).getTime()
-    );
-
-    const lines: ConsolidatedInvoiceLine[] = [];
-    let subtotal = 0;
-
-    for (const rx of sorted) {
-      const apptDate = rx.appointment.appointmentDate;
-      const dateStr =
-        apptDate instanceof Date
-          ? apptDate.toISOString().slice(0, 10)
-          : String(apptDate).slice(0, 10);
-      const branchName = rx.appointment.branch.name;
-      const doctorName = rx.doctor.name;
-
-      for (const item of rx.items) {
-        const unitPrice = Math.max(0, item.product.sellingPrice ?? 0);
-        const lineTotal = unitPrice * item.quantity;
-        subtotal += lineTotal;
-        lines.push({
-          prescriptionId: rx.id,
-          prescriptionDate: dateStr,
-          doctorName,
-          branchName,
-          productId: item.productId,
-          productName: item.product.name,
-          productCode: item.product.code,
-          quantity: item.quantity,
-          unitPrice,
-          lineTotal,
-          dosage: item.dosage,
-          instructions: item.instructions,
-        });
-      }
-    }
-
-    const prescriptionSummaries = sorted.map((rx) => {
-      const d = rx.appointment.appointmentDate;
-      const dateStr = d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
-      return {
-        id: rx.id,
-        prescriptionDate: dateStr,
-        doctorName: rx.doctor.name,
-        branchName: rx.appointment.branch.name,
-        notes: rx.notes,
-      };
+    const result = await buildClientInvoicePayload({
+      userId: auth.userId,
+      patientId,
+      branchId,
+      prescriptionIds,
+      labOrderIds: [],
+      appointmentIds: [],
+      includeVisitServiceFeesFromPrescriptions: includeVisitServiceFees,
     });
 
-    return NextResponse.json({
-      patient: serializePatient(patient),
-      generatedAt: new Date().toISOString(),
-      prescriptions: prescriptionSummaries,
-      lines,
-      subtotal,
-      currency: "USD",
-    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+
+    return NextResponse.json(result.payload);
   } catch (e) {
     console.error("Consolidated invoice error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });

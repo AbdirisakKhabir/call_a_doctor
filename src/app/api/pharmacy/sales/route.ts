@@ -5,6 +5,7 @@ import {
   getPharmacyReportListBranchScope,
   userCanTransactInventoryAtBranch,
 } from "@/lib/branch-access";
+import { userHasPermission } from "@/lib/permissions";
 import { lineQuantityToBaseUnits, parseSaleUnit } from "@/lib/product-packaging";
 import { getSaleUnitForProduct } from "@/lib/product-sale-units";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
@@ -23,6 +24,8 @@ export async function GET(req: NextRequest) {
     const from = searchParams.get("from");
     const to = searchParams.get("to");
     const branchIdParam = searchParams.get("branchId");
+    const appointmentIdParam = searchParams.get("appointmentId");
+    const kindParam = searchParams.get("kind")?.trim() || null;
     const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(searchParams);
 
     const dateFilter: { gte?: Date; lte?: Date } = {};
@@ -37,9 +40,42 @@ export async function GET(req: NextRequest) {
     const where: {
       branchId?: number | { in: number[] };
       saleDate?: { gte?: Date; lte?: Date };
+      appointmentId?: number;
+      kind?: string;
     } = {
       ...(hasDate ? { saleDate: dateFilter } : {}),
     };
+
+    if (kindParam) {
+      if (kindParam !== "appointment") {
+        return NextResponse.json({ error: "Invalid kind filter" }, { status: 400 });
+      }
+      const canSeeKind =
+        (await userHasPermission(auth.userId, "pharmacy.view")) ||
+        (await userHasPermission(auth.userId, "pharmacy.pos")) ||
+        (await userHasPermission(auth.userId, "appointments.view")) ||
+        (await userHasPermission(auth.userId, "accounts.view")) ||
+        (await userHasPermission(auth.userId, "accounts.reports"));
+      if (!canSeeKind) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      where.kind = "appointment";
+    }
+
+    if (appointmentIdParam) {
+      const aid = Number(appointmentIdParam);
+      if (!Number.isInteger(aid) || aid <= 0) {
+        return NextResponse.json({ error: "Invalid appointment id" }, { status: 400 });
+      }
+      const canSee =
+        (await userHasPermission(auth.userId, "pharmacy.view")) ||
+        (await userHasPermission(auth.userId, "pharmacy.pos")) ||
+        (await userHasPermission(auth.userId, "appointments.view"));
+      if (!canSee) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      where.appointmentId = aid;
+    }
 
     if (listScope !== "all") {
       where.branchId = { in: listScope };

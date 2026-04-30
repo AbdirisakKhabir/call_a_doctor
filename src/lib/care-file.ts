@@ -12,6 +12,13 @@ function fileCodeForNew(patientId: number): string {
   return `CF-${patientId}-${Date.now()}`;
 }
 
+export function patientPaymentCategoryLabel(key: string): string {
+  if (key === "prescription") return "Prescription";
+  if (key === "pharmacy_credit") return "Pharmacy credits";
+  if (key === "laboratory") return "Laboratory (lab fee)";
+  return "Appointment fee";
+}
+
 /** Returns the patient’s single open care file, or creates one with a unique code. */
 export async function ensureOpenCareFile(tx: Tx, patientId: number) {
   const existing = await tx.patientCareFile.findFirst({
@@ -100,6 +107,7 @@ export async function buildCareFileInvoicePayload(prisma: PrismaClient | Tx, car
     prescriptions,
     histories,
     payments,
+    pharmacySales,
   ] = await Promise.all([
     prisma.appointment.findMany({
       where: { careFileId },
@@ -151,6 +159,26 @@ export async function buildCareFileInvoicePayload(prisma: PrismaClient | Tx, car
       where: { careFileId },
       orderBy: { createdAt: "asc" },
       include: { paymentMethod: { select: { name: true } } },
+    }),
+    prisma.sale.findMany({
+      where: {
+        patientId: file.patientId,
+        kind: "pos",
+        saleDate: {
+          gte: file.openedAt,
+          ...(file.closedAt ? { lte: file.closedAt } : {}),
+        },
+      },
+      orderBy: [{ saleDate: "asc" }, { id: "asc" }],
+      include: {
+        branch: { select: { name: true } },
+        items: {
+          include: {
+            product: { select: { name: true, code: true } },
+            service: { select: { name: true } },
+          },
+        },
+      },
     }),
   ]);
 
@@ -207,7 +235,13 @@ export async function buildCareFileInvoicePayload(prisma: PrismaClient | Tx, car
   }
   prescriptionEstimated = roundMoney(prescriptionEstimated);
 
-  const chargesTotal = roundMoney(appointmentTotal + labTotal + visitOutstanding + prescriptionEstimated);
+  const pharmacyPosTotal = roundMoney(
+    pharmacySales.reduce((s, sale) => s + (sale.totalAmount ?? 0), 0)
+  );
+
+  const chargesTotal = roundMoney(
+    appointmentTotal + labTotal + visitOutstanding + prescriptionEstimated + pharmacyPosTotal
+  );
 
   const paymentsTotal = roundMoney(
     payments.reduce((s, p) => s + (p.amount ?? 0) + (p.discount ?? 0), 0)
@@ -249,6 +283,24 @@ export async function buildCareFileInvoicePayload(prisma: PrismaClient | Tx, car
         status: o.status,
         tests: o.items.map((i) => ({ name: i.labTest.name, unitPrice: roundMoney(i.unitPrice) })),
       })),
+      pharmacySales: pharmacySales.map((s) => ({
+        id: s.id,
+        saleDate: s.saleDate.toISOString(),
+        branch: s.branch?.name ?? "—",
+        paymentMethod: s.paymentMethod,
+        totalAmount: roundMoney(s.totalAmount ?? 0),
+        discount: roundMoney(s.discount ?? 0),
+        lines: s.items.map((it) => ({
+          label:
+            it.product?.name ??
+            it.service?.name ??
+            "Line item",
+          code: it.product?.code ?? null,
+          quantity: it.quantity,
+          unitPrice: roundMoney(it.unitPrice),
+          lineTotal: roundMoney(it.totalAmount),
+        })),
+      })),
       visitCards: visitLines,
       prescriptions: rxLines,
       clinicalNotes: histories.map((h) => ({
@@ -264,7 +316,7 @@ export async function buildCareFileInvoicePayload(prisma: PrismaClient | Tx, car
         createdAt: p.createdAt.toISOString(),
         amount: roundMoney(p.amount),
         discount: roundMoney(p.discount ?? 0),
-        category: p.category,
+        category: patientPaymentCategoryLabel(p.category),
         paymentMethod: p.paymentMethod?.name ?? null,
         notes: p.notes,
       })),
@@ -274,6 +326,7 @@ export async function buildCareFileInvoicePayload(prisma: PrismaClient | Tx, car
       laboratory: labTotal,
       visitCardsOutstanding: visitOutstanding,
       prescriptionsEstimated: prescriptionEstimated,
+      pharmacyPos: pharmacyPosTotal,
       charges: chargesTotal,
       payments: paymentsTotal,
       remainingOnFile,

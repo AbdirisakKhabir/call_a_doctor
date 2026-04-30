@@ -156,6 +156,11 @@ export default function LabTestDisposablesFields(props: Props) {
     setDispError("");
     const units = Number(newDispUnits);
     const code = newDispCode.trim().toUpperCase();
+    const branchNum = disposableBranchId ? Number(disposableBranchId) : NaN;
+    if (!Number.isInteger(branchNum) || branchNum <= 0) {
+      setDispError("Select a branch before adding disposables (needed to validate product codes).");
+      return;
+    }
     if (!code || !Number.isFinite(units) || units <= 0) {
       setDispError("Enter a product code and a positive number of units per test.");
       return;
@@ -275,7 +280,7 @@ export default function LabTestDisposablesFields(props: Props) {
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           Test disposables
-          <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">· multiple per test</span>
+          <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">(optional)</span>
         </h2>
         {disposableCount > 0 ? (
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -283,9 +288,9 @@ export default function LabTestDisposablesFields(props: Props) {
           </p>
         ) : null}
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Stock is tracked in <strong className="font-medium text-gray-600 dark:text-gray-300">base</strong> units on the
-          lab line. Choose which packaging unit this line deducts (e.g. pairs vs pcs) when that unit is set up under
-          Laboratory → Lab inventory → packaging units.
+          Skip this section if the test does not use consumables from inventory. When configured, stock is tracked in{" "}
+          <strong className="font-medium text-gray-600 dark:text-gray-300">base</strong> units; choose packaging deduction
+          units under Laboratory → Lab inventory → packaging units.
         </p>
       </div>
 
@@ -297,12 +302,19 @@ export default function LabTestDisposablesFields(props: Props) {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <Label>Branch (pharmacy inventory lookup)</Label>
+          <Label>
+            {props.mode === "pending"
+              ? "Branch (select before adding disposables — skip if not using this section)"
+              : "Branch (pharmacy inventory lookup)"}
+          </Label>
           <select
             value={disposableBranchId}
             onChange={(e) => onDisposableBranchIdChange(e.target.value)}
             className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
           >
+            {props.mode === "pending" ? (
+              <option value="">{branches.length === 0 ? "No branches — add disposables after branches exist" : "Select branch"}</option>
+            ) : null}
             {branches.map((b) => (
               <option key={b.id} value={String(b.id)}>
                 {b.name}

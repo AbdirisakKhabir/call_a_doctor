@@ -70,6 +70,13 @@ export default function ServiceForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (serviceId === undefined && draftDisposables.length > 0) {
+      const bid = Number(disposableBranchId);
+      if (!Number.isInteger(bid) || bid <= 0) {
+        setError("Open Pharmacy disposables, select a branch for lookups, or remove the disposable lines.");
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       const meta: ServiceFormSubmitMeta | undefined =
@@ -191,14 +198,46 @@ export default function ServiceForm({
           </div>
 
           <div className="border-t border-gray-200 pt-6 dark:border-gray-800">
-            <ServiceDisposablesFields
-              serviceId={serviceId}
-              branches={branches}
-              disposableBranchId={disposableBranchId}
-              onDisposableBranchIdChange={setDisposableBranchId}
-              canEdit={canManageDisposables}
-              onDraftDisposablesChange={serviceId === undefined ? setDraftDisposables : undefined}
-            />
+            {serviceId === undefined ? (
+              <details className="group rounded-xl border border-gray-200 bg-gray-50/80 shadow-sm dark:border-gray-800 dark:bg-white/3">
+                <summary className="cursor-pointer list-none rounded-xl p-5 marker:content-none [&::-webkit-details-marker]:hidden">
+                  <span className="text-base font-semibold text-gray-900 dark:text-white">
+                    Pharmacy disposables{" "}
+                    <span className="text-sm font-normal text-gray-500 dark:text-gray-400">(optional)</span>
+                  </span>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Leave collapsed if this service does not use consumables from pharmacy. Open to assign products
+                    deducted when a booking is completed.
+                  </p>
+                  <span className="mt-2 inline-block text-sm font-medium text-brand-600 group-open:hidden dark:text-brand-400">
+                    Show disposables
+                  </span>
+                  <span className="mt-2 hidden text-sm font-medium text-brand-600 group-open:inline dark:text-brand-400">
+                    Hide
+                  </span>
+                </summary>
+                <div className="border-t border-gray-200 bg-white px-5 pb-6 pt-4 dark:border-gray-800 dark:bg-gray-900/40">
+                  <ServiceDisposablesFields
+                    serviceId={serviceId}
+                    branches={branches}
+                    disposableBranchId={disposableBranchId}
+                    onDisposableBranchIdChange={setDisposableBranchId}
+                    canEdit={canManageDisposables}
+                    onDraftDisposablesChange={setDraftDisposables}
+                    embeddedInCollapsible
+                  />
+                </div>
+              </details>
+            ) : (
+              <ServiceDisposablesFields
+                serviceId={serviceId}
+                branches={branches}
+                disposableBranchId={disposableBranchId}
+                onDisposableBranchIdChange={setDisposableBranchId}
+                canEdit={canManageDisposables}
+                onDraftDisposablesChange={undefined}
+              />
+            )}
           </div>
 
           <div className="flex justify-end gap-3 border-t border-gray-200 pt-6 dark:border-gray-800">

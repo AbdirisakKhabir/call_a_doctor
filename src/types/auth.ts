@@ -14,8 +14,8 @@ export type AuthUser = {
 export const AUTH_STORAGE_KEY = "call_a_doctor_auth";
 export const TOKEN_KEY = "call_a_doctor_token";
 
-/** Session expires after 1 hour of inactivity from login */
-export const SESSION_TTL_MS = 60 * 60 * 1000;
+/** Client session length from login (checked in AuthContext); user is signed out after this duration. */
+export const SESSION_TTL_MS = 6 * 60 * 60 * 1000;
 
 export type StoredAuth = {
   user: AuthUser;

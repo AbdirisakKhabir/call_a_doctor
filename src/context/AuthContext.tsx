@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshUser, forceLogoutAndRedirect]);
 
-  // Session expiry: check every minute and on tab focus; logout and redirect after 1 hour
+  // Session expiry: check every minute and on tab focus; logout after SESSION_TTL_MS (see types/auth)
   useEffect(() => {
     const check = () => {
       if (getStoredToken() && isSessionExpired()) {

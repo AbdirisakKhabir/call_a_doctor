@@ -91,7 +91,7 @@ export default function PatientCareFilesPage() {
       setError(json.error || "Could not load invoice");
       return;
     }
-    printCareFileInvoice(json as CareFileInvoicePayload);
+    await printCareFileInvoice(json as CareFileInvoicePayload);
   }
 
   async function markInvoiced(fileId: number) {
@@ -137,7 +137,13 @@ export default function PatientCareFilesPage() {
     <div>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="Client files" />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-4">
+          <Link
+            href={`/patients/${patientId}/work-progress`}
+            className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            Work progress
+          </Link>
           <Link
             href={`/patients/${patientId}/history`}
             className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"

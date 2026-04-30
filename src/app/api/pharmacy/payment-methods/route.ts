@@ -14,7 +14,10 @@ export async function GET(req: NextRequest) {
     const canPharmacy = await userHasPermission(auth.userId, "pharmacy.view");
     const canPos = await userHasPermission(auth.userId, "pharmacy.pos");
     const canAccounts = await userHasPermission(auth.userId, "accounts.view");
-    if (!canPharmacy && !canPos && !canAccounts) {
+    const canAppointments =
+      (await userHasPermission(auth.userId, "appointments.edit")) ||
+      (await userHasPermission(auth.userId, "appointments.create"));
+    if (!canPharmacy && !canPos && !canAccounts && !canAppointments) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

@@ -5,19 +5,30 @@ import { useRouter, useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import { authFetch } from "@/lib/api";
+import { showSwalForAppointmentError } from "@/lib/swal-appointment-error";
 import { useAuth } from "@/context/AuthContext";
 import DateField from "@/components/form/DateField";
-import { contrastingForeground, hexWithAlpha, normalizeServiceColor } from "@/lib/service-color";
+import { normalizeServiceColor } from "@/lib/service-color";
 import {
   buildDayTimeSlots,
+  parseTimeToMinutes,
   snapTimeToSlotList,
   type AppointmentCalendarSlotMinutes,
 } from "@/lib/appointment-calendar-time";
+import {
+  type ClientScheduleBlock,
+  blockAppliesToBookingDay,
+  isIntervalBlocked,
+  isStartSlotBlockedForNewBooking,
+  normalizeClientScheduleBlock,
+} from "@/lib/appointment-schedule-block-overlap";
+import SaleReceiptModal from "@/components/pharmacy/SaleReceiptModal";
 
 type Branch = { id: number; name: string };
 type Doctor = { id: number; name: string; specialty: string | null; branch: { id: number } | null };
 type Service = { id: number; name: string; price: number; durationMinutes: number | null; color: string | null };
 type Patient = { id: number; patientCode: string; name: string };
+type LedgerPaymentMethodRow = { id: number; name: string };
 
 type FormServiceLine = {
   serviceId: number;
@@ -73,12 +84,15 @@ export default function NewAppointmentForm() {
   const searchParams = useSearchParams();
   const dateParam = searchParams.get("date");
   const patientIdFromUrl = searchParams.get("patientId");
+  const startTimeParam = searchParams.get("startTime");
+  const endTimeParam = searchParams.get("endTime");
   const { hasPermission } = useAuth();
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [form, setForm] = useState({
     branchId: "",
     doctorId: "",
@@ -88,7 +102,10 @@ export default function NewAppointmentForm() {
     endTime: "09:30",
     notes: "",
     reminderMinutesBefore: "",
+    paymentMethodId: "",
     services: [] as FormServiceLine[],
+    billingDiscount: "",
+    paidAmount: "",
   });
   const [patientSearch, setPatientSearch] = useState("");
   const [patientSearchResults, setPatientSearchResults] = useState<Patient[]>([]);
@@ -97,12 +114,22 @@ export default function NewAppointmentForm() {
   const [error, setError] = useState("");
   const [calendarSlotMinutes, setCalendarSlotMinutes] = useState<AppointmentCalendarSlotMinutes>(15);
   const [openCareFileLabel, setOpenCareFileLabel] = useState<string | null>(null);
-  const [startNewCareFile, setStartNewCareFile] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<LedgerPaymentMethodRow[]>([]);
+  const [servicePick, setServicePick] = useState("");
+  const [receiptSaleId, setReceiptSaleId] = useState<number | null>(null);
+  const [scheduleBlocks, setScheduleBlocks] = useState<ClientScheduleBlock[]>([]);
 
   const canCreate = hasPermission("appointments.create") || hasPermission("appointments.view");
   const canCreatePatient = hasPermission("patients.create") || hasPermission("pharmacy.create");
 
   const timeSlots = useMemo(() => buildDayTimeSlots(calendarSlotMinutes), [calendarSlotMinutes]);
+
+  const bookingBranchIdN = useMemo(() => {
+    const n = Number(form.branchId);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  }, [form.branchId]);
+  const bookingDateOk = /^\d{4}-\d{2}-\d{2}$/.test(form.appointmentDate);
+  const blocksApplyToUi = bookingBranchIdN != null && bookingDateOk;
 
   useEffect(() => {
     const initialDate =
@@ -111,6 +138,27 @@ export default function NewAppointmentForm() {
         : new Date().toISOString().slice(0, 10);
     setForm((f) => ({ ...f, appointmentDate: initialDate }));
   }, [dateParam]);
+
+  useEffect(() => {
+    if (timeSlots.length === 0) return;
+    const stRaw = startTimeParam?.trim();
+    if (!stRaw || !/^\d{1,2}:\d{2}$/.test(stRaw)) return;
+    const snappedStart = snapTimeToSlotList(stRaw, timeSlots);
+    const etRaw = endTimeParam?.trim();
+    let snappedEnd =
+      etRaw && /^\d{1,2}:\d{2}$/.test(etRaw) ? snapTimeToSlotList(etRaw, timeSlots) : undefined;
+    if (!snappedEnd) {
+      snappedEnd = snapTimeToSlotList(addMinutesToTime(snappedStart, calendarSlotMinutes), timeSlots);
+    }
+    const sm = parseTimeToMinutes(snappedStart);
+    const em = parseTimeToMinutes(snappedEnd);
+    if (sm == null || em == null) return;
+    let endFinal = snappedEnd;
+    if (em <= sm) {
+      endFinal = snapTimeToSlotList(addMinutesToTime(snappedStart, calendarSlotMinutes), timeSlots);
+    }
+    setForm((f) => ({ ...f, startTime: snappedStart, endTime: endFinal }));
+  }, [startTimeParam, endTimeParam, timeSlots, calendarSlotMinutes]);
 
   useEffect(() => {
     if (!patientIdFromUrl) return;
@@ -134,7 +182,6 @@ export default function NewAppointmentForm() {
   useEffect(() => {
     if (!form.patientId) {
       setOpenCareFileLabel(null);
-      setStartNewCareFile(false);
       return;
     }
     const idNum = Number(form.patientId);
@@ -158,11 +205,10 @@ export default function NewAppointmentForm() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [brRes, drRes, svcRes, calRes] = await Promise.all([
+      const [brRes, calRes, pmRes] = await Promise.all([
         authFetch("/api/branches"),
-        authFetch("/api/doctors"),
-        authFetch("/api/services"),
         authFetch("/api/settings/appointment-calendar"),
+        authFetch("/api/pharmacy/payment-methods"),
       ]);
       if (cancelled) return;
       if (brRes.ok) {
@@ -170,11 +216,19 @@ export default function NewAppointmentForm() {
         setBranches(list);
         setForm((f) => ({ ...f, branchId: f.branchId || (list[0] ? String(list[0].id) : "") }));
       }
-      if (drRes.ok) setDoctors(await drRes.json());
-      if (svcRes.ok) setServices(await svcRes.json());
       if (calRes.ok) {
         const cal = (await calRes.json()) as { slotMinutes?: number };
         if (cal.slotMinutes === 15 || cal.slotMinutes === 30) setCalendarSlotMinutes(cal.slotMinutes);
+      }
+      if (pmRes.ok) {
+        const raw = (await pmRes.json()) as unknown;
+        if (Array.isArray(raw)) {
+          setPaymentMethods(
+            raw
+              .map((x) => ({ id: Number((x as { id?: unknown }).id), name: String((x as { name?: unknown }).name ?? "") }))
+              .filter((x) => Number.isInteger(x.id) && x.id > 0 && x.name.trim() !== "")
+          );
+        }
       }
       setLoading(false);
     })();
@@ -182,6 +236,58 @@ export default function NewAppointmentForm() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const bid = form.branchId.trim();
+    if (!bid || !Number.isInteger(Number(bid)) || Number(bid) <= 0) {
+      setDoctors([]);
+      setServices([]);
+      setCatalogLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCatalogLoading(true);
+    (async () => {
+      const q = encodeURIComponent(bid);
+      const [drRes, svcRes] = await Promise.all([
+        authFetch(`/api/doctors?branchId=${q}`),
+        authFetch(`/api/services?branchId=${q}`),
+      ]);
+      if (cancelled) return;
+      if (drRes.ok) setDoctors(await drRes.json());
+      else setDoctors([]);
+      if (svcRes.ok) setServices(await svcRes.json());
+      else setServices([]);
+      if (!cancelled) setCatalogLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.branchId]);
+
+  useEffect(() => {
+    if (bookingBranchIdN == null || !bookingDateOk) {
+      setScheduleBlocks([]);
+      return;
+    }
+    let cancelled = false;
+    const q = `startDate=${encodeURIComponent(form.appointmentDate)}&endDate=${encodeURIComponent(form.appointmentDate)}`;
+    authFetch(`/api/settings/appointment-blocks?${q}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { blocks?: unknown[] } | null) => {
+        if (cancelled || !data?.blocks) return;
+        const list = data.blocks
+          .map(normalizeClientScheduleBlock)
+          .filter(Boolean) as ClientScheduleBlock[];
+        setScheduleBlocks(list);
+      })
+      .catch(() => {
+        if (!cancelled) setScheduleBlocks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingBranchIdN, bookingDateOk, form.appointmentDate]);
 
   useEffect(() => {
     if (timeSlots.length === 0) return;
@@ -268,11 +374,68 @@ export default function NewAppointmentForm() {
     }));
   }
 
-  const totalCharge = form.services.reduce((s, x) => s + x.quantity * x.unitPrice, 0);
+  useEffect(() => {
+    if (bookingBranchIdN == null || !bookingDateOk || timeSlots.length === 0) return;
+    const bid = bookingBranchIdN;
+    const d = form.appointmentDate;
 
-  const filteredDoctors = form.branchId
-    ? doctors.filter((d) => !d.branch || d.branch.id === Number(form.branchId))
-    : doctors;
+    setForm((f) => {
+      if (Number(f.branchId) !== bid || f.appointmentDate !== d) return f;
+
+      let next = { ...f };
+      let changed = false;
+
+      if (isStartSlotBlockedForNewBooking(next.startTime, scheduleBlocks, d, bid)) {
+        const firstStart = timeSlots.find((t) => !isStartSlotBlockedForNewBooking(t, scheduleBlocks, d, bid));
+        if (!firstStart) return f;
+        next.startTime = firstStart;
+        changed = true;
+        const end = applyEndTimeFromServices(next.services, firstStart, services);
+        if (end) next.endTime = snapTimeToSlotList(end, timeSlots);
+      }
+
+      if (isIntervalBlocked(next.startTime, next.endTime, scheduleBlocks, d, bid)) {
+        const endSvc = applyEndTimeFromServices(next.services, next.startTime, services);
+        if (endSvc) {
+          const snapped = snapTimeToSlotList(endSvc, timeSlots);
+          if (!isIntervalBlocked(next.startTime, snapped, scheduleBlocks, d, bid)) {
+            next.endTime = snapped;
+            changed = true;
+          }
+        }
+        if (isIntervalBlocked(next.startTime, next.endTime, scheduleBlocks, d, bid)) {
+          const endOk = timeSlots.find((t) => {
+            const sm = parseTimeToMinutes(next.startTime);
+            const em = parseTimeToMinutes(t);
+            return sm != null && em != null && em > sm && !isIntervalBlocked(next.startTime, t, scheduleBlocks, d, bid);
+          });
+          if (endOk) {
+            next.endTime = endOk;
+            changed = true;
+          }
+        }
+      }
+
+      return changed ? next : f;
+    });
+  }, [bookingBranchIdN, bookingDateOk, form.appointmentDate, scheduleBlocks, timeSlots, services, form.services]);
+
+  const totalCharge = form.services.reduce((s, x) => s + x.quantity * x.unitPrice, 0);
+  const billingDiscountAmount = useMemo(() => {
+    const raw = Number(form.billingDiscount);
+    if (!Number.isFinite(raw) || raw <= 0) return 0;
+    return Math.min(totalCharge, raw);
+  }, [form.billingDiscount, totalCharge]);
+  const amountToCollect = Math.max(0, totalCharge - billingDiscountAmount);
+  const paidNowClamped = useMemo(() => {
+    if (!form.paymentMethodId || amountToCollect <= 0) return 0;
+    const raw = form.paidAmount.trim();
+    if (raw === "") return amountToCollect;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return 0;
+    return Math.min(amountToCollect, Math.max(0, n));
+  }, [form.paymentMethodId, form.paidAmount, amountToCollect]);
+  const balanceRemaining = Math.max(0, amountToCollect - paidNowClamped);
 
   const selectedPatientLabel =
     form.patientId &&
@@ -286,6 +449,14 @@ export default function NewAppointmentForm() {
     if (!form.branchId || !form.doctorId || !form.patientId) {
       setError("Branch, doctor and client are required");
       return;
+    }
+    const paidTrim = form.paidAmount.trim();
+    if (paidTrim !== "" && form.paymentMethodId === "") {
+      const p = Number(paidTrim);
+      if (Number.isFinite(p) && p > 0) {
+        setError("Select a payment method to record a payment.");
+        return;
+      }
     }
     setSubmitting(true);
     try {
@@ -302,15 +473,34 @@ export default function NewAppointmentForm() {
           notes: form.notes || null,
           reminderMinutesBefore: form.reminderMinutesBefore ? Number(form.reminderMinutesBefore) : null,
           services: form.services.map((s) => ({ serviceId: s.serviceId, quantity: s.quantity, unitPrice: s.unitPrice })),
-          ...(startNewCareFile ? { startNewCareFile: true } : {}),
+          ...(form.paymentMethodId
+            ? { paymentMethodId: Number(form.paymentMethodId) }
+            : {}),
+          ...(totalCharge > 0 ? { billingDiscount: billingDiscountAmount } : {}),
+          ...(form.paymentMethodId && amountToCollect > 0 && form.paidAmount.trim() !== ""
+            ? {
+                paidAmount: Math.min(amountToCollect, Math.max(0, Number(form.paidAmount))),
+              }
+            : {}),
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to create booking");
+        const msg = typeof data.error === "string" ? data.error : "Failed to create booking";
+        await showSwalForAppointmentError(msg, "Could not create booking");
         return;
       }
-      router.push("/appointments");
+      const sid =
+        typeof data.createdBillingSaleId === "number" &&
+        Number.isInteger(data.createdBillingSaleId) &&
+        data.createdBillingSaleId > 0
+          ? data.createdBillingSaleId
+          : null;
+      if (sid != null) {
+        setReceiptSaleId(sid);
+      } else {
+        router.push("/appointments");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -325,7 +515,7 @@ export default function NewAppointmentForm() {
     );
   }
 
-  if (loading) {
+  if (loading || catalogLoading) {
     return (
       <div className="flex justify-center py-24">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-brand-500" />
@@ -385,7 +575,7 @@ export default function NewAppointmentForm() {
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               >
                 <option value="">Select doctor</option>
-                {filteredDoctors.map((d) => (
+                {doctors.map((d) => (
                   <option key={d.id} value={String(d.id)}>
                     {d.name} {d.specialty ? `(${d.specialty})` : ""}
                   </option>
@@ -409,7 +599,7 @@ export default function NewAppointmentForm() {
                 </Button>
               )}
             </div>
-            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Search by name, client code, phone, or email — at least 2 characters.</p>
+            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Min. 2 characters.</p>
             <input
               type="text"
               placeholder="Search client…"
@@ -449,28 +639,15 @@ export default function NewAppointmentForm() {
             {form.patientId && selectedPatientLabel && (
               <p className="mt-1 text-xs text-green-600 dark:text-green-400">Selected: {selectedPatientLabel}</p>
             )}
-            {form.patientId && openCareFileLabel && !startNewCareFile && (
+            {form.patientId && openCareFileLabel && (
               <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
                 Active client file: <span className="font-mono font-medium">{openCareFileLabel}</span>
               </p>
             )}
-            {form.patientId && !openCareFileLabel && !startNewCareFile && (
+            {form.patientId && !openCareFileLabel && (
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 No open file yet — a client file will be created when you save this booking.
               </p>
-            )}
-            {form.patientId && (
-              <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-gray-700 dark:text-gray-300">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 rounded border-gray-300 text-brand-600"
-                  checked={startNewCareFile}
-                  onChange={(e) => setStartNewCareFile(e.target.checked)}
-                />
-                <span>
-                  Start a new client file (closes any other open file). This visit and related charges use the new file.
-                </span>
-              </label>
             )}
           </div>
 
@@ -496,11 +673,17 @@ export default function NewAppointmentForm() {
                 }}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               >
-                {timeSlots.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
+                {timeSlots.map((t) => {
+                  const blocked =
+                    blocksApplyToUi &&
+                    bookingBranchIdN != null &&
+                    isStartSlotBlockedForNewBooking(t, scheduleBlocks, form.appointmentDate, bookingBranchIdN);
+                  return (
+                    <option key={t} value={t} disabled={!!blocked}>
+                      {blocked ? `${t} — blocked` : t}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div>
@@ -510,14 +693,31 @@ export default function NewAppointmentForm() {
                 onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               >
-                {timeSlots.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
+                {timeSlots.map((t) => {
+                  const sm = parseTimeToMinutes(form.startTime);
+                  const em = parseTimeToMinutes(t);
+                  const beforeOrEqualStart = sm != null && em != null && em <= sm;
+                  const blocked =
+                    blocksApplyToUi &&
+                    bookingBranchIdN != null &&
+                    (beforeOrEqualStart ||
+                      isIntervalBlocked(form.startTime, t, scheduleBlocks, form.appointmentDate, bookingBranchIdN));
+                  return (
+                    <option key={t} value={t} disabled={!!blocked}>
+                      {blocked && !beforeOrEqualStart ? `${t} — blocked` : t}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
+          {blocksApplyToUi &&
+            bookingBranchIdN != null &&
+            scheduleBlocks.some((b) => blockAppliesToBookingDay(b, form.appointmentDate, bookingBranchIdN)) && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Times that fall in branch closed hours are unavailable.
+            </p>
+          )}
 
           <div className="max-w-md">
             <label className="mb-1 block text-sm font-medium">Reminder</label>
@@ -536,74 +736,173 @@ export default function NewAppointmentForm() {
 
           <div>
             <label className="mb-1 block text-sm font-medium">Services / treatments (charge)</label>
-            <div className="mb-2 flex flex-wrap gap-2">
+            <select
+              className="h-11 w-full max-w-md rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+              value={servicePick}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) {
+                  setServicePick("");
+                  return;
+                }
+                const id = Number(v);
+                const svc = services.find((s) => s.id === id);
+                if (svc) addService(svc);
+                setServicePick("");
+              }}
+            >
+              <option value="">Add a service…</option>
               {services
                 .filter((s) => !form.services.some((x) => x.serviceId === s.id))
-                .map((s) =>
-                  s.color ? (
+                .map((s) => (
+                  <option key={s.id} value={String(s.id)}>
+                    {s.name} (${s.price.toFixed(2)})
+                  </option>
+                ))}
+            </select>
+
+            {form.services.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {form.services.map((s) => (
+                  <div
+                    key={s.serviceId}
+                    className="flex flex-wrap items-center gap-2 rounded-md border border-gray-100 py-2 pl-3 pr-2 dark:border-gray-800"
+                    style={
+                      s.color
+                        ? { borderLeftWidth: 4, borderLeftColor: s.color, borderLeftStyle: "solid" }
+                        : undefined
+                    }
+                  >
+                    <span className="min-w-0 flex-1 text-sm font-medium">{s.name}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={s.quantity}
+                      onChange={(e) => updateServiceQty(s.serviceId, Number(e.target.value))}
+                      className="h-9 w-16 rounded border border-gray-200 px-2 text-sm dark:border-gray-700"
+                      aria-label={`Quantity for ${s.name}`}
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={s.unitPrice}
+                      onChange={(e) => updateServicePrice(s.serviceId, Number(e.target.value))}
+                      className="h-9 w-24 rounded border border-gray-200 px-2 text-sm dark:border-gray-700"
+                      aria-label={`Unit price for ${s.name}`}
+                    />
+                    <span className="text-sm font-medium tabular-nums">${(s.quantity * s.unitPrice).toFixed(2)}</span>
                     <button
-                      key={s.id}
                       type="button"
-                      onClick={() => addService(s)}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border-2 px-4 py-2.5 text-sm font-medium transition hover:opacity-90"
-                      style={{
-                        borderColor: s.color,
-                        color: contrastingForeground(hexWithAlpha(s.color, "ff")),
-                        backgroundColor: hexWithAlpha(s.color, "18"),
-                      }}
+                      onClick={() => removeService(s.serviceId)}
+                      className="text-sm text-error-500 hover:underline"
                     >
-                      + {s.name} (${s.price})
+                      Remove
                     </button>
-                  ) : (
-                    <Button key={s.id} type="button" variant="outline" size="sm" onClick={() => addService(s)}>
-                      + {s.name} (${s.price})
-                    </Button>
-                  )
-                )}
-            </div>
-            <div className="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-              {form.services.map((s) => (
-                <div
-                  key={s.serviceId}
-                  className="flex flex-wrap items-center gap-2 rounded-md py-0.5 pl-2"
-                  style={
-                    s.color
-                      ? { borderLeftWidth: 4, borderLeftColor: s.color, borderLeftStyle: "solid" }
-                      : undefined
-                  }
-                >
-                  <span className="min-w-0 flex-1 text-sm">{s.name}</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={s.quantity}
-                    onChange={(e) => updateServiceQty(s.serviceId, Number(e.target.value))}
-                    className="h-9 w-16 rounded border px-2 text-sm"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={s.unitPrice}
-                    onChange={(e) => updateServicePrice(s.serviceId, Number(e.target.value))}
-                    className="h-9 w-20 rounded border px-2 text-sm"
-                  />
-                  <span className="text-sm font-medium">${(s.quantity * s.unitPrice).toFixed(2)}</span>
-                  <button type="button" onClick={() => removeService(s.serviceId)} className="text-error-500 hover:underline">
-                    Remove
-                  </button>
-                </div>
-              ))}
-              {form.services.length > 0 && (
-                <div className="border-t pt-2">
-                  <div className="font-semibold">Total: ${totalCharge.toFixed(2)}</div>
-                  {totalCharge > 0 && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">This total is charged to the client&apos;s account balance when the booking is saved.</p>
-                  )}
-                </div>
-              )}
-            </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">No services added yet.</p>
+            )}
           </div>
+
+          {totalCharge > 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-white/5">
+              <p className="mb-3 text-sm font-medium text-gray-800 dark:text-gray-100">Billing</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm font-medium">Payment method</label>
+                  <select
+                    value={form.paymentMethodId}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        paymentMethodId: e.target.value,
+                        ...(e.target.value === "" ? { paidAmount: "" } : {}),
+                      }))
+                    }
+                    className="h-11 w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm dark:border-gray-600 dark:bg-white/5 dark:text-white"
+                    disabled={paymentMethods.length === 0}
+                  >
+                    <option value="">Account only (no till entry)</option>
+                    {paymentMethods.map((pm) => (
+                      <option key={pm.id} value={String(pm.id)}>
+                        {pm.name}
+                      </option>
+                    ))}
+                  </select>
+                  {paymentMethods.length === 0 ? (
+                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                      No payment methods in Settings → Payment methods.
+                    </p>
+                  ) : null}
+                </div>
+                <div>
+                  <label htmlFor="new-appt-billing-discount" className="mb-1 block text-sm font-medium">
+                    Discount
+                  </label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                      $
+                    </span>
+                    <input
+                      id="new-appt-billing-discount"
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={form.billingDiscount}
+                      onChange={(e) => setForm((f) => ({ ...f, billingDiscount: e.target.value }))}
+                      className="h-11 w-full rounded-lg border border-gray-200 bg-white py-2 pl-7 pr-3 text-sm tabular-nums dark:border-gray-600 dark:bg-white/5 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="new-appt-paid-now" className="mb-1 block text-sm font-medium">
+                    Paid now
+                  </label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                      $
+                    </span>
+                    <input
+                      id="new-appt-paid-now"
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={form.paidAmount}
+                      onChange={(e) => setForm((f) => ({ ...f, paidAmount: e.target.value }))}
+                      disabled={!form.paymentMethodId || amountToCollect <= 0}
+                      placeholder={form.paymentMethodId ? "Leave blank for pay in full" : ""}
+                      className="h-11 w-full rounded-lg border border-gray-200 bg-white py-2 pl-7 pr-3 text-sm tabular-nums disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-white/5 dark:text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-gray-200 pt-4 text-sm dark:border-gray-600 sm:grid-cols-4">
+                <div>
+                  <dt className="text-gray-500 dark:text-gray-400">Subtotal</dt>
+                  <dd className="mt-0.5 font-semibold tabular-nums">${totalCharge.toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500 dark:text-gray-400">After discount</dt>
+                  <dd className="mt-0.5 font-semibold tabular-nums">${amountToCollect.toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500 dark:text-gray-400">Paid</dt>
+                  <dd className="mt-0.5 font-semibold tabular-nums">
+                    {form.paymentMethodId ? `$${paidNowClamped.toFixed(2)}` : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500 dark:text-gray-400">Client balance</dt>
+                  <dd className="mt-0.5 font-semibold tabular-nums text-gray-900 dark:text-white">
+                    ${balanceRemaining.toFixed(2)}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          ) : null}
 
           <div>
             <label className="mb-1 block text-sm font-medium">Booking notes</label>
@@ -625,6 +924,16 @@ export default function NewAppointmentForm() {
           </div>
         </form>
       </div>
+
+      <SaleReceiptModal
+        saleId={receiptSaleId}
+        open={receiptSaleId != null}
+        bannerTitle="Booking saved"
+        onClose={() => {
+          setReceiptSaleId(null);
+          router.push("/appointments");
+        }}
+      />
     </div>
   );
 }

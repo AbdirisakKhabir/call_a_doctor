@@ -42,28 +42,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
-    const [canNotes, canLabs, canRx, canFormResponses] = await Promise.all([
-      userHasPermission(auth.userId, "patient_history.view") ||
-        userHasPermission(auth.userId, "patient_history.create"),
+    const [canLabs, canRx, canFormsView, canPhView, canPhCreate] = await Promise.all([
       userHasPermission(auth.userId, "lab.view"),
       userHasPermission(auth.userId, "prescriptions.view"),
-      userHasPermission(auth.userId, "patient_history.view") ||
-        userHasPermission(auth.userId, "patient_history.create") ||
-        userHasPermission(auth.userId, "forms.view"),
+      userHasPermission(auth.userId, "forms.view"),
+      userHasPermission(auth.userId, "patient_history.view"),
+      userHasPermission(auth.userId, "patient_history.create"),
     ]);
+    const canFormResponses = canFormsView || canPhView || canPhCreate;
 
-    const [clinicalNotes, labOrders, prescriptions, formResponses] = await Promise.all([
-      canNotes
-        ? prisma.patientHistory.findMany({
-            where: { patientId },
-            orderBy: { createdAt: "desc" },
-            take: 200,
-            include: {
-              doctor: { select: { id: true, name: true } },
-              appointment: { select: { id: true, appointmentDate: true, startTime: true } },
-            },
-          })
-        : [],
+    const [labOrders, prescriptions, formResponses] = await Promise.all([
       canLabs
         ? prisma.labOrder.findMany({
             where: { patientId },
@@ -82,8 +70,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
               items: {
                 include: {
                   labTest: {
-                    select: { id: true, name: true, unit: true, normalRange: true, code: true },
+                    select: {
+                      id: true,
+                      name: true,
+                      unit: true,
+                      normalRange: true,
+                      code: true,
+                      category: { select: { id: true, name: true } },
+                    },
                   },
+                  panelParentTest: { select: { id: true, name: true } },
                 },
                 orderBy: { id: "asc" },
               },
@@ -138,11 +134,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({
       patient: serializePatient(patient),
-      clinicalNotes,
       labOrders,
       prescriptions,
       formResponses,
-      canViewNotes: canNotes,
       canViewLabs: canLabs,
       canViewPrescriptions: canRx,
       canViewFormResponses: canFormResponses,

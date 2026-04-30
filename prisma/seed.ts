@@ -62,6 +62,10 @@ const DEFAULT_PERMISSIONS = [
   { name: "forms.create", description: "Create custom forms", module: "forms" },
   { name: "forms.edit", description: "Edit custom forms", module: "forms" },
   { name: "forms.delete", description: "Delete custom forms", module: "forms" },
+  { name: "hr.view", description: "View HR staff records", module: "hr" },
+  { name: "hr.create", description: "Register HR staff", module: "hr" },
+  { name: "hr.edit", description: "Edit HR staff records", module: "hr" },
+  { name: "hr.delete", description: "Delete HR staff records", module: "hr" },
 ];
 
 async function main() {

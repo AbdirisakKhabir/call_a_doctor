@@ -15,9 +15,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       include: {
         patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
         doctor: { select: { id: true, name: true } },
-        appointment: { select: { id: true, appointmentDate: true, startTime: true } },
+        appointment: {
+          select: {
+            id: true,
+            appointmentDate: true,
+            startTime: true,
+            branch: { select: { id: true, name: true } },
+          },
+        },
         items: {
-          include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true, price: true } } },
+          include: {
+            labTest: {
+              select: {
+                id: true,
+                name: true,
+                unit: true,
+                normalRange: true,
+                price: true,
+                parentTestId: true,
+                category: { select: { id: true, name: true } },
+              },
+            },
+            panelParentTest: { select: { id: true, name: true } },
+          },
         },
       },
     });

@@ -56,6 +56,8 @@ type Props = {
   canEdit: boolean;
   /** When `serviceId` is omitted, reports disposables to create with the service. */
   onDraftDisposablesChange?: (drafts: ServiceDisposableDraft[]) => void;
+  /** When parent wraps this block in a &lt;details&gt; summary (create service). */
+  embeddedInCollapsible?: boolean;
 };
 
 export default function ServiceDisposablesFields({
@@ -65,6 +67,7 @@ export default function ServiceDisposablesFields({
   onDisposableBranchIdChange,
   canEdit,
   onDraftDisposablesChange,
+  embeddedInCollapsible = false,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [productHints, setProductHints] = useState<ProductSearchHit[]>([]);
@@ -306,15 +309,28 @@ export default function ServiceDisposablesFields({
 
   return (
     <div>
-      <h2 className="text-base font-semibold text-gray-900 dark:text-white">Pharmacy disposables</h2>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-        {isCreateFlow
-          ? "Optional: link retail products deducted from pharmacy stock when this service is completed. Choose a branch, add one or more lines, then save the service."
-          : "Products deducted from pharmacy stock when a booking with this service is marked completed."}
-      </p>
+      {!embeddedInCollapsible ? (
+        <>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+            Pharmacy disposables
+            {isCreateFlow ? (
+              <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">(optional)</span>
+            ) : null}
+          </h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {isCreateFlow
+              ? "Optional: link retail products deducted from pharmacy stock when this service is completed. Choose a branch, add one or more lines, then save the service."
+              : "Products deducted from pharmacy stock when a booking with this service is marked completed."}
+          </p>
+        </>
+      ) : null}
 
-      <div className="mt-4 max-w-md">
-        <Label>Branch for product lookup</Label>
+      <div className={embeddedInCollapsible ? "mt-0 max-w-md" : "mt-4 max-w-md"}>
+        <Label>
+          {isCreateFlow
+            ? "Branch for product lookup (select to add lines — skip if not using disposables)"
+            : "Branch for product lookup"}
+        </Label>
         <select
           value={disposableBranchId}
           onChange={(e) => onDisposableBranchIdChange(e.target.value)}

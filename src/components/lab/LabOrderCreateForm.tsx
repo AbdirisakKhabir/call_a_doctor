@@ -6,14 +6,38 @@ import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
 import { TrashBinIcon } from "@/icons";
+import { roundMoney } from "@/lib/lab-fee-settlement";
+import {
+  expandLabTestSelectionToOrderLines,
+  type LabTestExpandRow,
+} from "@/lib/lab-order-expand-core";
 
-export type LabTestOption = { id: number; name: string; price: number; category: { name: string } };
+export type LabTestOption = {
+  id: number;
+  name: string;
+  price: number;
+  parentTestId: number | null;
+  category: { name: string };
+  subtests: Array<{ id: number }>;
+};
 
 type Props = {
   appointmentId: number;
   patientId: number;
   doctorId: number;
 };
+
+function dedupeIdsPreserveOrder(raw: number[]): number[] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const id of raw) {
+    if (!Number.isInteger(id) || id <= 0) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
 
 export default function LabOrderCreateForm({ appointmentId, patientId, doctorId }: Props) {
   const router = useRouter();
@@ -22,27 +46,44 @@ export default function LabOrderCreateForm({ appointmentId, patientId, doctorId 
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [testSearch, setTestSearch] = useState("");
 
-  const selectedLabFee = useMemo(() => {
-    return createForm.testIds.reduce((sum, id) => {
-      const t = tests.find((x) => x.id === id);
-      return sum + (t?.price ?? 0);
-    }, 0);
-  }, [createForm.testIds, tests]);
+  const orderableTests = useMemo(() => tests.filter((t) => t.parentTestId == null), [tests]);
+
+  const expandRows = useMemo((): LabTestExpandRow[] => {
+    return orderableTests.map((t) => ({
+      id: t.id,
+      parentTestId: t.parentTestId,
+      price: t.price,
+      subtests: t.subtests.map((s) => ({ id: s.id })),
+    }));
+  }, [orderableTests]);
+
+  const orderedSelection = useMemo(() => dedupeIdsPreserveOrder(createForm.testIds), [createForm.testIds]);
+
+  const expandedLines = useMemo(
+    () => expandLabTestSelectionToOrderLines(orderedSelection, expandRows),
+    [orderedSelection, expandRows]
+  );
+
+  const selectedLabFee = useMemo(
+    () => roundMoney(expandedLines.reduce((s, l) => s + l.unitPrice, 0)),
+    [expandedLines]
+  );
 
   const selectedTestsOrdered = useMemo(() => {
     return createForm.testIds
-      .map((id) => tests.find((t) => t.id === id))
+      .map((id) => orderableTests.find((t) => t.id === id))
       .filter((t): t is LabTestOption => Boolean(t));
-  }, [createForm.testIds, tests]);
+  }, [createForm.testIds, orderableTests]);
 
   const filteredTests = useMemo(() => {
     const q = testSearch.trim().toLowerCase();
-    if (!q) return tests;
-    return tests.filter((t) => {
+    const list = orderableTests;
+    if (!q) return list;
+    return list.filter((t) => {
       const cat = t.category.name.toLowerCase();
       return t.name.toLowerCase().includes(q) || cat.includes(q);
     });
-  }, [tests, testSearch]);
+  }, [orderableTests, testSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +92,25 @@ export default function LabOrderCreateForm({ appointmentId, patientId, doctorId 
         if (!tRes.ok) return;
         const data = await tRes.json();
         const list = Array.isArray(data) ? data : data.data ?? [];
-        if (!cancelled) setTests(Array.isArray(list) ? list : []);
+        if (!cancelled && Array.isArray(list)) {
+          setTests(
+            list.map((x: Record<string, unknown>) => ({
+              id: Number(x.id),
+              name: String(x.name ?? ""),
+              price: Number(x.price) || 0,
+              parentTestId: x.parentTestId != null ? Number(x.parentTestId) : null,
+              category:
+                x.category && typeof x.category === "object" && x.category !== null && "name" in x.category
+                  ? { name: String((x.category as { name: string }).name) }
+                  : { name: "—" },
+              subtests: Array.isArray(x.subtests)
+                ? (x.subtests as { id: number }[]).map((s) => ({
+                    id: Number(s.id),
+                  }))
+                : [],
+            }))
+          );
+        }
       })
       .catch(() => {});
     return () => {
@@ -110,14 +169,17 @@ export default function LabOrderCreateForm({ appointmentId, patientId, doctorId 
             className="mt-1 h-11 w-full shrink-0 rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
           />
           <p className="mt-1 shrink-0 text-xs text-gray-500 dark:text-gray-400">
-            {filteredTests.length} of {tests.length}
+            {filteredTests.length} orderable of {orderableTests.length}
             {testSearch.trim() ? ` · “${testSearch.trim()}”` : ""}
+            {tests.length !== orderableTests.length
+              ? ` · ${tests.length - orderableTests.length} sub-tests hidden (included with panels)`
+              : ""}
           </p>
           <div className="mt-2 flex min-h-40 max-h-[min(24rem,55dvh)] flex-col overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 [-webkit-overflow-scrolling:touch]">
               {filteredTests.length === 0 ? (
                 <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                  {tests.length === 0 ? "No tests loaded." : "No matches."}
+                  {orderableTests.length === 0 ? "No tests loaded." : "No matches."}
                   {testSearch.trim() ? (
                     <button
                       type="button"
@@ -132,6 +194,7 @@ export default function LabOrderCreateForm({ appointmentId, patientId, doctorId 
                 <ul className="space-y-0.5">
                   {filteredTests.map((t) => {
                     const checked = createForm.testIds.includes(t.id);
+                    const subCount = t.subtests?.length ?? 0;
                     return (
                       <li key={t.id}>
                         <label
@@ -147,7 +210,10 @@ export default function LabOrderCreateForm({ appointmentId, patientId, doctorId 
                           />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm text-gray-900 dark:text-white">{t.name}</p>
-                            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{t.category.name}</p>
+                            <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                              {t.category.name}
+                              {subCount > 0 ? ` · ${subCount} sub-test${subCount === 1 ? "" : "s"}` : ""}
+                            </p>
                           </div>
                           <span className="shrink-0 text-sm tabular-nums text-gray-800 dark:text-gray-200">
                             ${(t.price ?? 0).toFixed(2)}
@@ -179,12 +245,16 @@ export default function LabOrderCreateForm({ appointmentId, patientId, doctorId 
                     key={t.id}
                     className="mb-1 flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-2 py-2 last:mb-0 dark:border-gray-700 dark:bg-gray-800/50"
                   >
-                    <span className="w-6 shrink-0 text-center text-xs text-gray-500 dark:text-gray-400">{index + 1}.</span>
+                    <span className="w-6 shrink-0 text-center text-xs text-gray-500 dark:text-gray-400">
+                      {index + 1}.
+                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-gray-900 dark:text-white">{t.name}</p>
                       <p className="truncate text-xs text-gray-500">{t.category.name}</p>
                     </div>
-                    <span className="shrink-0 text-sm tabular-nums text-gray-800 dark:text-gray-200">${(t.price ?? 0).toFixed(2)}</span>
+                    <span className="shrink-0 text-sm tabular-nums text-gray-800 dark:text-gray-200">
+                      ${(t.price ?? 0).toFixed(2)}
+                    </span>
                     <button
                       type="button"
                       onClick={() => removeTest(t.id)}
@@ -200,9 +270,17 @@ export default function LabOrderCreateForm({ appointmentId, patientId, doctorId 
           </div>
 
           <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4 dark:border-gray-700">
-            <span className="text-sm text-gray-700 dark:text-gray-300">Total</span>
-            <span className="text-sm font-medium tabular-nums text-gray-900 dark:text-white">${selectedLabFee.toFixed(2)}</span>
+            <span className="text-sm text-gray-700 dark:text-gray-300">Total (with panels expanded)</span>
+            <span className="text-sm font-medium tabular-nums text-gray-900 dark:text-white">
+              ${selectedLabFee.toFixed(2)}
+            </span>
           </div>
+          {expandedLines.length > orderedSelection.length ? (
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {expandedLines.length} billed line{expandedLines.length === 1 ? "" : "s"} will be created for the lab
+              (including sub-tests).
+            </p>
+          ) : null}
         </div>
       </div>
 

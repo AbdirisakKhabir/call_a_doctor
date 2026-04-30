@@ -28,6 +28,8 @@ import {
   PosBarcodeKeyboardCapture,
   type PosProductPayload,
 } from "@/components/pharmacy/PosBarcodeBridge";
+import SaleReceiptModal from "@/components/pharmacy/SaleReceiptModal";
+import { printSaleReceipt, getReceiptLogoAbsoluteUrl } from "@/lib/print-sale-receipt";
 type SaleUnitRow = { unitKey: string; label: string; baseUnitsEach: number };
 
 type CartItem = {
@@ -76,6 +78,7 @@ type SaleRow = {
   discount: number;
   paymentMethod: string;
   customerType: string;
+  kind?: string;
   outreachOnCredit?: boolean;
   notes: string | null;
   branch: { id: number; name: string } | null;
@@ -86,7 +89,7 @@ type SaleRow = {
   /** Present on full sale fetch; omitted on paginated list API. */
   items?: {
     id: number;
-    productId: number;
+    productId: number | null;
     quantity: number;
     saleUnit: string;
     unitPrice: number;
@@ -100,7 +103,8 @@ type SaleRow = {
       sellingPrice?: number;
       quantity?: number;
       saleUnits?: SaleUnitRow[];
-    };
+    } | null;
+    service?: { id: number; name: string } | null;
   }[];
 };
 
@@ -168,10 +172,7 @@ function POSPageInner() {
   const [salesPage, setSalesPage] = useState(1);
   const [salesLoading, setSalesLoading] = useState(false);
   const [salesError, setSalesError] = useState("");
-  const [viewSaleOpen, setViewSaleOpen] = useState(false);
-  const [viewSaleDetail, setViewSaleDetail] = useState<SaleRow | null>(null);
-  const [viewSaleLoading, setViewSaleLoading] = useState(false);
-  const [viewSaleError, setViewSaleError] = useState("");
+  const [viewSaleId, setViewSaleId] = useState<number | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
@@ -562,27 +563,11 @@ function POSPageInner() {
   }, [mainTab, loadSales]);
 
   async function openViewSale(saleId: number) {
-    setViewSaleOpen(true);
-    setViewSaleDetail(null);
-    setViewSaleError("");
-    setViewSaleLoading(true);
-    try {
-      const res = await authFetch(`/api/pharmacy/sales/${saleId}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setViewSaleError(data.error || "Could not load sale");
-        return;
-      }
-      setViewSaleDetail(data as SaleRow);
-    } finally {
-      setViewSaleLoading(false);
-    }
+    setViewSaleId(saleId);
   }
 
   function closeViewSale() {
-    setViewSaleOpen(false);
-    setViewSaleDetail(null);
-    setViewSaleError("");
+    setViewSaleId(null);
   }
 
   const getEditMaxQty = useCallback(
@@ -688,6 +673,12 @@ function POSPageInner() {
         setSalesError("Outreach sales cannot be edited here. Use outreach return if stock comes back to the pharmacy.");
         return;
       }
+      if (data.kind === "appointment") {
+        setSalesError(
+          "Visit billing sales are managed from the appointment. They cannot be edited in POS."
+        );
+        return;
+      }
       if (data.branchId != null) {
         setBranchId(String(data.branchId));
       }
@@ -699,7 +690,14 @@ function POSPageInner() {
         return;
       }
       setEditSaleId(data.id);
-      const saleItems = data.items ?? [];
+      const saleItems = (data.items ?? []).filter(
+        (
+          it
+        ): it is (NonNullable<SaleRow["items"]>[number] & {
+          productId: number;
+          product: NonNullable<NonNullable<SaleRow["items"]>[number]["product"]>;
+        }) => it.product != null && it.productId != null
+      );
 
       const returnedBase: Record<number, number> = {};
       for (const it of saleItems) {
@@ -1177,41 +1175,20 @@ function POSPageInner() {
 
   const handlePrintReceipt = () => {
     if (!lastSale) return;
-    const customerLabel = lastSale.customerName || "Walking Customer";
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>Receipt</title>
-      <style>body{font-family:monospace;padding:20px;max-width:300px;margin:0 auto}
-      h2{text-align:center;margin-bottom:10px}
-      .line{border-bottom:1px dashed #000;padding:4px 0}
-      .total{font-weight:bold;font-size:1.2em;margin-top:10px}
-      </style>
-      </head>
-      <body>
-      <h2>Call a Doctor - Pharmacy</h2>
-      <p style="text-align:center">Receipt #${lastSale.id}</p>
-      <p style="text-align:center">${new Date().toLocaleString()}</p>
-      <p style="text-align:center;font-size:12px">Customer: ${customerLabel}</p>
-      <div style="margin:15px 0">
-      ${lastSale.items.map((i: { product: { name: string }; quantity: number; unitPrice: number; totalAmount: number }) => `
-        <div class="line">${i.product.name} x${i.quantity} @ $${i.unitPrice.toFixed(2)} = $${i.totalAmount.toFixed(2)}</div>
-      `).join("")}
-      </div>
-      ${lastSale.subtotal != null && (lastSale.discount ?? 0) > 0 ? `
-      <div class="line">Subtotal: $${lastSale.subtotal.toFixed(2)}</div>
-      <div class="line">Discount: -$${(lastSale.discount ?? 0).toFixed(2)}</div>
-      ` : ""}
-      <div class="line total">TOTAL: $${lastSale.totalAmount.toFixed(2)}</div>
-      <p style="text-align:center;margin-top:20px">Thank you!</p>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
-    printWindow.close();
+    const lines = lastSale.items.map((i) => ({
+      name: i.product.name,
+      quantity: i.quantity,
+      unitPrice: i.unitPrice,
+      totalAmount: i.totalAmount,
+    }));
+    void printSaleReceipt({
+      id: lastSale.id,
+      saleDate: new Date().toISOString(),
+      customerLabel: lastSale.customerName || "Walking Customer",
+      lines,
+      discount: lastSale.discount ?? 0,
+      totalAmount: lastSale.totalAmount,
+    });
   };
 
   if (!hasPermission("pharmacy.view") && !hasPermission("pharmacy.pos")) {
@@ -1246,7 +1223,7 @@ function POSPageInner() {
           mainTab={mainTab}
           checkoutModalOpen={checkoutModal}
           editOpen={editOpen}
-          viewSaleOpen={viewSaleOpen}
+          viewSaleOpen={viewSaleId != null}
           onProduct={handleUrlBarcodeProduct}
           onNotFound={() => {
             setScanMessage("Barcode not found for this branch.");
@@ -1255,7 +1232,7 @@ function POSPageInner() {
         />
       </Suspense>
       <PosBarcodeKeyboardCapture
-        enabled={mainTab === "checkout" && !checkoutModal && !editOpen && !viewSaleOpen}
+        enabled={mainTab === "checkout" && !checkoutModal && !editOpen && viewSaleId == null}
         onScan={fetchAndApplyBarcode}
       />
       <div className="mb-3 flex flex-col gap-3 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1896,171 +1873,7 @@ function POSPageInner() {
         </div>
       )}
 
-      {/* View sale detail (read-only) */}
-      {viewSaleOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-          onClick={closeViewSale}
-          role="presentation"
-        >
-          <div
-            className="flex max-h-[min(90dvh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="view-sale-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-700">
-              <h2 id="view-sale-title" className="text-lg font-semibold">
-                {viewSaleDetail ? `Sale #${viewSaleDetail.id}` : "Sale details"}
-              </h2>
-              <button
-                type="button"
-                onClick={closeViewSale}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
-                aria-label="Close"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              {viewSaleLoading ? (
-                <div className="flex justify-center py-12">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-brand-500 dark:border-gray-700 dark:border-t-brand-400" />
-                </div>
-              ) : viewSaleError ? (
-                <p className="text-sm text-error-600 dark:text-error-400">{viewSaleError}</p>
-              ) : viewSaleDetail ? (
-                <div className="space-y-4 text-sm">
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-gray-600 dark:text-gray-400">
-                    <span>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">Date</span>{" "}
-                      {new Date(viewSaleDetail.saleDate).toLocaleString()}
-                    </span>
-                    {viewSaleDetail.branch?.name ? (
-                      <span>
-                        <span className="font-medium text-gray-700 dark:text-gray-300">Branch</span>{" "}
-                        {viewSaleDetail.branch.name}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      Customer
-                    </p>
-                    <p className="font-medium text-gray-900 dark:text-white">
-                      {viewSaleDetail.customerType === "lab"
-                        ? "Lab (to lab inventory)"
-                        : viewSaleDetail.customerType === "outreach" && viewSaleDetail.outreachTeam
-                          ? `Outreach — ${viewSaleDetail.outreachTeam.name}`
-                          : viewSaleDetail.customerType === "patient" && viewSaleDetail.patient
-                            ? `${viewSaleDetail.patient.name} (${viewSaleDetail.patient.patientCode})`
-                            : "Walking"}
-                    </p>
-                    {viewSaleDetail.customerType === "outreach" && viewSaleDetail.outreachOnCredit ? (
-                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">On credit</p>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-4">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Payment</p>
-                      <p className="font-medium">
-                        {viewSaleDetail.paymentMethod}
-                        {viewSaleDetail.depositTransaction?.id ? (
-                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
-                            Deposited
-                          </span>
-                        ) : null}
-                      </p>
-                    </div>
-                    {viewSaleDetail.createdBy?.name ? (
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Recorded by</p>
-                        <p className="font-medium">{viewSaleDetail.createdBy.name}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                  {viewSaleDetail.notes && String(viewSaleDetail.notes).trim() ? (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Notes</p>
-                      <p className="whitespace-pre-wrap text-gray-700 dark:text-gray-300">{viewSaleDetail.notes}</p>
-                    </div>
-                  ) : null}
-                  <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      Line items
-                    </p>
-                    {viewSaleDetail.items && viewSaleDetail.items.length > 0 ? (
-                      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                        <table className="w-full min-w-[320px] text-left text-xs">
-                          <thead>
-                            <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/80">
-                              <th className="px-3 py-2 font-semibold">Product</th>
-                              <th className="px-3 py-2 font-semibold">Qty</th>
-                              <th className="px-3 py-2 text-right font-semibold">Price</th>
-                              <th className="px-3 py-2 text-right font-semibold">Line</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {viewSaleDetail.items.map((line, idx) => (
-                              <tr key={line.productId * 10000 + idx} className="border-b border-gray-100 dark:border-gray-800">
-                                <td className="px-3 py-2">
-                                  <span className="font-medium text-gray-900 dark:text-white">{line.product.name}</span>
-                                  <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400"> {line.product.code}</span>
-                                </td>
-                                <td className="px-3 py-2">
-                                  {line.quantity}{" "}
-                                  <span className="text-gray-500">{line.saleUnit || "pcs"}</span>
-                                </td>
-                                <td className="px-3 py-2 text-right">${line.unitPrice.toFixed(2)}</td>
-                                <td className="px-3 py-2 text-right font-medium">${line.totalAmount.toFixed(2)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-gray-500">
-                        No line items on this sale (older records may omit details).
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-1 border-t border-gray-200 pt-3 dark:border-gray-700">
-                    {viewSaleDetail.items && viewSaleDetail.items.length > 0 ? (
-                      <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                        <span>Subtotal</span>
-                        <span>
-                          $
-                          {viewSaleDetail.items
-                            .reduce((s, it) => s + it.totalAmount, 0)
-                            .toFixed(2)}
-                        </span>
-                      </div>
-                    ) : null}
-                    <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                      <span>Discount</span>
-                      <span>-${(viewSaleDetail.discount ?? 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-base font-semibold text-gray-900 dark:text-white">
-                      <span>Total</span>
-                      <span>${viewSaleDetail.totalAmount.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">No data.</p>
-              )}
-            </div>
-            <div className="shrink-0 border-t border-gray-200 px-5 py-3 dark:border-gray-700">
-              <Button type="button" className="w-full" variant="outline" size="sm" onClick={closeViewSale}>
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SaleReceiptModal saleId={viewSaleId} open={viewSaleId != null} onClose={closeViewSale} />
 
       {/* Checkout Modal */}
       {checkoutModal && (
@@ -2169,7 +1982,30 @@ function POSPageInner() {
             <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
               <h2 className="text-lg font-semibold text-green-600">Sale Complete!</h2>
             </div>
-            <div className="space-y-2 px-6 py-5">
+            <div className="space-y-3 px-6 py-5">
+              <div className="flex items-center gap-3">
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-white dark:border-gray-600 dark:bg-gray-800">
+                  <img
+                    src={getReceiptLogoAbsoluteUrl()}
+                    alt="Call a Doctor"
+                    width={48}
+                    height={48}
+                    className="h-full w-full object-contain p-0.5"
+                    loading="eager"
+                    decoding="async"
+                    onError={(e) => {
+                      const el = e.currentTarget;
+                      if (!el.src.includes("/images/logo/logo.svg")) {
+                        el.src = `${typeof window !== "undefined" ? window.location.origin : ""}/images/logo/logo.svg`;
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Call a Doctor</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Pharmacy</p>
+                </div>
+              </div>
               <p className="text-sm">Receipt #{lastSale.id}</p>
               <p className="text-2xl font-bold">${lastSale.totalAmount.toFixed(2)}</p>
               <div className="max-h-40 overflow-y-auto space-y-1 text-sm">

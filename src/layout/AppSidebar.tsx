@@ -12,6 +12,7 @@ import {
   DocsIcon,
   DollarLineIcon,
   GridIcon,
+  GroupIcon,
   HorizontaLDots,
   ListIcon,
   LockIcon,
@@ -60,6 +61,7 @@ type MenuCategory =
   | "accounting"
   | "services"
   | "forms"
+  | "hr"
   | "settings"
   | "activities";
 
@@ -75,7 +77,7 @@ const mainItems: NavItem[] = [
   },
 ];
 
-// Calendar (week schedule + new booking — visit cards are a separate menu)
+// Calendar (week view — add bookings from the calendar UI)
 const appointmentsItems: NavItem[] = [
   {
     icon: <CalenderIcon />,
@@ -83,8 +85,18 @@ const appointmentsItems: NavItem[] = [
     path: "/appointments",
     permission: "appointments.view",
     subItems: [
-      { name: "Schedule", path: "/appointments", permission: "appointments.view", exact: true },
-      { name: "New booking", path: "/appointments/new", permission: "appointments.view" },
+      {
+        name: "Calendar",
+        path: "/appointments",
+        permission: "appointments.view",
+        exact: true,
+      },
+      {
+        name: "Cancelled bookings",
+        path: "/appointments/cancelled",
+        permission: "appointments.view",
+        exact: true,
+      },
     ],
   },
 ];
@@ -117,6 +129,7 @@ const labItems: NavItem[] = [
     subItems: [
       { name: "Categories", path: "/lab/categories", permission: "lab.view" },
       { name: "Tests", path: "/lab/tests", permission: "lab.view" },
+      { name: "Sub-tests", path: "/lab/tests/subtests", permission: "lab.view" },
       { name: "Orders & Results", path: "/lab/orders", permission: "lab.view" },
       { name: "Lab inventory", path: "/lab/inventory", permission: "lab.view", exact: true },
       {
@@ -153,7 +166,6 @@ const pharmacyItems: NavItem[] = [
       { name: "Purchases", path: "/pharmacy/purchases", permission: "pharmacy.view" },
       { name: "Suppliers", path: "/pharmacy/suppliers", permission: "pharmacy.view" },
       { name: "POS", path: "/pharmacy/pos", permission: "pharmacy.pos" },
-      { name: "Client invoice", path: "/pharmacy/patient-invoice", permission: "prescriptions.view" },
       { name: "Sale returns", path: "/pharmacy/sale-returns", permission: "pharmacy.pos" },
       { name: "Sales list", path: "/pharmacy/sales", permission: "pharmacy.view" },
       { name: "Outreach teams", path: "/pharmacy/outreach/teams", permission: "pharmacy.view" },
@@ -196,6 +208,17 @@ const reportsItems: NavItem[] = [
     permission: "pharmacy.view",
     subItems: [
       { name: "Sales report", path: "/reports/sales", permission: "pharmacy.view" },
+      {
+        name: "Appointment sales report",
+        path: "/reports/appointment-sales",
+        permissionAny: [
+          "pharmacy.view",
+          "accounts.view",
+          "accounts.reports",
+          "appointments.view",
+          "pharmacy.pos",
+        ],
+      },
       { name: "Purchase report", path: "/reports/purchases", permission: "pharmacy.view" },
       { name: "Inventory report", path: "/reports/inventory", permission: "pharmacy.view" },
       { name: "Categories report", path: "/reports/categories", permission: "pharmacy.view" },
@@ -249,10 +272,34 @@ const financialItems: NavItem[] = [
     icon: <DollarLineIcon />,
     name: "Finance",
     path: "/expenses",
-    permission: "expenses.view",
+    permissionAny: [
+      "expenses.view",
+      "financial.view",
+      "accounts.view",
+      "accounts.reports",
+      "pharmacy.view",
+      "pharmacy.pos",
+      "appointments.view",
+      "lab.view",
+    ],
     subItems: [
       { name: "Expenses", path: "/expenses", permission: "expenses.view" },
       { name: "Financial Reports", path: "/financial-reports", permission: "financial.view" },
+      {
+        name: "Client invoice",
+        path: "/finance/client-invoice",
+        permissionAny: ["prescriptions.view", "pharmacy.view"],
+      },
+      {
+        name: "Lab sales",
+        path: "/finance/lab-sales",
+        permissionAny: ["financial.view", "accounts.reports", "lab.view"],
+      },
+      {
+        name: "Lab sales report",
+        path: "/finance/lab-sales-report",
+        permissionAny: ["financial.view", "accounts.reports", "lab.view"],
+      },
     ],
   },
 ];
@@ -283,6 +330,20 @@ const servicesItems: NavItem[] = [
     subItems: [
       { name: "All services", path: "/settings/services", permission: "appointments.view" },
       { name: "New service", path: "/settings/services/new", permission: "appointments.view" },
+    ],
+  },
+];
+
+const hrItems: NavItem[] = [
+  {
+    icon: <GroupIcon />,
+    name: "Human Resources",
+    path: "/hr/staff",
+    permission: "hr.view",
+    subItems: [
+      { name: "Staff list", path: "/hr/staff", permission: "hr.view", exact: true },
+      { name: "Work schedule report", path: "/reports/work-schedule", permission: "hr.view", exact: true },
+      { name: "Register staff", path: "/hr/staff/new", permission: "hr.create" },
     ],
   },
 ];
@@ -318,6 +379,12 @@ const settingsItems: NavItem[] = [
         path: "/settings/appointment-calendar",
         permissionAny: ["settings.manage", "appointments.view"],
       },
+      {
+        name: "Holidays & blocked times",
+        path: "/settings/appointment-blocks",
+        permission: "settings.manage",
+      },
+      { name: "Active users", path: "/settings/active-users", permissionAny: ["audit.view", "audit.view_admins"] },
       { name: "Activity log", path: "/settings/activity", permission: "audit.view" },
       {
         name: "Admin activity",
@@ -404,6 +471,7 @@ const AppSidebar: React.FC = () => {
   const accountingNav = useMemo(() => filterByPermission(accountingItems, hasPermission), [hasPermission]);
   const servicesNav = useMemo(() => filterByPermission(servicesItems, hasPermission), [hasPermission]);
   const formsNav = useMemo(() => filterByPermission(formsItems, hasPermission), [hasPermission]);
+  const hrNav = useMemo(() => filterByPermission(hrItems, hasPermission), [hasPermission]);
   const settingsNav = useMemo(() => filterByPermission(settingsItems, hasPermission), [hasPermission]);
   const activitiesNav = useMemo(() => filterByPermission(activitiesItems, hasPermission), [hasPermission]);
 
@@ -422,10 +490,11 @@ const AppSidebar: React.FC = () => {
 
   const isSubItemActive = useCallback(
     (subItem: SubItem) => {
-      if (subItem.exact) return pathname === subItem.path;
-      return isActive(subItem.path);
+      const basePath = subItem.path.split("?")[0] ?? subItem.path;
+      if (subItem.exact) return pathname === basePath;
+      return pathname === basePath || pathname.startsWith(`${basePath}/`);
     },
-    [pathname, isActive]
+    [pathname]
   );
 
   const handleSubmenuToggle = (index: number, menuType: MenuCategory) => {
@@ -454,6 +523,7 @@ const AppSidebar: React.FC = () => {
       "accounting",
       "services",
       "forms",
+      "hr",
       "settings",
       "activities",
     ];
@@ -482,9 +552,11 @@ const AppSidebar: React.FC = () => {
                             ? accountingNav
                             : menuType === "services"
                               ? servicesNav
-                              : menuType === "forms"
-                                ? formsNav
-                                : menuType === "settings"
+                : menuType === "forms"
+                  ? formsNav
+                  : menuType === "hr"
+                    ? hrNav
+                    : menuType === "settings"
                                   ? settingsNav
                                   : activitiesNav;
 
@@ -522,6 +594,7 @@ const AppSidebar: React.FC = () => {
     accountingNav,
     servicesNav,
     formsNav,
+    hrNav,
     settingsNav,
     activitiesNav,
     isActive,
@@ -648,14 +721,14 @@ const AppSidebar: React.FC = () => {
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className={`shrink-0 py-4 flex ${!isExpanded && !isHovered && !isMobileOpen ? "lg:justify-center" : ""}`}>
-        <Link href="/" className={`flex items-center justify-center overflow-hidden ${!isExpanded && !isHovered && !isMobileOpen ? "w-16 h-12" : "w-full min-w-0"}`}>
+        <Link href="/" className={`flex items-center justify-center overflow-hidden ${!isExpanded && !isHovered && !isMobileOpen ? "h-16 w-16" : "w-full min-w-0"}`}>
           <Image
             src="/logo/call-a-doctor.png"
             alt="Call a Doctor"
-            width={280}
-            height={48}
+            width={320}
+            height={64}
             priority
-            className={`object-contain h-12 ${!isExpanded && !isHovered && !isMobileOpen ? "w-16" : "w-full max-w-[280px]"}`}
+            className={`object-contain h-16 ${!isExpanded && !isHovered && !isMobileOpen ? "w-16" : "w-full max-w-[300px]"}`}
           />
         </Link>
       </div>
@@ -781,6 +854,17 @@ const AppSidebar: React.FC = () => {
                   {isExpanded || isHovered || isMobileOpen ? "Services" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(servicesNav, "services")}
+              </div>
+            )}
+
+            {hrNav.length > 0 && (
+              <div>
+                <h2
+                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Human Resources" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(hrNav, "hr")}
               </div>
             )}
 

@@ -11,7 +11,7 @@ export type JWTPayload = {
 };
 
 export function signToken(payload: Omit<JWTPayload, "iat" | "exp">): string {
-  return jwt.sign(payload, SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, SECRET, { expiresIn: "6h" });
 }
 
 export function verifyToken(token: string): JWTPayload | null {

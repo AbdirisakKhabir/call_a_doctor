@@ -38,6 +38,7 @@
     "jsbarcode": "^3.12.3",
     "jsonwebtoken": "^9.0.3",
     "libphonenumber-js": "^1.12.41",
+    "lucide-react": "^1.11.0",
     "mariadb": "^3.4.5",
     "next": "16.0.10",
     "prisma": "^6.19.2",

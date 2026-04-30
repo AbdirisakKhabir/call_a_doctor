@@ -18,7 +18,11 @@ export async function GET(req: NextRequest) {
     const branchId = searchParams.get("branchId");
     const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(searchParams);
 
-    const where = branchId ? { branchId: Number(branchId), isActive: true } : { isActive: true };
+    const bid = branchId ? Number(branchId) : NaN;
+    const where =
+      Number.isInteger(bid) && bid > 0
+        ? { isActive: true as const, OR: [{ branchId: bid }, { branchId: null }] }
+        : { isActive: true as const };
     const include = { branch: { select: { id: true, name: true } } };
 
     if (paginate) {
@@ -70,21 +74,11 @@ export async function POST(req: NextRequest) {
       rawList.push(initialDisposable);
     }
     if (rawList.length > 0) {
-      const canDisposable =
-        (await userHasPermission(auth.userId, "appointments.create")) ||
-        (await userHasPermission(auth.userId, "appointments.edit")) ||
-        (await userHasPermission(auth.userId, "appointments.view"));
-      if (!canDisposable) {
-        return NextResponse.json(
-          { error: "You do not have permission to add service disposables." },
-          { status: 403 }
-        );
-      }
       const seenCodes = new Set<string>();
       for (let i = 0; i < rawList.length; i++) {
         const row = rawList[i];
         if (row == null || typeof row !== "object") {
-          return NextResponse.json({ error: `Disposable ${i + 1}: invalid payload` }, { status: 400 });
+          continue;
         }
         const o = row as Record<string, unknown>;
         const productCode =
@@ -94,10 +88,7 @@ export async function POST(req: NextRequest) {
           typeof o.deductionUnitKey === "string" ? o.deductionUnitKey : "base"
         );
         if (!productCode) {
-          return NextResponse.json(
-            { error: `Disposable ${i + 1}: product code is required` },
-            { status: 400 }
-          );
+          continue;
         }
         if (!Number.isFinite(unitsPerService) || unitsPerService <= 0) {
           return NextResponse.json(
@@ -113,6 +104,19 @@ export async function POST(req: NextRequest) {
         }
         seenCodes.add(productCode);
         disposableRows.push({ productCode, unitsPerService, deductionUnitKey });
+      }
+    }
+
+    if (disposableRows.length > 0) {
+      const canDisposable =
+        (await userHasPermission(auth.userId, "appointments.create")) ||
+        (await userHasPermission(auth.userId, "appointments.edit")) ||
+        (await userHasPermission(auth.userId, "appointments.view"));
+      if (!canDisposable) {
+        return NextResponse.json(
+          { error: "You do not have permission to add service disposables." },
+          { status: 403 }
+        );
       }
     }
 

@@ -8,11 +8,42 @@ import { labOrderFeeRemaining, roundMoney } from "@/lib/lab-fee-settlement";
 
 const PAYMENT_CATEGORIES = new Set(["medication", "prescription", "pharmacy_credit", "laboratory"]);
 
+const CATEGORY_ORDER = ["medication", "prescription", "pharmacy_credit", "laboratory"] as const;
+
 function categoryLabel(key: string): string {
   if (key === "prescription") return "Prescription";
   if (key === "pharmacy_credit") return "Pharmacy credits";
-  if (key === "laboratory") return "Laboratory";
-  return "Medication";
+  if (key === "laboratory") return "Laboratory (lab fee)";
+  return "Appointment fee";
+}
+
+function normalizePaymentCategories(body: { category?: unknown; categories?: unknown }): string[] {
+  if (Array.isArray(body.categories)) {
+    const seen = new Set<string>();
+    for (const x of body.categories) {
+      const c = typeof x === "string" ? x.trim() : "";
+      if (PAYMENT_CATEGORIES.has(c)) seen.add(c);
+    }
+    if (seen.size === 0) return ["medication"];
+    return [...seen].sort((a, b) => CATEGORY_ORDER.indexOf(a as (typeof CATEGORY_ORDER)[number]) - CATEGORY_ORDER.indexOf(b as (typeof CATEGORY_ORDER)[number]));
+  }
+  const raw = typeof body.category === "string" ? body.category.trim() : "";
+  const one = PAYMENT_CATEGORIES.has(raw) ? raw : "medication";
+  return [one];
+}
+
+/** `n` parts in cents that sum to roundMoney(total). */
+function splitMoneyEven(total: number, n: number): number[] {
+  if (n <= 0) return [];
+  const cents = Math.round(roundMoney(total) * 100);
+  const base = Math.floor(cents / n);
+  const remainder = cents - base * n;
+  const parts: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const c = base + (i < remainder ? 1 : 0);
+    parts.push(c / 100);
+  }
+  return parts;
 }
 
 /** Split applied total back into cash vs discount using the same ratio as the user input. */
@@ -80,8 +111,16 @@ export async function POST(
 
     const body = await req.json();
     const { paymentMethodId, notes } = body;
-    const rawCategory = typeof body.category === "string" ? body.category.trim() : "";
-    const category = PAYMENT_CATEGORIES.has(rawCategory) ? rawCategory : "medication";
+    const categoryList = normalizePaymentCategories(body);
+    if (categoryList.includes("laboratory") && categoryList.length > 1) {
+      return NextResponse.json(
+        {
+          error:
+            "Laboratory (lab fee) must be chosen by itself. Record other payment types separately, or uncheck Laboratory.",
+        },
+        { status: 400 }
+      );
+    }
 
     const rawCash = Number(body.amount);
     const rawDisc = Number(body.discount);
@@ -97,7 +136,7 @@ export async function POST(
     }
 
     let labOrderIdVal: number | null = null;
-    if (category === "laboratory") {
+    if (categoryList.includes("laboratory")) {
       const lid = Number(body.labOrderId);
       if (!Number.isInteger(lid) || lid <= 0) {
         return NextResponse.json(
@@ -125,7 +164,7 @@ export async function POST(
         | { id: number; incrementPaid: number; incrementDisc: number }
         | null = null;
 
-      if (category === "laboratory" && labOrderIdVal) {
+      if (categoryList.includes("laboratory") && labOrderIdVal) {
         const order = await tx.labOrder.findFirst({
           where: { id: labOrderIdVal, patientId },
         });
@@ -192,27 +231,36 @@ export async function POST(
         pm = { id: found.id, accountId: found.accountId };
       }
 
-      const pp = await tx.patientPayment.create({
-        data: {
-          patientId,
-          amount: addC,
-          discount: addD,
-          category,
-          paymentMethodId: pm?.id ?? null,
-          labOrderId: labOrderIdVal,
-          notes: notes ? String(notes).trim() : null,
-          createdById: auth.userId,
-        },
-      });
+      const n = categoryList.length;
+      const cashParts = splitMoneyEven(addC, n);
+      const discParts = splitMoneyEven(addD, n);
+      const payments = [];
+      for (let i = 0; i < n; i++) {
+        const cat = categoryList[i];
+        const pp = await tx.patientPayment.create({
+          data: {
+            patientId,
+            amount: cashParts[i],
+            discount: discParts[i],
+            category: cat,
+            paymentMethodId: pm?.id ?? null,
+            labOrderId: cat === "laboratory" ? labOrderIdVal : null,
+            notes: notes ? String(notes).trim() : null,
+            createdById: auth.userId,
+          },
+        });
+        payments.push(pp);
+      }
 
       if (addC > 0 && pm) {
-        const cat = categoryLabel(category);
+        const cats = categoryList.map((c) => categoryLabel(c)).join(", ");
+        const ids = payments.map((p) => p.id).join(", #");
         await tx.accountTransaction.create({
           data: {
             accountId: pm.accountId,
             kind: "deposit",
             amount: addC,
-            description: `Client payment (${cat}) — ${patient.patientCode} (#${pp.id})`,
+            description: `Client payment (${cats}) — ${patient.patientCode} (#${ids})`,
             paymentMethodId: pm.id,
             transactionDate: new Date(),
             createdById: auth.userId,
@@ -225,7 +273,7 @@ export async function POST(
         select: { id: true, accountBalance: true, patientCode: true, firstName: true, lastName: true },
       });
 
-      return { payment: pp, patient: updated };
+      return { payments, patient: updated };
     });
 
     await logAuditFromRequest(req, {
@@ -233,17 +281,19 @@ export async function POST(
       action: "patient_payment.record",
       module: "payments",
       resourceType: "PatientPayment",
-      resourceId: result.payment.id,
+      resourceId: result.payments[0]?.id ?? 0,
       metadata: {
         patientId,
-        amount: result.payment.amount,
-        discount: result.payment.discount,
-        category: result.payment.category,
-        labOrderId: result.payment.labOrderId,
+        amount: result.payments.reduce((s, p) => s + p.amount, 0),
+        discount: result.payments.reduce((s, p) => s + p.discount, 0),
+        categories: categoryList,
+        paymentIds: result.payments.map((p) => p.id),
+        labOrderId: result.payments.find((p) => p.labOrderId)?.labOrderId ?? null,
       },
     });
     return NextResponse.json({
-      ...result,
+      payments: result.payments,
+      payment: result.payments[0],
       patient: result.patient ? serializePatient(result.patient) : result.patient,
     });
   } catch (e) {

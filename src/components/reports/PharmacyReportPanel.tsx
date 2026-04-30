@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import {
   Table,
@@ -19,6 +20,7 @@ import ExpiryDateBadge from "@/components/pharmacy/ExpiryDateBadge";
 
 export type PharmacyReportId =
   | "sales"
+  | "appointment_sales"
   | "purchases"
   | "inventory"
   | "categories"
@@ -30,6 +32,10 @@ const REPORT_META: Record<
   { label: string; description: string }
 > = {
   sales: { label: "Sales report", description: "Retail POS sales by date, branch, and payment." },
+  appointment_sales: {
+    label: "Appointment sales report",
+    description: "Visit billing from completed calendar bookings (services only, with till deposits).",
+  },
   purchases: { label: "Purchase report", description: "Stock purchases from suppliers and payment account." },
   inventory: { label: "Inventory report", description: "Current products, quantities, retail vs internal." },
   categories: { label: "Categories report", description: "Product categories and item counts." },
@@ -62,6 +68,7 @@ export function PharmacyReportPanel({ report }: Props) {
       branch: { name: string } | null;
       patient: { name: string; patientCode: string } | null;
       customerType: string;
+      appointmentId?: number | null;
     }[]
   >([]);
   const [purchases, setPurchases] = useState<
@@ -101,6 +108,7 @@ export function PharmacyReportPanel({ report }: Props) {
 
   const branchScopedReports =
     report === "sales" ||
+    report === "appointment_sales" ||
     report === "purchases" ||
     report === "inventory" ||
     report === "categories" ||
@@ -108,7 +116,7 @@ export function PharmacyReportPanel({ report }: Props) {
     report === "opening_inventory";
 
   /** Transaction reports (sales / purchases) can use “all branches”; catalog reports always scope to one branch. */
-  const transactionReports = report === "sales" || report === "purchases";
+  const transactionReports = report === "sales" || report === "appointment_sales" || report === "purchases";
   const showReportBranchFilter =
     branchScopedReports &&
     (seesAllBranches || hasMultipleAssignedBranches || hasPermission("settings.manage")) &&
@@ -134,30 +142,50 @@ export function PharmacyReportPanel({ report }: Props) {
       .catch(() => setReportBranches([]));
   }, [report, hasPermission, transactionReports]);
 
+  const canViewThisReport = useMemo(() => {
+    if (report === "appointment_sales") {
+      return (
+        hasPermission("pharmacy.view") ||
+        hasPermission("pharmacy.pos") ||
+        hasPermission("accounts.view") ||
+        hasPermission("accounts.reports") ||
+        hasPermission("appointments.view")
+      );
+    }
+    return hasPermission("pharmacy.view");
+  }, [report, hasPermission]);
+
   const load = useCallback(async () => {
-    if (!hasPermission("pharmacy.view")) return;
+    if (!canViewThisReport) return;
     setLoading(true);
     setError("");
     try {
       const p = new URLSearchParams();
       if (from) p.set("from", from);
       if (to) p.set("to", to);
-      if (
-        reportBranchId &&
-        transactionReports
-      ) {
+      if (reportBranchId && transactionReports) {
         p.set("branchId", reportBranchId);
       }
-      const q = p.toString() ? `?${p.toString()}` : "";
+      if (report === "appointment_sales") {
+        p.set("kind", "appointment");
+      }
+      const qs = p.toString();
 
-      if (report === "sales") {
-        const res = await authFetch(`/api/pharmacy/sales${q}`);
+      if (report === "sales" || report === "appointment_sales") {
+        const res = await authFetch(`/api/pharmacy/sales${qs ? `?${qs}` : ""}`);
         if (!res.ok) throw new Error("Failed to load sales");
         setSales(await res.json());
         return;
       }
       if (report === "purchases") {
-        const res = await authFetch(`/api/pharmacy/purchases${q}`);
+        const p2 = new URLSearchParams();
+        if (from) p2.set("from", from);
+        if (to) p2.set("to", to);
+        if (reportBranchId && transactionReports) {
+          p2.set("branchId", reportBranchId);
+        }
+        const q2 = p2.toString() ? `?${p2.toString()}` : "";
+        const res = await authFetch(`/api/pharmacy/purchases${q2}`);
         if (!res.ok) throw new Error("Failed to load purchases");
         setPurchases(await res.json());
         return;
@@ -218,7 +246,7 @@ export function PharmacyReportPanel({ report }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [report, from, to, stockType, hasPermission, reportBranchId, reportBranches, transactionReports]);
+  }, [report, from, to, stockType, hasPermission, reportBranchId, reportBranches, transactionReports, canViewThisReport]);
 
   useEffect(() => {
     load();
@@ -267,7 +295,7 @@ export function PharmacyReportPanel({ report }: Props) {
 
   const meta = REPORT_META[report];
 
-  if (!hasPermission("pharmacy.view")) {
+  if (!canViewThisReport) {
     return (
       <div>
         <PageBreadCrumb pageTitle={meta.label} />
@@ -348,7 +376,7 @@ export function PharmacyReportPanel({ report }: Props) {
           <div className="flex justify-center py-20">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-brand-500 dark:border-gray-700 dark:border-t-brand-400" />
           </div>
-        ) : report === "sales" ? (
+        ) : report === "sales" || report === "appointment_sales" ? (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-5 py-3 dark:border-gray-800">
               <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -360,6 +388,7 @@ export function PharmacyReportPanel({ report }: Props) {
               <TableHeader>
                 <TableRow className="bg-transparent! hover:bg-transparent!">
                   <TableCell isHeader>Date</TableCell>
+                  {report === "appointment_sales" ? <TableCell isHeader>Booking</TableCell> : null}
                   <TableCell isHeader>Branch</TableCell>
                   <TableCell isHeader>Customer</TableCell>
                   <TableCell isHeader>Payment</TableCell>
@@ -369,7 +398,10 @@ export function PharmacyReportPanel({ report }: Props) {
               <TableBody>
                 {sales.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-12 text-center text-sm text-gray-500">
+                    <TableCell
+                      colSpan={report === "appointment_sales" ? 6 : 5}
+                      className="py-12 text-center text-sm text-gray-500"
+                    >
                       No sales in this period.
                     </TableCell>
                   </TableRow>
@@ -377,6 +409,20 @@ export function PharmacyReportPanel({ report }: Props) {
                   sales.map((s) => (
                     <TableRow key={s.id}>
                       <TableCell className="whitespace-nowrap text-sm">{new Date(s.saleDate).toLocaleString()}</TableCell>
+                      {report === "appointment_sales" ? (
+                        <TableCell>
+                          {s.appointmentId != null ? (
+                            <Link
+                              href={`/appointments/${s.appointmentId}`}
+                              className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+                            >
+                              #{s.appointmentId}
+                            </Link>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                      ) : null}
                       <TableCell>{s.branch?.name ?? "—"}</TableCell>
                       <TableCell>
                         {s.customerType === "patient" && s.patient

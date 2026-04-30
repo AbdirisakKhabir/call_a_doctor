@@ -155,6 +155,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Sale not found or has no branch" }, { status: 400 });
     }
 
+    if (sale.kind === "appointment") {
+      return NextResponse.json(
+        {
+          error: "Visit billing sales (services) cannot be returned as pharmacy stock.",
+        },
+        { status: 400 }
+      );
+    }
+
     if (sale.outreachTeamId != null || sale.customerType === "outreach") {
       return NextResponse.json(
         {
@@ -193,6 +202,12 @@ export async function POST(req: NextRequest) {
       if (!saleItem) {
         return NextResponse.json(
           { error: `Sale line ${saleItemId} does not belong to this sale` },
+          { status: 400 }
+        );
+      }
+      if (!saleItem.product || saleItem.productId == null) {
+        return NextResponse.json(
+          { error: "This line is not a retail product and cannot be returned to shelf stock." },
           { status: 400 }
         );
       }
@@ -248,11 +263,13 @@ export async function POST(req: NextRequest) {
 
       for (const l of lines) {
         const saleItem = sale.items.find((i) => i.id === l.saleItemId)!;
-        const su = await getSaleUnitForProduct(tx, saleItem.productId, saleItem.saleUnit);
+        const pid = saleItem.productId;
+        if (pid == null) continue;
+        const su = await getSaleUnitForProduct(tx, pid, saleItem.saleUnit);
         const each = su?.baseUnitsEach ?? 1;
         const baseAdd = lineQuantityToBaseUnits(l.quantity, each);
         await tx.product.update({
-          where: { id: saleItem.productId },
+          where: { id: pid },
           data: { quantity: { increment: baseAdd } },
         });
       }

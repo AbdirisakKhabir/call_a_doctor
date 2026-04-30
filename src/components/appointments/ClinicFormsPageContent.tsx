@@ -46,12 +46,20 @@ const SWITCH_FORM_MESSAGE = "You have unsaved answers on this form. Switch to an
 const CANCEL_MESSAGE = "You have unsaved clinic note data. Leave without saving?";
 
 type Props = {
-  appointmentId: number;
+  /** When null, submission is not tied to a booking and success returns to client history. */
+  appointmentId: number | null;
   patientId: number;
   patientLabel: string;
+  /** If set, selects this published form once the list has loaded. */
+  initialFormId?: number | null;
 };
 
-export default function ClinicFormsPageContent({ appointmentId, patientId, patientLabel }: Props) {
+export default function ClinicFormsPageContent({
+  appointmentId,
+  patientId,
+  patientLabel,
+  initialFormId = null,
+}: Props) {
   const router = useRouter();
   const { hasPermission } = useAuth();
   const canSubmit = hasPermission("patient_history.create") || hasPermission("forms.edit");
@@ -82,6 +90,12 @@ export default function ClinicFormsPageContent({ appointmentId, patientId, patie
   useEffect(() => {
     void loadPublished();
   }, [loadPublished]);
+
+  useEffect(() => {
+    if (initialFormId == null || !published.length) return;
+    const ok = published.some((f) => f.id === initialFormId);
+    if (ok) setSelectedId(initialFormId);
+  }, [initialFormId, published]);
 
   useEffect(() => {
     if (selectedId == null) {
@@ -144,13 +158,14 @@ export default function ClinicFormsPageContent({ appointmentId, patientId, patie
     });
   }
 
-  function goBackToAppointment() {
-    router.push(`/appointments/${appointmentId}`);
+  function goBackToOrigin() {
+    if (appointmentId != null) router.push(`/appointments/${appointmentId}`);
+    else router.push(`/patients/${patientId}/history`);
   }
 
   function handleCancelClick() {
     if (hasUnsavedChanges && !window.confirm(CANCEL_MESSAGE)) return;
-    goBackToAppointment();
+    goBackToOrigin();
   }
 
   async function handleSubmit() {
@@ -162,14 +177,15 @@ export default function ClinicFormsPageContent({ appointmentId, patientId, patie
       for (const f of detail.fields) {
         payload[String(f.id)] = answers[f.id];
       }
+      const body: Record<string, unknown> = {
+        patientId,
+        answers: payload,
+      };
+      if (appointmentId != null) body.appointmentId = appointmentId;
       const res = await authFetch(`/api/forms/${detail.id}/submissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId,
-          appointmentId,
-          answers: payload,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -177,14 +193,20 @@ export default function ClinicFormsPageContent({ appointmentId, patientId, patie
         return;
       }
       setHasUnsavedChanges(false);
-      router.push(`/appointments/${appointmentId}`);
+      if (appointmentId != null) {
+        router.push(`/appointments/${appointmentId}`);
+      } else {
+        router.push(`/patients/${patientId}/history`);
+      }
       router.refresh();
     } finally {
       setSubmitting(false);
     }
   }
 
-  const backHref = `/appointments/${appointmentId}`;
+  const backHref =
+    appointmentId != null ? `/appointments/${appointmentId}` : `/patients/${patientId}/history`;
+  const backLabel = appointmentId != null ? "← Back to booking" : "← Back to client history";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -194,7 +216,7 @@ export default function ClinicFormsPageContent({ appointmentId, patientId, patie
           href={backHref}
           className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
-          ← Back to booking
+          {backLabel}
         </Link>
       </div>
       <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">{patientLabel}</p>
@@ -243,7 +265,8 @@ export default function ClinicFormsPageContent({ appointmentId, patientId, patie
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {selectedId == null ? (
             <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-              Select a form on the left to fill it for this visit.
+              Select a form on the left to fill it for this client
+              {appointmentId != null ? " for this visit" : "."}.
             </div>
           ) : detailLoading ? (
             <div className="flex flex-1 items-center justify-center p-6 text-sm text-gray-500">Loading form…</div>

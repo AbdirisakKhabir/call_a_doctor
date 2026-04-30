@@ -40,9 +40,15 @@ model User {
   labStockMovementsCreated     LabStockMovement[]   @relation("LabStockMovementCreatedBy")
   customFormsCreated           CustomForm[]         @relation("CustomFormCreatedBy")
   customFormResponsesSubmitted CustomFormResponse[] @relation("CustomFormResponseSubmittedBy")
+  staffMembersCreated          StaffMember[]        @relation("StaffMemberCreatedBy")
+  /// Last successful password sign-in.
+  lastLoginAt                  DateTime?
+  /// Last session validation via /api/auth/me (throttled server-side). Used for “active now” in Settings.
+  lastSeenAt                   DateTime?
   createdAt                    DateTime             @default(now())
   updatedAt                    DateTime             @updatedAt
 
+  @@index([lastSeenAt])
   @@map("users")
 }
 
@@ -233,6 +239,7 @@ model Branch {
   labStockMovements   LabStockMovement[]
   labSales            LabSale[]
   unsellableStockLogs UnsellableStockLog[]
+  appointmentScheduleBlocks AppointmentScheduleBlock[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -288,6 +295,7 @@ model Service {
   isActive            Boolean              @default(true)
   appointmentServices AppointmentService[]
   disposables         ServiceDisposable[]
+  saleItems           SaleItem[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -312,6 +320,37 @@ model ServiceDisposable {
   @@map("service_disposables")
 }
 
+/// Holidays and blocked hours — bookings cannot be created or moved into these windows (per branch or all branches).
+model AppointmentScheduleBlock {
+  id        Int       @id @default(autoincrement())
+  branchId  Int?
+  branch    Branch?   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  startDate DateTime  @db.Date
+  endDate   DateTime  @db.Date
+  allDay    Boolean   @default(true)
+  label     String?
+  isActive  Boolean   @default(true)
+  windows   AppointmentScheduleBlockWindow[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([startDate, endDate])
+  @@index([branchId])
+  @@map("appointment_schedule_blocks")
+}
+
+model AppointmentScheduleBlockWindow {
+  id        Int      @id @default(autoincrement())
+  blockId   Int
+  block     AppointmentScheduleBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  startTime String
+  endTime   String
+  sortOrder Int      @default(0)
+
+  @@index([blockId])
+  @@map("appointment_schedule_block_windows")
+}
+
 // --- Appointments ---
 
 model Appointment {
@@ -330,6 +369,11 @@ model Appointment {
   status                String               @default("scheduled") // scheduled, completed, cancelled, no-show
   notes                 String?
   totalAmount           Float                @default(0)
+  /// False when visit billing was posted at booking (immediate sale); delete logic skips reversing an AR bump that never happened.
+  postedChargesToPatientOnCreate Boolean               @default(true)
+  /// Preferred payment method when completing visit billing (ledger payment method).
+  paymentMethodId       Int?
+  paymentMethod         LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   createdById           Int?
   createdBy             User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
   services              AppointmentService[]
@@ -340,10 +384,14 @@ model Appointment {
   careFile              PatientCareFile?     @relation(fields: [careFileId], references: [id], onDelete: SetNull)
   serviceDisposableLogs InternalStockLog[]
   customFormResponses   CustomFormResponse[]
+  sales                 Sale[]
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 
+  @@index([appointmentDate])
+  @@index([branchId, appointmentDate])
   @@index([careFileId])
+  @@index([paymentMethodId])
   @@map("appointments")
 }
 
@@ -457,7 +505,7 @@ model Product {
   category               Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   isActive               Boolean                 @default(true)
   purchaseItems          PurchaseItem[]
-  saleItems              SaleItem[]
+  saleItems              SaleItem[]             @relation("ProductSaleItems")
   prescriptionItems      PrescriptionItem[]
   internalStockLogs      InternalStockLog[]
   unsellableStockLogs    UnsellableStockLog[]
@@ -591,6 +639,11 @@ model Sale {
   outreachTeam        OutreachTeam?        @relation(fields: [outreachTeamId], references: [id], onDelete: SetNull)
   /// Stock issued on credit to outreach team (no till deposit; increases team credit balance).
   outreachOnCredit    Boolean              @default(false)
+  /// Optional calendar appointment this sale belongs to (visit billing or linked POS).
+  appointmentId       Int?
+  appointment         Appointment?         @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  /// pos = retail/lab/outreach POS · appointment = visit service lines (no inventory movement)
+  kind                String               @default("pos")
   createdById         Int?
   createdBy           User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
   items               SaleItem[]
@@ -599,6 +652,7 @@ model Sale {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
+  @@index([appointmentId])
   @@map("sales")
 }
 
@@ -606,8 +660,11 @@ model SaleItem {
   id                      Int                      @id @default(autoincrement())
   saleId                  Int
   sale                    Sale                     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  productId               Int
-  product                 Product                  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productId               Int?
+  product                 Product?                 @relation("ProductSaleItems", fields: [productId], references: [id], onDelete: Restrict)
+  /// Set for visit billing lines (kind=appointment); mutually exclusive with productId in application logic.
+  serviceId               Int?
+  service                 Service?                 @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   quantity                Int
   /// Always pieces (pcs); column kept for schema compatibility.
   saleUnit                String                   @default("pcs")
@@ -616,6 +673,7 @@ model SaleItem {
   pharmacySaleReturnItems PharmacySaleReturnItem[]
   createdAt               DateTime                 @default(now())
 
+  @@index([serviceId])
   @@map("sale_items")
 }
 
@@ -775,7 +833,7 @@ model PatientPayment {
   amount          Float
   /// Discount/write-off applied toward the client balance on this transaction (no cash movement).
   discount        Float                @default(0)
-  /// medication | prescription | pharmacy_credit | laboratory — laboratory may link to a lab order
+  /// medication (appointment / visit charges) | prescription | pharmacy_credit | laboratory — laboratory may link to a lab order
   category        String               @default("medication")
   paymentMethodId Int?
   paymentMethod   LedgerPaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
@@ -833,6 +891,10 @@ model LabTest {
   id          Int                 @id @default(autoincrement())
   categoryId  Int
   category    LabCategory         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  /// When set, this test is a sub-test (child line) of a panel/root test. Only one level: parents have no parent.
+  parentTestId Int?
+  parentTest   LabTest?           @relation("LabTestSubtests", fields: [parentTestId], references: [id], onDelete: Restrict)
+  subtests     LabTest[]          @relation("LabTestSubtests")
   name        String
   code        String?
   unit        String?
@@ -841,10 +903,12 @@ model LabTest {
   price       Float               @default(0)
   isActive    Boolean             @default(true)
   orderItems  LabOrderItem[]
+  orderItemsAsPanelParent LabOrderItem[] @relation("LabOrderItemPanelParent")
   disposables LabTestDisposable[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
+  @@index([parentTestId])
   @@map("lab_tests")
 }
 
@@ -902,6 +966,9 @@ model LabOrderItem {
   labOrder              LabOrder           @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
   labTestId             Int
   labTest               LabTest            @relation(fields: [labTestId], references: [id], onDelete: Restrict)
+  /// When this line was created from a panel order, references the parent/panel test id (for grouping and print).
+  panelParentTestId     Int?
+  panelParentTest       LabTest?           @relation("LabOrderItemPanelParent", fields: [panelParentTestId], references: [id], onDelete: SetNull)
   /// Test fee at time of order (from LabTest.price).
   unitPrice             Float              @default(0)
   resultValue           String?            @db.Text
@@ -916,6 +983,7 @@ model LabOrderItem {
   createdAt             DateTime           @default(now())
   stockMovements        LabStockMovement[]
 
+  @@index([panelParentTestId])
   @@map("lab_order_items")
 }
 
@@ -1121,6 +1189,7 @@ model LedgerPaymentMethod {
   purchases        Purchase[]
   patientPayments  PatientPayment[]
   doctorVisitCards DoctorVisitCard[]
+  appointments     Appointment[]
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
@@ -1239,4 +1308,33 @@ model CustomFormAnswer {
   @@unique([responseId, fieldId])
   @@index([responseId])
   @@map("custom_form_answers")
+}
+
+/// HR staff record (not the same as system User login).
+model StaffMember {
+  id           Int      @id @default(autoincrement())
+  name         String
+  phone        String
+  address      String   @db.Text
+  title        String
+  cvUrl        String?
+  cvPublicId   String?
+  /// Profile photo (image upload, Cloudinary).
+  photoUrl     String?
+  photoPublicId String?
+  hireDate     DateTime
+  /// JSON array of weekday codes: mon, tue, wed, thu, fri, sat, sun
+  workingDays  String   @db.Text
+  /// e.g. "08:00 - 17:00"
+  workingHours String
+  salaryAmount Float?
+  isActive     Boolean  @default(true)
+  createdById  Int?
+  createdBy    User?    @relation("StaffMemberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([hireDate])
+  @@index([isActive])
+  @@map("staff_members")
 }

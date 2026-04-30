@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { userHasPermission } from "@/lib/permissions";
 import { deductDisposablesForLabOrderItem } from "@/lib/lab-disposable-deduction";
 
 export async function PATCH(
@@ -10,6 +11,9 @@ export async function PATCH(
   try {
     const auth = await getAuthUser(req);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await userHasPermission(auth.userId, "lab.edit"))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     const { id, itemId } = await params;
     const parsedId = Number(id);
     const parsedItemId = Number(itemId);
@@ -25,6 +29,7 @@ export async function PATCH(
         labOrder: {
           select: {
             id: true,
+            status: true,
             totalAmount: true,
             labFeePaidAmount: true,
             labFeeDiscountAmount: true,
@@ -34,25 +39,66 @@ export async function PATCH(
       },
     });
     if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-    const data: Record<string, unknown> = {};
-    if (typeof resultValue !== "undefined") data.resultValue = resultValue ? String(resultValue) : null;
-    if (typeof resultUnit !== "undefined") data.resultUnit = resultUnit ? String(resultUnit) : null;
-    if (typeof status === "string" && (status === "pending" || status === "completed")) data.status = status;
-    if (typeof notes !== "undefined") data.notes = notes ? String(notes) : null;
-    if (
-      typeof status === "string" &&
-      status === "completed" &&
-      ((typeof resultValue === "string" && resultValue) || (typeof resultUnit === "string" && resultUnit))
-    ) {
-      data.recordedById = auth.userId;
-      data.recordedAt = new Date();
+    if (item.labOrder.status === "cancelled") {
+      return NextResponse.json({ error: "Cannot update results on a cancelled order" }, { status: 400 });
     }
 
-    const nextStatus =
-      typeof status === "string" && (status === "pending" || status === "completed") ? status : item.status;
+    const toNullableString = (v: unknown): string | null => {
+      if (v === null || v === undefined || v === "") return null;
+      const s = String(v).trim();
+      return s === "" ? null : s;
+    };
 
-    const shouldDeduct = nextStatus === "completed" && !item.disposablesDeductedAt;
+    const nextValue =
+      typeof resultValue !== "undefined" ? toNullableString(resultValue) : item.resultValue;
+    const nextUnit =
+      typeof resultUnit !== "undefined" ? toNullableString(resultUnit) : item.resultUnit;
+
+    const hasResult = Boolean((nextValue ?? "").trim() || (nextUnit ?? "").trim());
+
+    let nextLineStatus: "pending" | "completed";
+    if (typeof status === "string" && (status === "pending" || status === "completed")) {
+      nextLineStatus = status;
+    } else if (item.status === "completed") {
+      nextLineStatus = "completed";
+    } else {
+      nextLineStatus = "pending";
+    }
+
+    if (!hasResult) nextLineStatus = "pending";
+    else if (
+      hasResult &&
+      nextLineStatus === "pending" &&
+      typeof status === "undefined" &&
+      (typeof resultValue !== "undefined" || typeof resultUnit !== "undefined")
+    ) {
+      nextLineStatus = "completed";
+    }
+
+    const data: Record<string, unknown> = {};
+    if (typeof resultValue !== "undefined") data.resultValue = nextValue;
+    if (typeof resultUnit !== "undefined") data.resultUnit = nextUnit;
+    if (typeof notes !== "undefined") data.notes = notes ? String(notes).trim() || null : null;
+
+    data.status = nextLineStatus;
+
+    const touchesResultOrStatus =
+      typeof resultValue !== "undefined" ||
+      typeof resultUnit !== "undefined" ||
+      typeof status !== "undefined";
+
+    if (touchesResultOrStatus) {
+      if (nextLineStatus === "completed" && hasResult) {
+        data.recordedById = auth.userId;
+        data.recordedAt = new Date();
+      } else {
+        data.recordedById = null;
+        data.recordedAt = null;
+      }
+    }
+
+    const shouldDeduct =
+      nextLineStatus === "completed" && hasResult && !item.disposablesDeductedAt;
 
     const updated = await prisma.$transaction(async (tx) => {
       const row = await tx.labOrderItem.update({
@@ -74,6 +120,14 @@ export async function PATCH(
           throw new Error(`DISPOSABLE:${res.error}`); // rolls back item update
         }
       }
+
+      const pendingLines = await tx.labOrderItem.count({
+        where: { labOrderId: parsedId, NOT: { status: "completed" } },
+      });
+      await tx.labOrder.updateMany({
+        where: { id: parsedId, NOT: { status: "cancelled" } },
+        data: { status: pendingLines === 0 ? "completed" : "pending" },
+      });
 
       return row;
     });

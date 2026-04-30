@@ -67,7 +67,7 @@ export default function NewServicePage() {
       backHref="/settings/services"
       branches={branches}
       initialValues={emptyForm(defaultBranch)}
-      initialDisposableBranchId={defaultBranch}
+      initialDisposableBranchId=""
       canManageDisposables={canCreate}
       submitLabel="Create service"
       onSubmit={async (form, meta) => {

@@ -18,6 +18,9 @@ type LabTest = {
   price: number;
   isActive: boolean;
   category: { id: number; name: string };
+  parentTest?: { id: number; name: string } | null;
+  parentTestId?: number | null;
+  subtests?: { id: number; name: string }[];
 };
 type LabCategory = { id: number; name: string };
 
@@ -83,15 +86,23 @@ export default function LabTestsPage() {
     <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="Lab Tests" />
-        {canCreate && categories.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <Link
-            href="/lab/tests/new"
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+            href="/lab/tests/subtests"
+            className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 dark:border-gray-700 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
           >
-            <PlusIcon />
-            Add Test
+            Sub-tests list
           </Link>
-        )}
+          {canCreate && categories.length > 0 && (
+            <Link
+              href="/lab/tests/new"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+            >
+              <PlusIcon />
+              Add Test
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
@@ -115,15 +126,44 @@ export default function LabTestsPage() {
             <TableBody>
               {tests.map((t) => (
                 <TableRow key={t.id}>
-                  <TableCell>{t.name}</TableCell>
+                  <TableCell>
+                    <span className="font-medium text-gray-900 dark:text-white">{t.name}</span>
+                    {t.subtests?.length ? (
+                      <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                        Panel · {t.subtests.length} sub-test{t.subtests.length === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                    {t.parentTest ? (
+                      <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                        Sub-test of {t.parentTest.name}
+                      </span>
+                    ) : null}
+                  </TableCell>
                   <TableCell>{t.category.name}</TableCell>
                   <TableCell>{t.code || "—"}</TableCell>
                   <TableCell>{t.unit || "—"}</TableCell>
                   <TableCell>{t.normalRange || "—"}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">${(t.price ?? 0).toFixed(2)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">
+                    {t.parentTest ? (
+                      <span className="text-gray-400 dark:text-gray-500" title="Fee is on the panel test">
+                        —
+                      </span>
+                    ) : (
+                      `$${(t.price ?? 0).toFixed(2)}`
+                    )}
+                  </TableCell>
                   {(canEdit || canDelete) && (
                     <TableCell>
                       <div className="flex gap-2">
+                        {(canEdit || canCreate) && !t.parentTest && (
+                          <Link
+                            href={`/lab/tests/${t.id}/subtests`}
+                            className="inline-flex text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                            title="Manage sub-tests"
+                          >
+                            Sub-tests
+                          </Link>
+                        )}
                         {canEdit && (
                           <Link
                             href={`/lab/tests/${t.id}/edit`}

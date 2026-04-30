@@ -9,7 +9,9 @@ async function canListPaymentMethods(userId: number): Promise<boolean> {
   return (
     (await userHasPermission(userId, "accounts.view")) ||
     (await userHasPermission(userId, "accounts.deposit")) ||
-    (await userHasPermission(userId, "visit_cards.create"))
+    (await userHasPermission(userId, "visit_cards.create")) ||
+    (await userHasPermission(userId, "appointments.edit")) ||
+    (await userHasPermission(userId, "appointments.create"))
   );
 }
 

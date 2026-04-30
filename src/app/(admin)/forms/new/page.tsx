@@ -1,13 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Swal from "sweetalert2";
+import "sweetalert2/dist/sweetalert2.min.css";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+
+const EMPTY_NEW_FORM_SNAPSHOT = JSON.stringify({ title: "", description: "" });
+
+function newFormSnapshot(title: string, description: string): string {
+  return JSON.stringify({ title: title.trim(), description: description.trim() });
+}
 
 export default function NewFormPage() {
   const router = useRouter();
@@ -18,6 +26,33 @@ export default function NewFormPage() {
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  const tryNavigateToForms = useCallback(async () => {
+    if (newFormSnapshot(title, description) === EMPTY_NEW_FORM_SNAPSHOT) {
+      router.push("/forms");
+      return;
+    }
+    const res = await Swal.fire({
+      icon: "warning",
+      title: "Discard unsaved data?",
+      text: "You have entered form details that are not saved. Leave and lose your changes?",
+      showCancelButton: true,
+      confirmButtonText: "Yes",
+      cancelButtonText: "No",
+      reverseButtons: true,
+    });
+    if (res.isConfirmed) router.push("/forms");
+  }, [title, description, router]);
+
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (newFormSnapshot(title, description) === EMPTY_NEW_FORM_SNAPSHOT) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [title, description]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -69,9 +104,13 @@ export default function NewFormPage() {
     <div>
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="New form" />
-        <Link href="/forms" className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">
+        <button
+          type="button"
+          onClick={() => void tryNavigateToForms()}
+          className="text-left text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
           ← All forms
-        </Link>
+        </button>
       </div>
 
       <form
@@ -103,11 +142,9 @@ export default function NewFormPage() {
           <Button type="submit" size="sm" disabled={submitting || !title.trim()}>
             {submitting ? "Creating…" : "Create and edit fields"}
           </Button>
-          <Link href="/forms">
-            <Button variant="outline" size="sm" type="button">
-              Cancel
-            </Button>
-          </Link>
+          <Button variant="outline" size="sm" type="button" onClick={() => void tryNavigateToForms()}>
+            Cancel
+          </Button>
         </div>
       </form>
     </div>

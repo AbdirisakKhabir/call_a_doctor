@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import Swal from "sweetalert2";
+import "sweetalert2/dist/sweetalert2.min.css";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
@@ -61,6 +63,28 @@ function textToOptions(text: string): string[] {
     .filter(Boolean);
 }
 
+/** Stable snapshot for dirty checks (matches saved payload shape). */
+function snapshotForm(
+  title: string,
+  description: string,
+  isPublished: boolean,
+  fields: BuilderField[]
+): string {
+  return JSON.stringify({
+    title: title.trim(),
+    description: description.trim(),
+    isPublished,
+    fields: fields.map((f) => ({
+      fieldType: f.fieldType,
+      label: f.label.trim(),
+      placeholder: f.placeholder.trim() || null,
+      helpText: f.helpText.trim() || null,
+      required: f.required,
+      options: fieldTypeNeedsOptions(f.fieldType) ? textToOptions(f.optionsText) : null,
+    })),
+  });
+}
+
 function defaultBuilderField(type: CustomFormFieldType = "SHORT_TEXT"): BuilderField {
   const label =
     type === "SHORT_TEXT"
@@ -95,6 +119,7 @@ export default function EditFormPage() {
   const [saveError, setSaveError] = useState("");
   const [saveOk, setSaveOk] = useState(false);
   const [addFieldType, setAddFieldType] = useState<CustomFormFieldType>("SHORT_TEXT");
+  const baselineSnapshotRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!Number.isInteger(id) || id < 1) {
@@ -111,22 +136,27 @@ export default function EditFormPage() {
         setLoadError(typeof data.error === "string" ? data.error : "Failed to load");
         return;
       }
+      const mapped = (data.fields ?? []).map((f) => ({
+        key: newKey(),
+        fieldType: (CUSTOM_FORM_FIELD_TYPES.some((t) => t.value === f.fieldType)
+          ? f.fieldType
+          : "SHORT_TEXT") as CustomFormFieldType,
+        label: f.label,
+        placeholder: f.placeholder ?? "",
+        helpText: f.helpText ?? "",
+        required: f.required,
+        optionsText: optionsToText(f.options),
+      }));
+      baselineSnapshotRef.current = snapshotForm(
+        data.title,
+        data.description ?? "",
+        data.isPublished,
+        mapped
+      );
       setTitle(data.title);
       setDescription(data.description ?? "");
       setIsPublished(data.isPublished);
-      setFields(
-        (data.fields ?? []).map((f) => ({
-          key: newKey(),
-          fieldType: (CUSTOM_FORM_FIELD_TYPES.some((t) => t.value === f.fieldType)
-            ? f.fieldType
-            : "SHORT_TEXT") as CustomFormFieldType,
-          label: f.label,
-          placeholder: f.placeholder ?? "",
-          helpText: f.helpText ?? "",
-          required: f.required,
-          optionsText: optionsToText(f.options),
-        }))
-      );
+      setFields(mapped);
     } finally {
       setLoading(false);
     }
@@ -139,6 +169,45 @@ export default function EditFormPage() {
     }
     void load();
   }, [canView, load]);
+
+  const tryNavigateToForms = useCallback(async () => {
+    const baseline = baselineSnapshotRef.current;
+    if (baseline === null) {
+      router.push("/forms");
+      return;
+    }
+    if (snapshotForm(title, description, isPublished, fields) === baseline) {
+      router.push("/forms");
+      return;
+    }
+    const res = await Swal.fire({
+      icon: "warning",
+      title: "Discard unsaved changes?",
+      text: "You have unsaved changes to this form. Leave and discard them?",
+      showCancelButton: true,
+      confirmButtonText: "Yes",
+      cancelButtonText: "No",
+      reverseButtons: true,
+    });
+    if (res.isConfirmed) router.push("/forms");
+  }, [title, description, isPublished, fields, router]);
+
+  useEffect(() => {
+    if (!canEdit || loading || loadError) return;
+    const baseline = baselineSnapshotRef.current;
+    const t = title;
+    const d = description;
+    const p = isPublished;
+    const flds = fields;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (baseline === null) return;
+      if (snapshotForm(t, d, p, flds) === baseline) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [canEdit, loading, loadError, title, description, isPublished, fields]);
 
   function moveField(index: number, dir: -1 | 1) {
     const next = index + dir;
@@ -205,6 +274,7 @@ export default function EditFormPage() {
         setSaveError(typeof data.error === "string" ? data.error : "Save failed");
         return;
       }
+      baselineSnapshotRef.current = snapshotForm(title, description, isPublished, fields);
       setSaveOk(true);
       router.refresh();
       setTimeout(() => setSaveOk(false), 2500);
@@ -259,9 +329,13 @@ export default function EditFormPage() {
     <div className="min-h-0">
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="Edit form" />
-        <Link href="/forms" className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">
+        <button
+          type="button"
+          onClick={() => void tryNavigateToForms()}
+          className="text-left text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
           ← All forms
-        </Link>
+        </button>
       </div>
 
       <div className="space-y-6">
@@ -524,6 +598,9 @@ export default function EditFormPage() {
         <div className="flex flex-wrap items-center gap-3 pb-8">
           <Button type="button" size="sm" disabled={saving} onClick={() => void handleSave()}>
             {saving ? "Saving…" : "Save form"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => void tryNavigateToForms()}>
+            Cancel
           </Button>
           {saveError ? <span className="text-sm text-error-600 dark:text-error-400">{saveError}</span> : null}
           {saveOk ? <span className="text-sm text-green-700 dark:text-green-400">Saved.</span> : null}

@@ -15,11 +15,35 @@ export type PatientPaymentTarget = {
 type PaymentCategory = "medication" | "prescription" | "pharmacy_credit" | "laboratory";
 
 const CATEGORY_OPTIONS: { value: PaymentCategory; label: string }[] = [
-  { value: "medication", label: "Medication" },
+  { value: "medication", label: "Appointment fee" },
   { value: "prescription", label: "Prescription" },
   { value: "pharmacy_credit", label: "Pharmacy credits" },
   { value: "laboratory", label: "Laboratory (lab fee)" },
 ];
+
+const defaultCategories = (): Set<PaymentCategory> => new Set(["medication"]);
+
+function sortedSelectedCategories(set: Set<PaymentCategory>): PaymentCategory[] {
+  return CATEGORY_OPTIONS.map((o) => o.value).filter((v) => set.has(v));
+}
+
+function togglePaymentCategory(
+  set: Set<PaymentCategory>,
+  value: PaymentCategory
+): Set<PaymentCategory> {
+  if (value === "laboratory") {
+    return new Set(["laboratory"]);
+  }
+  const next = new Set(set);
+  next.delete("laboratory");
+  if (next.has(value)) {
+    next.delete(value);
+    if (next.size === 0) next.add("medication");
+  } else {
+    next.add(value);
+  }
+  return next;
+}
 
 type PendingLabOrder = {
   id: number;
@@ -48,7 +72,7 @@ export default function PatientPaymentModal({
   const [discount, setDiscount] = useState("");
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [notes, setNotes] = useState("");
-  const [category, setCategory] = useState<PaymentCategory>("medication");
+  const [categorySet, setCategorySet] = useState<Set<PaymentCategory>>(defaultCategories);
   const [labOrderId, setLabOrderId] = useState("");
   const [pendingLabOrders, setPendingLabOrders] = useState<PendingLabOrder[]>([]);
   const [loadingLabOrders, setLoadingLabOrders] = useState(false);
@@ -65,7 +89,7 @@ export default function PatientPaymentModal({
     );
     setPaymentMethodId("");
     setNotes("");
-    setCategory("medication");
+    setCategorySet(defaultCategories());
     setDiscount("");
     setLabOrderId("");
     setPendingLabOrders([]);
@@ -91,8 +115,10 @@ export default function PatientPaymentModal({
     };
   }, [patient?.id]);
 
+  const categoriesKey = [...categorySet].sort().join(",");
+
   useEffect(() => {
-    if (!patient || category !== "laboratory") return;
+    if (!patient || categoriesKey !== "laboratory") return;
     let cancelled = false;
     setLoadingLabOrders(true);
     authFetch(`/api/patients/${patient.id}/lab-orders?pendingFee=1`)
@@ -122,7 +148,7 @@ export default function PatientPaymentModal({
     return () => {
       cancelled = true;
     };
-  }, [patient?.id, category]);
+  }, [patient?.id, categoriesKey, patient?.accountBalance]);
 
   if (!patient) return null;
 
@@ -146,7 +172,12 @@ export default function PatientPaymentModal({
       setError("Select a payment method for cash collected");
       return;
     }
-    if (category === "laboratory" && !labOrderId) {
+    const categories = sortedSelectedCategories(categorySet);
+    if (categories.length === 0) {
+      setError("Choose at least one payment type");
+      return;
+    }
+    if (categories.includes("laboratory") && !labOrderId) {
       setError("Select a lab order with an unpaid fee");
       return;
     }
@@ -160,8 +191,8 @@ export default function PatientPaymentModal({
           amount: cashNum,
           discount: discNum,
           paymentMethodId: cashNum > 0 ? Number(paymentMethodId) : null,
-          category,
-          labOrderId: category === "laboratory" ? Number(labOrderId) : undefined,
+          categories,
+          labOrderId: categories.includes("laboratory") ? Number(labOrderId) : undefined,
           notes: notes.trim() || null,
         }),
       });
@@ -222,30 +253,24 @@ export default function PatientPaymentModal({
         </p>
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">Payment for *</legend>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Select one or more. Laboratory cannot be combined with other types.
+          </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {CATEGORY_OPTIONS.map((opt) => (
               <label
                 key={opt.value}
                 className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                  category === opt.value
+                  categorySet.has(opt.value)
                     ? "border-brand-500 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/15"
                     : "border-gray-200 dark:border-gray-700"
                 }`}
               >
                 <input
-                  type="radio"
-                  name="paymentCategory"
-                  value={opt.value}
-                  checked={category === opt.value}
-                  onChange={() => {
-                    const v = opt.value;
-                    setCategory(v);
-                    if (v !== "laboratory") {
-                      setLabOrderId("");
-                      setPendingLabOrders([]);
-                    }
-                  }}
-                  className="border-gray-300 text-brand-600"
+                  type="checkbox"
+                  checked={categorySet.has(opt.value)}
+                  onChange={() => setCategorySet((prev) => togglePaymentCategory(prev, opt.value))}
+                  className="rounded border-gray-300 text-brand-600"
                 />
                 {opt.label}
               </label>
@@ -253,47 +278,44 @@ export default function PatientPaymentModal({
           </div>
         </fieldset>
 
-        {category === "laboratory" && (
-          <div className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
-            Select the lab requisition this payment applies to. Results can be recorded even if the fee is not fully
-            settled yet; post the fee here when cash or a write-off is collected.
-          </div>
-        )}
-
-        {category === "laboratory" && (
-          <div>
-            <Label>Lab order *</Label>
-            {loadingLabOrders ? (
-              <p className="mt-1 text-sm text-gray-500">Loading open lab orders…</p>
-            ) : pendingLabOrders.length === 0 ? (
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                No unpaid lab fees. If tests were just ordered, the charge appears on the client account—refresh this
-                screen or check the lab orders list.
-              </p>
-            ) : (
-              <select
-                required
-                value={labOrderId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setLabOrderId(id);
-                  const o = pendingLabOrders.find((x) => String(x.id) === id);
-                  if (o) {
-                    const bal = patient.accountBalance ?? 0;
-                    const apply = Math.min(bal, o.feeRemaining);
-                    setAmount(apply > 0 ? String(apply) : "");
-                  }
-                }}
-                className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              >
-                {pendingLabOrders.map((o) => (
-                  <option key={o.id} value={String(o.id)}>
-                    Order #{o.id} — {o.doctor.name} — remaining ${o.feeRemaining.toFixed(2)}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+        {categorySet.has("laboratory") && categoriesKey === "laboratory" && (
+          <>
+            <div className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
+              Choose the lab requisition this payment settles.
+            </div>
+            <div>
+              <Label>Lab order *</Label>
+              {loadingLabOrders ? (
+                <p className="mt-1 text-sm text-gray-500">Loading open lab orders…</p>
+              ) : pendingLabOrders.length === 0 ? (
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  No unpaid lab fees. Refresh or check lab orders.
+                </p>
+              ) : (
+                <select
+                  required
+                  value={labOrderId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setLabOrderId(id);
+                    const o = pendingLabOrders.find((x) => String(x.id) === id);
+                    if (o) {
+                      const bal = patient.accountBalance ?? 0;
+                      const apply = Math.min(bal, o.feeRemaining);
+                      setAmount(apply > 0 ? String(apply) : "");
+                    }
+                  }}
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                >
+                  {pendingLabOrders.map((o) => (
+                    <option key={o.id} value={String(o.id)}>
+                      Order #{o.id} — {o.doctor.name} — remaining ${o.feeRemaining.toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </>
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

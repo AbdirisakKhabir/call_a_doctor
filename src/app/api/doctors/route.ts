@@ -11,7 +11,11 @@ export async function GET(req: NextRequest) {
     const branchId = searchParams.get("branchId");
     const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(searchParams);
 
-    const where = branchId ? { branchId: Number(branchId), isActive: true } : { isActive: true };
+    const bid = branchId ? Number(branchId) : NaN;
+    const where =
+      Number.isInteger(bid) && bid > 0
+        ? { isActive: true as const, OR: [{ branchId: bid }, { branchId: null }] }
+        : { isActive: true as const };
     const include = { branch: { select: { id: true, name: true } } };
 
     if (paginate) {

@@ -16,11 +16,13 @@ import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
 import { PlusIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
+import { printPurchaseReceipt, purchaseApiRowToPrintPayload } from "@/lib/print-purchase-receipt";
 
 type Purchase = {
   id: number;
   purchaseDate: string;
   totalAmount: number;
+  notes?: string | null;
   branch: { id: number; name: string } | null;
   supplier: { id: number; name: string } | null;
   createdBy: { name: string | null } | null;
@@ -29,7 +31,14 @@ type Purchase = {
     name: string;
     account: { id: number; name: string; type: string };
   } | null;
-  items: { productId: number; quantity: number; unitPrice: number; totalAmount: number; product: { name: string; code: string } }[];
+  items: {
+    productId: number;
+    quantity: number;
+    unitPrice: number;
+    totalAmount: number;
+    purchaseUnit?: string;
+    product: { id: number; name: string; code: string };
+  }[];
 };
 
 type Branch = { id: number; name: string };
@@ -170,6 +179,9 @@ export default function PurchasesPage() {
                 <TableCell isHeader>Payment</TableCell>
                 <TableCell isHeader>Total</TableCell>
                 <TableCell isHeader>Recorded By</TableCell>
+                <TableCell isHeader className="text-end">
+                  Receipt
+                </TableCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -192,6 +204,15 @@ export default function PurchasesPage() {
                   </TableCell>
                   <TableCell>${p.totalAmount.toFixed(2)}</TableCell>
                   <TableCell>{p.createdBy?.name || "—"}</TableCell>
+                  <TableCell className="text-end">
+                    <button
+                      type="button"
+                      onClick={() => void printPurchaseReceipt(purchaseApiRowToPrintPayload(p))}
+                      className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      Print
+                    </button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

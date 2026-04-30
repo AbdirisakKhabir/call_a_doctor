@@ -444,6 +444,7 @@ export async function POST(req: NextRequest) {
         include: {
           branch: { select: { id: true, name: true } },
           supplier: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, name: true } },
           paymentMethod: {
             include: {
               account: { select: { id: true, name: true, type: true } },

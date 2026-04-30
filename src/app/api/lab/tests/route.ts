@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { ensureLabPackagingUnitsFromPharmacyProduct, normalizeLabUnitKey } from "@/lib/lab-inventory-units";
+import { assertLabTestParentAssignment } from "@/lib/lab-test-parent";
 
 function normalizeProductCode(code: string): string {
   return code.trim().toUpperCase();
@@ -15,10 +16,37 @@ export async function GET(req: NextRequest) {
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { searchParams } = new URL(req.url);
     const categoryId = searchParams.get("categoryId");
+    const scope = searchParams.get("scope");
     const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(searchParams);
 
-    const where = categoryId ? { categoryId: Number(categoryId) } : {};
-    const include = { category: { select: { id: true, name: true } } };
+    const where: {
+      categoryId?: number;
+      parentTestId?: { not: null } | null;
+    } = {};
+    if (categoryId) {
+      where.categoryId = Number(categoryId);
+    }
+    if (scope === "subtests") {
+      where.parentTestId = { not: null };
+    }
+
+    const subtestsListInclude = {
+      category: { select: { id: true, name: true } },
+      parentTest: { select: { id: true, name: true } },
+    };
+
+    const include =
+      scope === "subtests"
+        ? subtestsListInclude
+        : {
+            category: { select: { id: true, name: true } },
+            subtests: {
+              where: { isActive: true },
+              select: { id: true, name: true },
+              orderBy: { name: "asc" as const },
+            },
+            parentTest: { select: { id: true, name: true } },
+          };
 
     if (paginate) {
       const [tests, total] = await Promise.all([
@@ -61,6 +89,7 @@ export async function POST(req: NextRequest) {
       unit,
       normalRange,
       price,
+      parentTestId: parentTestIdRaw,
       disposables: disposablesRaw,
       disposableBranchId: disposableBranchIdRaw,
     } = body;
@@ -78,18 +107,19 @@ export async function POST(req: NextRequest) {
     if (Array.isArray(disposablesRaw)) {
       const seen = new Set<string>();
       for (const row of disposablesRaw) {
+        if (!row || typeof row !== "object") continue;
         const productCode =
-          row && typeof row === "object" && typeof (row as { productCode?: unknown }).productCode === "string"
+          typeof (row as { productCode?: unknown }).productCode === "string"
             ? normalizeProductCode((row as { productCode: string }).productCode)
             : "";
         const unitsPerTest = Number((row as { unitsPerTest?: unknown })?.unitsPerTest);
         const deductionUnitKey = normalizeLabUnitKey(
-          row && typeof row === "object" && typeof (row as { deductionUnitKey?: unknown }).deductionUnitKey === "string"
+          typeof (row as { deductionUnitKey?: unknown }).deductionUnitKey === "string"
             ? (row as { deductionUnitKey: string }).deductionUnitKey
             : "base"
         );
         if (!productCode) {
-          return NextResponse.json({ error: "Each disposable needs a product code" }, { status: 400 });
+          continue;
         }
         if (!Number.isFinite(unitsPerTest) || unitsPerTest <= 0) {
           return NextResponse.json({ error: "Units per test must be a positive number for each disposable" }, { status: 400 });
@@ -111,7 +141,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const parentTestId =
+      parentTestIdRaw != null && parentTestIdRaw !== ""
+        ? Number(parentTestIdRaw)
+        : null;
+    if (parentTestId != null && (!Number.isInteger(parentTestId) || parentTestId <= 0)) {
+      return NextResponse.json({ error: "Invalid parent panel test" }, { status: 400 });
+    }
+
     const test = await prisma.$transaction(async (tx) => {
+      const parentErr = await assertLabTestParentAssignment(tx, { parentTestId });
+      if (parentErr) {
+        throw new Error(`BAD_REQUEST:${parentErr}`);
+      }
       const created = await tx.labTest.create({
         data: {
           categoryId: Number(categoryId),
@@ -119,7 +161,8 @@ export async function POST(req: NextRequest) {
           code: code ? String(code).trim() : null,
           unit: unit ? String(unit).trim() : null,
           normalRange: normalRange ? String(normalRange).trim() : null,
-          price: Number.isFinite(priceNum) ? priceNum : 0,
+          price: parentTestId != null ? 0 : Number.isFinite(priceNum) ? priceNum : 0,
+          ...(parentTestId != null ? { parentTestId } : {}),
         },
       });
 
@@ -143,12 +186,23 @@ export async function POST(req: NextRequest) {
 
       return tx.labTest.findUniqueOrThrow({
         where: { id: created.id },
-        include: { category: { select: { id: true, name: true } } },
+        include: {
+          category: { select: { id: true, name: true } },
+          subtests: {
+            where: { isActive: true },
+            select: { id: true, name: true },
+            orderBy: { name: "asc" },
+          },
+          parentTest: { select: { id: true, name: true } },
+        },
       });
     });
 
     return NextResponse.json(test);
   } catch (e: unknown) {
+    if (e instanceof Error && e.message.startsWith("BAD_REQUEST:")) {
+      return NextResponse.json({ error: e.message.replace(/^BAD_REQUEST:/, "").trim() }, { status: 400 });
+    }
     if (e instanceof Error && e.message.startsWith("ENSURE_FAILED:")) {
       return NextResponse.json({ error: e.message.replace(/^ENSURE_FAILED:/, "") }, { status: 400 });
     }

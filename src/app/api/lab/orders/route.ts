@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { logAuditFromRequest } from "@/lib/audit-log";
 import { serializePatient } from "@/lib/patient-name";
+import { roundMoney } from "@/lib/lab-fee-settlement";
+import { expandLabTestIdsToOrderLines } from "@/lib/lab-order-expand-tests";
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,13 +22,27 @@ export async function GET(req: NextRequest) {
       ...(appointmentId ? { appointmentId: Number(appointmentId) } : {}),
       ...(status ? { status } : {}),
     };
+    const labItemInclude = {
+      include: {
+        labTest: {
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+            normalRange: true,
+            price: true,
+            parentTestId: true,
+            category: { select: { id: true, name: true } },
+          },
+        },
+        panelParentTest: { select: { id: true, name: true } },
+      },
+    };
     const include = {
       patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
       doctor: { select: { id: true, name: true } },
       appointment: { select: { id: true, appointmentDate: true, startTime: true } },
-      items: {
-        include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true, price: true } } },
-      },
+      items: labItemInclude,
     };
 
     if (paginate) {
@@ -70,29 +86,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Booking, client, doctor and at least one test are required" }, { status: 400 });
     }
 
-    const uniqueTestIds = [
-      ...new Set(
-        testIds
-          .map((x: unknown) => Number(x))
-          .filter((id: number) => Number.isInteger(id) && id > 0)
-      ),
-    ];
-    if (uniqueTestIds.length === 0) {
+    const seen = new Set<number>();
+    const orderedUniqueTestIds: number[] = [];
+    for (const x of testIds as unknown[]) {
+      const id = Number(x);
+      if (!Number.isInteger(id) || id <= 0) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      orderedUniqueTestIds.push(id);
+    }
+    if (orderedUniqueTestIds.length === 0) {
       return NextResponse.json({ error: "At least one valid test is required" }, { status: 400 });
     }
 
-    const labTests = await prisma.labTest.findMany({
-      where: { id: { in: uniqueTestIds }, isActive: true },
-    });
-    if (labTests.length !== uniqueTestIds.length) {
-      return NextResponse.json(
-        { error: "One or more tests are invalid, inactive, or duplicated incorrectly" },
-        { status: 400 }
-      );
-    }
-
-    const testById = new Map(labTests.map((t) => [t.id, t] as const));
-    const totalAmount = uniqueTestIds.reduce((sum, id) => sum + (testById.get(id)?.price ?? 0), 0);
     const patientIdNum = Number(patientId);
 
     const include = {
@@ -100,7 +106,20 @@ export async function POST(req: NextRequest) {
       doctor: { select: { id: true, name: true } },
       appointment: { select: { id: true, appointmentDate: true, startTime: true } },
       items: {
-        include: { labTest: { select: { id: true, name: true, unit: true, normalRange: true, price: true } } },
+        include: {
+          labTest: {
+            select: {
+              id: true,
+              name: true,
+              unit: true,
+              normalRange: true,
+              price: true,
+              parentTestId: true,
+              category: { select: { id: true, name: true } },
+            },
+          },
+          panelParentTest: { select: { id: true, name: true } },
+        },
       },
     };
 
@@ -113,6 +132,12 @@ export async function POST(req: NextRequest) {
         throw new Error("BAD_REQUEST:Appointment does not match this client.");
       }
 
+      const { lines, error: expandError } = await expandLabTestIdsToOrderLines(tx, orderedUniqueTestIds);
+      if (expandError || lines.length === 0) {
+        throw new Error(`BAD_REQUEST:${expandError ?? "Could not build order lines"}`);
+      }
+      const totalAmount = roundMoney(lines.reduce((s, l) => s + l.unitPrice, 0));
+
       const created = await tx.labOrder.create({
         data: {
           appointmentId: Number(appointmentId),
@@ -123,9 +148,10 @@ export async function POST(req: NextRequest) {
           totalAmount,
           careFileId: apptRow.careFileId,
           items: {
-            create: uniqueTestIds.map((tid) => ({
-              labTestId: tid,
-              unitPrice: testById.get(tid)?.price ?? 0,
+            create: lines.map((line) => ({
+              labTestId: line.labTestId,
+              unitPrice: line.unitPrice,
+              panelParentTestId: line.panelParentTestId,
             })),
           },
         },
@@ -155,8 +181,9 @@ export async function POST(req: NextRequest) {
       metadata: {
         patientId: order.patientId,
         appointmentId: order.appointmentId,
-        totalAmount,
-        patientCharged: totalAmount > 0,
+        totalAmount: order.totalAmount,
+        lineCount: order.items.length,
+        patientCharged: order.totalAmount > 0,
       },
     });
     return NextResponse.json({ ...order, patient: serializePatient(order.patient) });

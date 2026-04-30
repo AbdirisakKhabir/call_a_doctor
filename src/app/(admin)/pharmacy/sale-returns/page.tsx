@@ -92,6 +92,13 @@ function PharmacySaleReturnsInner() {
           );
           return;
         }
+        if (saleData.kind === "appointment") {
+          setSale(null);
+          setError(
+            "This is a visit billing sale (services only). It cannot be returned as pharmacy stock."
+          );
+          return;
+        }
         if (
           branchForValidate &&
           saleData.branchId != null &&

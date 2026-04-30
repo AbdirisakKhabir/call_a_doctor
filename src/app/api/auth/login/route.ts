@@ -69,6 +69,12 @@ export async function POST(req: NextRequest) {
       userAgent: getUserAgent(req),
     });
 
+    const now = new Date();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: now, lastSeenAt: now },
+    });
+
     return NextResponse.json({
       token,
       user: {

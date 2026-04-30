@@ -1,12 +1,23 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { CalenderIcon, UserCircleIcon, PencilIcon, CheckLineIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
+
+type LabOrderItem = {
+  id: number;
+  unitPrice: number;
+  resultValue: string | null;
+  resultUnit: string | null;
+  status: string;
+  panelParentTestId: number | null;
+  panelParentTest: { id: number; name: string } | null;
+  labTest: { id: number; name: string; unit: string | null; normalRange: string | null; price: number };
+};
 
 type LabOrder = {
   id: number;
@@ -17,15 +28,37 @@ type LabOrder = {
   patient: { id: number; patientCode: string; name: string };
   doctor: { id: number; name: string };
   appointment: { id: number; appointmentDate: string; startTime: string };
-  items: {
-    id: number;
-    unitPrice: number;
-    resultValue: string | null;
-    resultUnit: string | null;
-    status: string;
-    labTest: { id: number; name: string; unit: string | null; normalRange: string | null; price: number };
-  }[];
+  items: LabOrderItem[];
 };
+
+type OrderDisplayRow =
+  | { kind: "panel"; name: string; panelItems: LabOrderItem[] }
+  | { kind: "test"; item: LabOrderItem };
+
+function buildOrderDisplayRows(items: LabOrderItem[]): OrderDisplayRow[] {
+  const emittedPanelIds = new Set<number>();
+  const rows: OrderDisplayRow[] = [];
+  for (const item of items) {
+    const pid = item.panelParentTestId;
+    if (pid != null) {
+      if (emittedPanelIds.has(pid)) continue;
+      emittedPanelIds.add(pid);
+      const panelItems = items.filter((i) => i.panelParentTestId === pid);
+      const name = item.panelParentTest?.name ?? "Panel";
+      rows.push({ kind: "panel", name, panelItems });
+    } else {
+      rows.push({ kind: "test", item });
+    }
+  }
+  return rows;
+}
+
+function panelResultSummary(panelItems: LabOrderItem[]): string {
+  const done = panelItems.filter((i) => i.status === "completed").length;
+  if (done === 0) return "—";
+  if (done === panelItems.length) return "Complete";
+  return `${done}/${panelItems.length} recorded`;
+}
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr);
@@ -42,8 +75,6 @@ export default function LabOrdersPage() {
   const [orderPage, setOrderPage] = useState(1);
   const orderPageSize = 20;
   const [loading, setLoading] = useState(true);
-  const [recordingItem, setRecordingItem] = useState<{ orderId: number; itemId: number } | null>(null);
-  const [resultForm, setResultForm] = useState({ resultValue: "", resultUnit: "", notes: "" });
 
   const canRecord = hasPermission("lab.edit");
 
@@ -74,31 +105,11 @@ export default function LabOrdersPage() {
     loadOrders().finally(() => setLoading(false));
   }, [orderPage]);
 
-  function openRecord(orderId: number, item: { id: number; resultValue: string | null; resultUnit: string | null; labTest: { unit: string | null } }) {
-    setRecordingItem({ orderId, itemId: item.id });
-    setResultForm({ resultValue: item.resultValue ?? "", resultUnit: item.resultUnit ?? item.labTest.unit ?? "", notes: "" });
-  }
-
-  async function saveResult() {
-    if (!recordingItem) return;
-    const res = await authFetch(`/api/lab/orders/${recordingItem.orderId}/items/${recordingItem.itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resultValue: resultForm.resultValue || null, resultUnit: resultForm.resultUnit || null, status: resultForm.resultValue ? "completed" : "pending", notes: resultForm.notes || null }),
-    });
-    if (res.ok) {
-      setRecordingItem(null);
-      await loadOrders();
-    } else {
-      alert((await res.json()).error || "Failed");
-    }
-  }
-
   if (!hasPermission("lab.view")) {
     return (
       <div>
         <PageBreadCrumb pageTitle="Lab Orders" />
-        <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-gray-200 bg-white px-6 py-16 dark:border-gray-800 dark:bg-white/3">
+        <div className="mt-6 rounded-lg border border-gray-200 bg-white px-6 py-12 text-center dark:border-gray-800 dark:bg-white/3">
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400">You do not have permission.</p>
         </div>
       </div>
@@ -112,95 +123,92 @@ export default function LabOrdersPage() {
       </div>
 
       {loading ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-12 dark:border-gray-800 dark:bg-white/3">
-          <div className="flex flex-col items-center justify-center gap-4 text-gray-500 dark:text-gray-400">
-            <div className="h-12 w-12 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-            <p className="text-sm font-medium">Loading lab orders...</p>
+        <div className="rounded-lg border border-gray-200 bg-white px-6 py-12 dark:border-gray-800 dark:bg-white/3">
+          <div className="flex flex-col items-center justify-center gap-3 text-center text-gray-600 dark:text-gray-400">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600 dark:border-gray-600 dark:border-t-gray-300" />
+            <p className="text-sm">Loading…</p>
           </div>
         </div>
       ) : orders.length === 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-16 dark:border-gray-800 dark:bg-white/3">
-          <div className="flex flex-col items-center justify-center gap-4 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-500/10">
-              <CalenderIcon className="h-10 w-10 text-brand-500" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">No lab orders yet</h3>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Lab orders are created from the calendar. Open a booking to send a client to the lab.</p>
-            </div>
-          </div>
+        <div className="rounded-lg border border-gray-200 bg-white p-8 dark:border-gray-800 dark:bg-white/3">
+          <p className="text-center text-sm text-gray-600 dark:text-gray-400">No lab orders yet.</p>
+          <p className="mt-1 text-center text-xs text-gray-500 dark:text-gray-500">Create orders from the calendar.</p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {orders.map((order) => (
-            <div key={order.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-white/[0.02]">
-              <div className="border-b border-gray-100 bg-gradient-to-r from-gray-50/80 to-white px-6 py-4 dark:border-gray-800 dark:from-gray-900/50 dark:to-transparent">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-500/10 dark:bg-brand-500/20">
-                      <UserCircleIcon className="h-6 w-6 text-brand-500" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">{order.patient.name}</h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {order.patient.patientCode} · Dr. {order.doctor.name}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                      <CalenderIcon className="h-4 w-4" />
-                      {formatDate(order.appointment.appointmentDate)} · {order.appointment.startTime}
-                    </div>
-                    <span className="rounded-lg bg-gray-100 px-2.5 py-1 font-mono text-sm font-semibold text-gray-800 dark:bg-gray-800 dark:text-gray-200">
-                      Lab fee: ${(order.totalAmount ?? 0).toFixed(2)}
-                    </span>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-                      order.status === "completed" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
-                    }`}>
-                      {order.status}
-                    </span>
-                  </div>
+            <div
+              key={order.id}
+              className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/2"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">{order.patient.name}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {order.patient.patientCode} · Dr. {order.doctor.name}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href={`/lab/orders/${order.id}/results`}
+                    className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                  >
+                    {canRecord ? "Enter results" : "View results"}
+                  </Link>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {formatDate(order.appointment.appointmentDate)} · {order.appointment.startTime}
+                  </span>
+                  <span className="text-sm tabular-nums text-gray-700 dark:text-gray-300">
+                    ${(order.totalAmount ?? 0).toFixed(2)}
+                  </span>
+                  <span
+                    className={`text-sm capitalize ${
+                      order.status === "completed" ? "text-gray-900 dark:text-white" : "text-gray-600 dark:text-gray-400"
+                    }`}
+                  >
+                    {order.status}
+                  </span>
                 </div>
               </div>
-              <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {order.items.map((item) => (
-                  <div key={item.id} className="flex flex-wrap items-center gap-4 px-6 py-4 dark:bg-white/[0.01]">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-900 dark:text-white">{item.labTest.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Fee: ${(item.unitPrice ?? 0).toFixed(2)}</p>
-                      {item.labTest.normalRange && (
-                        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Ref: {item.labTest.normalRange}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {recordingItem?.itemId === item.id ? (
-                        <div className="flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50/50 p-2 dark:border-brand-500/30 dark:bg-brand-500/10">
-                          <input value={resultForm.resultValue} onChange={(e) => setResultForm((f) => ({ ...f, resultValue: e.target.value }))} placeholder="Result" className="h-9 w-28 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-                          <input value={resultForm.resultUnit} onChange={(e) => setResultForm((f) => ({ ...f, resultUnit: e.target.value }))} placeholder="Unit" className="h-9 w-20 rounded-lg border border-gray-200 px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-                          <button onClick={saveResult} className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-600">
-                            <CheckLineIcon className="h-4 w-4" /> Save
-                          </button>
-                          <button onClick={() => setRecordingItem(null)} className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-3">
-                          <span className={`min-w-[80px] rounded-lg px-3 py-1.5 text-sm font-medium ${
-                            item.status === "completed" ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
-                          }`}>
-                            {item.resultValue || "—"} {item.resultUnit && item.resultValue ? item.resultUnit : ""}
-                          </span>
-                          {canRecord && (
-                            <button onClick={() => openRecord(order.id, item)} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10">
-                              <PencilIcon className="h-4 w-4" /> {item.status === "completed" ? "Edit" : "Record"}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-gray-200 bg-gray-50 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">Test / panel</th>
+                    <th className="px-4 py-2 font-medium">Reference</th>
+                    <th className="px-4 py-2 text-right font-medium">Result</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {buildOrderDisplayRows(order.items).map((row) =>
+                    row.kind === "panel" ? (
+                      <tr
+                        key={`panel-${row.panelItems[0]?.panelParentTestId ?? row.name}-${order.id}`}
+                        className="dark:bg-white/1"
+                      >
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-900 dark:text-white">{row.name}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Panel</p>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">—</td>
+                        <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
+                          {panelResultSummary(row.panelItems)}
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={row.item.id} className="dark:bg-white/1">
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{row.item.labTest.name}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                          {row.item.labTest.normalRange?.trim() ? row.item.labTest.normalRange : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
+                          {row.item.resultValue || "—"}{" "}
+                          {row.item.resultUnit && row.item.resultValue ? row.item.resultUnit : ""}
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
             </div>
           ))}
           <ListPaginationFooter

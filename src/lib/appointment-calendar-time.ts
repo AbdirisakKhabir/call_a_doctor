@@ -49,6 +49,14 @@ export function formatSlotEndTimeLabel(startMin: number, slotMinutes: number): s
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/** 24-hour "HH:mm" for a minute-of-day (0–1439), e.g. the calendar time gutter. */
+export function formatMinutesFromMidnightAs24h(totalMin: number): string {
+  const clamped = Math.max(0, Math.min(totalMin, 23 * 60 + 59));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 /** 12-hour label for a minute-of-day (0–1439), e.g. for the time gutter. */
 export function formatMinutesFromMidnightAs12h(totalMin: number): string {
   const clamped = Math.max(0, Math.min(totalMin, 23 * 60 + 59));

@@ -36,6 +36,17 @@ export async function GET(req: NextRequest) {
     const branchIds =
       branchRows.length === 0 ? null : branchRows.map((r) => r.branchId);
 
+    const now = new Date();
+    const lastSeen = user.lastSeenAt;
+    const stale =
+      !lastSeen || now.getTime() - lastSeen.getTime() > 60_000;
+    if (stale) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastSeenAt: now },
+      });
+    }
+
     return NextResponse.json({
       user: {
         id: user.id,

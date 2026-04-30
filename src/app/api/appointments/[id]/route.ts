@@ -5,13 +5,28 @@ import { logAuditFromRequest } from "@/lib/audit-log";
 import { serializePatient } from "@/lib/patient-name";
 import { userHasPermission } from "@/lib/permissions";
 import { deductDisposablesForCompletedAppointment } from "@/lib/service-disposable-deduction";
+import { createAppointmentBillingSaleInTx } from "@/lib/appointment-billing-sale";
+import { getAppointmentBlockMessage } from "@/lib/appointment-schedule-blocks";
 
 const appointmentInclude = {
   branch: { select: { id: true, name: true } },
   doctor: { select: { id: true, name: true, specialty: true } },
   patient: { select: { id: true, patientCode: true, firstName: true, lastName: true, accountBalance: true } },
+  paymentMethod: { select: { id: true, name: true } },
   careFile: { select: { id: true, fileCode: true, status: true } },
   services: { include: { service: { select: { id: true, name: true, color: true } } } },
+  sales: {
+    select: {
+      id: true,
+      saleDate: true,
+      totalAmount: true,
+      discount: true,
+      paymentMethod: true,
+      kind: true,
+      depositTransaction: { select: { id: true } },
+    },
+    orderBy: { saleDate: "desc" as const },
+  },
 } as const;
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -49,12 +64,57 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = await req.json();
     const { status, startTime, endTime, notes, services, appointmentDate, reminderMinutesBefore } = body;
 
+    const billingDiscountRaw = body.billingDiscount;
+    const billingDiscount =
+      typeof billingDiscountRaw === "number" && Number.isFinite(billingDiscountRaw)
+        ? Math.max(0, billingDiscountRaw)
+        : typeof billingDiscountRaw === "string" && billingDiscountRaw.trim() !== ""
+          ? Math.max(0, Number(billingDiscountRaw) || 0)
+          : 0;
+
     const existingForGuard = await prisma.appointment.findUnique({
       where: { id: parsedId },
-      select: { status: true },
+      select: {
+        status: true,
+        branchId: true,
+        appointmentDate: true,
+        startTime: true,
+        endTime: true,
+      },
     });
     if (!existingForGuard) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
+
+    function formatDateLocal(d: Date): string {
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const day = d.getDate();
+      return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+
+    const touchesSchedule =
+      (typeof appointmentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(appointmentDate)) ||
+      typeof startTime === "string" ||
+      typeof endTime !== "undefined";
+
+    if (touchesSchedule) {
+      const mergedDate =
+        typeof appointmentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(appointmentDate)
+          ? appointmentDate
+          : formatDateLocal(existingForGuard.appointmentDate);
+      const mergedStart = typeof startTime === "string" ? startTime : existingForGuard.startTime;
+      const mergedEnd =
+        typeof endTime !== "undefined" ? (endTime ? String(endTime) : null) : existingForGuard.endTime;
+      const blockMsg = await getAppointmentBlockMessage(prisma, {
+        branchId: existingForGuard.branchId,
+        appointmentDate: mergedDate,
+        startTime: mergedStart,
+        endTime: mergedEnd,
+      });
+      if (blockMsg) {
+        return NextResponse.json({ error: blockMsg }, { status: 400 });
+      }
     }
 
     if (Array.isArray(services)) {
@@ -91,15 +151,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (Number.isFinite(r) && r > 0 && r <= 10080) data.reminderMinutesBefore = Math.floor(r);
     }
 
+    if (body.paymentMethodId !== undefined) {
+      if (body.paymentMethodId === null || body.paymentMethodId === "") {
+        data.paymentMethodId = null;
+      } else {
+        const pm = Number(body.paymentMethodId);
+        if (!Number.isInteger(pm) || pm <= 0) {
+          return NextResponse.json({ error: "Invalid payment method" }, { status: 400 });
+        }
+        data.paymentMethodId = pm;
+      }
+    }
+
     const hasFieldUpdates = Object.keys(data).length > 0;
     if (!hasFieldUpdates && !Array.isArray(services)) {
       return NextResponse.json({ error: "No changes" }, { status: 400 });
     }
 
     let balanceDelta: number | null = null;
+    let billingSaleCreatedId: number | null = null;
 
     const appointment = await prisma.$transaction(async (tx) => {
       if (Array.isArray(services)) {
+        const aptWithBilling = await tx.sale.findFirst({
+          where: { appointmentId: parsedId, kind: "appointment" },
+          select: { id: true },
+        });
+        if (aptWithBilling) {
+          throw new Error("SERVICES_LOCKED_BILLING");
+        }
         const existing = await tx.appointment.findUnique({
           where: { id: parsedId },
           select: { totalAmount: true, patientId: true },
@@ -158,6 +238,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (!ded.ok) {
           throw new Error(`DISPOSABLE:${ded.error}`);
         }
+
+        if (updated.totalAmount > 0) {
+          const pmId = updated.paymentMethodId;
+          if (!pmId) {
+            throw new Error("PAYMENT_METHOD_REQUIRED");
+          }
+          const lines = await tx.appointmentService.findMany({
+            where: { appointmentId: parsedId },
+            select: { serviceId: true, quantity: true, unitPrice: true, totalAmount: true },
+          });
+          const bill = await createAppointmentBillingSaleInTx(tx, {
+            appointmentId: parsedId,
+            branchId: updated.branchId,
+            patientId: updated.patientId,
+            userId: auth.userId,
+            paymentMethodId: pmId,
+            discount: billingDiscount,
+            lines,
+          });
+          if (bill.created === false && bill.reason === "no_lines") {
+            throw new Error("BILLING_NO_LINES");
+          }
+          if (bill.created) {
+            billingSaleCreatedId = bill.saleId;
+          }
+        }
       }
 
       const full = await tx.appointment.findUnique({
@@ -174,7 +280,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       module: "appointments",
       resourceType: "Appointment",
       resourceId: parsedId,
-      metadata: { keys: Object.keys(data), balanceDelta },
+      metadata: { keys: Object.keys(data), balanceDelta, billingSaleId: billingSaleCreatedId },
     });
     return NextResponse.json({ ...appointment, patient: serializePatient(appointment.patient) });
   } catch (e) {
@@ -183,6 +289,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (e instanceof Error && e.message.startsWith("DISPOSABLE:")) {
       return NextResponse.json({ error: e.message.replace(/^DISPOSABLE:/, "").trim() }, { status: 400 });
+    }
+    if (e instanceof Error && e.message === "PAYMENT_METHOD_REQUIRED") {
+      return NextResponse.json(
+        {
+          error:
+            "This visit has a balance due. Choose a payment method (or save one on the booking first), then mark it completed again.",
+        },
+        { status: 400 }
+      );
+    }
+    if (e instanceof Error && e.message === "INVALID_PAYMENT_METHOD") {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid payment method. Choose an active method linked to a finance account (Settings → Payment methods).",
+        },
+        { status: 400 }
+      );
+    }
+    if (e instanceof Error && e.message === "BILLING_NO_LINES") {
+      return NextResponse.json(
+        { error: "Add at least one service line before completing a billed visit." },
+        { status: 400 }
+      );
+    }
+    if (e instanceof Error && e.message === "SERVICES_LOCKED_BILLING") {
+      return NextResponse.json(
+        {
+          error:
+            "Visit billing has already been posted for this booking. You cannot change service lines unless an administrator removes or adjusts the linked sale.",
+        },
+        { status: 400 }
+      );
     }
     console.error("Update appointment error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
@@ -201,10 +340,35 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     const existing = await prisma.appointment.findUnique({
       where: { id: parsedId },
-      select: { patientId: true, totalAmount: true },
+      select: {
+        patientId: true,
+        totalAmount: true,
+        postedChargesToPatientOnCreate: true,
+      },
     });
+    const billingSales =
+      existing != null
+        ? await prisma.sale.findMany({
+            where: { appointmentId: parsedId, kind: "appointment" },
+            select: { id: true, totalAmount: true },
+          })
+        : [];
+    if (!existing) {
+      return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    }
     await prisma.$transaction(async (tx) => {
-      if (existing && existing.totalAmount > 0) {
+      for (const s of billingSales) {
+        await tx.patient.update({
+          where: { id: existing.patientId },
+          data: { accountBalance: { increment: s.totalAmount } },
+        });
+        const dep = await tx.accountTransaction.findUnique({ where: { saleId: s.id } });
+        if (dep) {
+          await tx.accountTransaction.delete({ where: { id: dep.id } });
+        }
+        await tx.sale.delete({ where: { id: s.id } });
+      }
+      if (existing.totalAmount > 0 && existing.postedChargesToPatientOnCreate) {
         await tx.patient.update({
           where: { id: existing.patientId },
           data: { accountBalance: { decrement: existing.totalAmount } },

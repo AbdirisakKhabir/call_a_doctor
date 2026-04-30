@@ -255,7 +255,7 @@ export default function PrescriptionsPage() {
           </select>
           {hasPermission("pharmacy.view") && (
             <Link
-              href="/pharmacy/patient-invoice"
+              href="/finance/client-invoice"
               className="inline-flex h-10 items-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
             >
               Client invoice

@@ -21,7 +21,14 @@ export default function NewLabTestPage() {
   const { hasPermission } = useAuth();
   const { singleAssignedBranchId } = useBranchScope();
   const [categories, setCategories] = useState<LabCategory[]>([]);
-  const [form, setForm] = useState({ categoryId: "", name: "", code: "", unit: "", normalRange: "", price: "" });
+  const [form, setForm] = useState({
+    categoryId: "",
+    name: "",
+    code: "",
+    unit: "",
+    normalRange: "",
+    price: "",
+  });
   const [pendingDisposables, setPendingDisposables] = useState<PendingDisposableRow[]>([]);
   const [branches, setBranches] = useState<BranchOpt[]>([]);
   const [disposableBranchId, setDisposableBranchId] = useState("");
@@ -63,15 +70,20 @@ export default function NewLabTestPage() {
   useEffect(() => {
     if (singleAssignedBranchId && !disposableBranchId) {
       setDisposableBranchId(String(singleAssignedBranchId));
-    } else if (!disposableBranchId && branches.length > 0) {
-      setDisposableBranchId(String(branches[0].id));
     }
-  }, [singleAssignedBranchId, branches, disposableBranchId]);
+  }, [singleAssignedBranchId, disposableBranchId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canCreate) return;
     setError("");
+    if (pendingDisposables.length > 0) {
+      const bid = Number(disposableBranchId);
+      if (!Number.isInteger(bid) || bid <= 0) {
+        setError("Select a branch for the disposables you added, or remove those lines.");
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       const res = await authFetch("/api/lab/tests", {
@@ -224,21 +236,45 @@ export default function NewLabTestPage() {
                   className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   placeholder="0.00"
                 />
-                <p className="mt-1 text-xs text-gray-500">Charged to the client when this test is ordered.</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Charged when this test (or panel) is ordered. Sub-tests you add later never have their own price.
+                </p>
+                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                  For a <strong>panel</strong> with multiple sub-tests: create this test first, set the fee here, then open{" "}
+                  <strong>Sub-tests</strong> from the tests list to add all lines at once.
+                </p>
               </div>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-white/3">
-            <LabTestDisposablesFields
-              mode="pending"
-              rows={pendingDisposables}
-              onRowsChange={setPendingDisposables}
-              branches={branches}
-              disposableBranchId={disposableBranchId}
-              onDisposableBranchIdChange={setDisposableBranchId}
-            />
-          </section>
+          <details className="group rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-white/3">
+            <summary className="cursor-pointer list-none rounded-2xl p-6 marker:content-none [&::-webkit-details-marker]:hidden">
+              <span className="text-lg font-semibold text-gray-900 dark:text-white">
+                Disposables{" "}
+                <span className="text-sm font-normal text-gray-500 dark:text-gray-400">(optional)</span>
+              </span>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Leave collapsed to create a test without linking consumables. Open to assign products deducted when a result
+                marked complete.
+              </p>
+              <span className="mt-2 inline-block text-sm font-medium text-brand-600 group-open:hidden dark:text-brand-400">
+                Show disposables
+              </span>
+              <span className="mt-2 hidden text-sm font-medium text-brand-600 group-open:inline dark:text-brand-400">
+                Hide
+              </span>
+            </summary>
+            <div className="border-t border-gray-200 px-6 pb-6 pt-2 dark:border-gray-800">
+              <LabTestDisposablesFields
+                mode="pending"
+                rows={pendingDisposables}
+                onRowsChange={setPendingDisposables}
+                branches={branches}
+                disposableBranchId={disposableBranchId}
+                onDisposableBranchIdChange={setDisposableBranchId}
+              />
+            </div>
+          </details>
 
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => router.push("/lab/tests")} size="sm">

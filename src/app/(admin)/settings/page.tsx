@@ -39,6 +39,18 @@ const cards: Card[] = [
     anyOf: ["settings.manage"],
   },
   {
+    title: "Holidays & blocked times",
+    description: "Block holidays and specific hours so bookings cannot be created in those windows.",
+    href: "/settings/appointment-blocks",
+    anyOf: ["settings.manage"],
+  },
+  {
+    title: "Active users",
+    description: "See who is signed in and who used the app recently (session checks and last sign-in).",
+    href: "/settings/active-users",
+    anyOf: ["audit.view", "audit.view_admins"],
+  },
+  {
     title: "Activity log",
     description: "Sign-ins and user actions across the system (audit trail).",
     href: "/settings/activity",
@@ -101,11 +113,15 @@ export default function SettingsHubPage() {
       <div className="mt-6 rounded-xl border border-brand-100 bg-brand-50/80 p-4 dark:border-brand-900/40 dark:bg-brand-950/30">
         <p className="text-sm font-medium text-gray-900 dark:text-white">Tracking &amp; audit</p>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Use the sidebar: <strong>Settings</strong> → <strong>Activity log</strong> (everyone) or <strong>Admin activity</strong> (Admin accounts only).
+          Use the sidebar: <strong>Settings</strong> → <strong>Active users</strong> (who is online now), <strong>Activity log</strong> (everyone) or <strong>Admin activity</strong> (Admin accounts only).
         </p>
         {canSeeAudit ? (
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
             Quick links:{" "}
+            <Link href="/settings/active-users" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+              Active users
+            </Link>
+            {" · "}
             <Link href="/settings/activity" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
               Activity log
             </Link>

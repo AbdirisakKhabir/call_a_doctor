@@ -9,6 +9,12 @@ type Card = { title: string; description: string; href: string; anyOf: string[] 
 
 const cards: Card[] = [
   {
+    title: "Appointment sales report",
+    description: "Spreadsheet-style summary of visit billing by period and branch.",
+    href: "/reports/appointment-sales",
+    anyOf: ["accounts.view", "accounts.reports", "pharmacy.view", "pharmacy.pos", "appointments.view"],
+  },
+  {
     title: "Accounts",
     description: "Cash, bank, and other accounts with opening balances.",
     href: "/settings/accounts",
@@ -55,7 +61,8 @@ export default function AccountingHubPage() {
     <div>
       <PageBreadCrumb pageTitle="Accounting" />
       <p className="mt-2 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-        Ledger accounts, payment methods, deposits, withdrawals, and statements. Access is controlled by accounts permissions on your role.
+        Ledger accounts, payment methods, deposits, withdrawals, and statements. Visit billing sales are listed under
+        Finance. Access is controlled by accounts permissions on your role.
       </p>
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         {visible.map((c) => (

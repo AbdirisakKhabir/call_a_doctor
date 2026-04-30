@@ -20,7 +20,10 @@ type LabTest = {
   unit: string | null;
   normalRange: string | null;
   price: number;
+  parentTestId: number | null;
   category: { id: number; name: string };
+  parentTest: { id: number; name: string } | null;
+  subtests: { id: number; name: string }[];
 };
 
 export default function EditLabTestPage() {
@@ -32,8 +35,17 @@ export default function EditLabTestPage() {
   const { hasPermission } = useAuth();
   const { singleAssignedBranchId } = useBranchScope();
   const [categories, setCategories] = useState<LabCategory[]>([]);
+  const [panelRoots, setPanelRoots] = useState<{ id: number; name: string }[]>([]);
   const [test, setTest] = useState<LabTest | null>(null);
-  const [form, setForm] = useState({ categoryId: "", name: "", code: "", unit: "", normalRange: "", price: "" });
+  const [form, setForm] = useState({
+    categoryId: "",
+    parentPanelId: "",
+    name: "",
+    code: "",
+    unit: "",
+    normalRange: "",
+    price: "",
+  });
   const [branches, setBranches] = useState<BranchOpt[]>([]);
   const [disposableBranchId, setDisposableBranchId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -72,6 +84,32 @@ export default function EditLabTestPage() {
   }, []);
 
   useEffect(() => {
+    if (!test || test.subtests.length > 0) {
+      setPanelRoots([]);
+      return;
+    }
+    let cancelled = false;
+    authFetch("/api/lab/tests")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        const list = Array.isArray(data) ? data : data.data ?? [];
+        if (!cancelled && Array.isArray(list)) {
+          setPanelRoots(
+            list
+              .filter((t: { id: number; parentTestId?: number | null }) => t.parentTestId == null && t.id !== testId)
+              .map((t: { id: number; name: string }) => ({ id: t.id, name: t.name }))
+              .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name))
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [test, testId]);
+
+  useEffect(() => {
     if (singleAssignedBranchId && !disposableBranchId) {
       setDisposableBranchId(String(singleAssignedBranchId));
     } else if (!disposableBranchId && branches.length > 0) {
@@ -95,6 +133,7 @@ export default function EditLabTestPage() {
         setTest(t);
         setForm({
           categoryId: String(t.category.id),
+          parentPanelId: t.parentTestId != null ? String(t.parentTestId) : "",
           name: t.name,
           code: t.code ?? "",
           unit: t.unit ?? "",
@@ -112,7 +151,7 @@ export default function EditLabTestPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canEdit || !Number.isInteger(testId) || testId <= 0) return;
+    if (!canEdit || !Number.isInteger(testId) || testId <= 0 || !test) return;
     setError("");
     setSubmitting(true);
     try {
@@ -121,6 +160,7 @@ export default function EditLabTestPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           categoryId: Number(form.categoryId),
+          parentTestId: test.subtests.length > 0 ? null : form.parentPanelId === "" ? null : Number(form.parentPanelId),
           name: form.name,
           code: form.code,
           unit: form.unit,
@@ -205,6 +245,23 @@ export default function EditLabTestPage() {
             </div>
           )}
 
+          {!test.parentTestId && (
+            <section className="rounded-2xl border border-brand-200 bg-brand-50/60 p-6 dark:border-brand-800 dark:bg-brand-900/25">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Sub-tests</h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                {test.subtests.length > 0
+                  ? `This panel has ${test.subtests.length} sub-test${test.subtests.length === 1 ? "" : "s"}. Add several at once or edit existing lines on the sub-tests page.`
+                  : "Add multiple sub-test lines under this panel in one form (name, unit, normal range, price per line)."}
+              </p>
+              <Link
+                href={`/lab/tests/${testId}/subtests`}
+                className="mt-4 inline-flex items-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-400"
+              >
+                Manage sub-tests
+              </Link>
+            </section>
+          )}
+
           <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-white/3">
             <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Test details</h2>
             <div className="space-y-4">
@@ -224,6 +281,29 @@ export default function EditLabTestPage() {
                   ))}
                 </select>
               </div>
+              {test.subtests.length === 0 && (
+              <div>
+                <Label htmlFor="parentPanel">Panel parent</Label>
+                <select
+                  id="parentPanel"
+                  value={form.parentPanelId}
+                  onChange={(e) => setForm((f) => ({ ...f, parentPanelId: e.target.value }))}
+                  className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                >
+                  <option value="">None — top-level test or panel</option>
+                  {panelRoots.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Turn this test into a sub-test of another panel, or clear to make it top-level. To add many sub-tests under
+                  <em> this </em>
+                  panel, use <Link href={`/lab/tests/${testId}/subtests`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">Manage sub-tests</Link>.
+                </p>
+              </div>
+              )}
               <div>
                 <Label htmlFor="name">Name *</Label>
                 <input
@@ -263,6 +343,7 @@ export default function EditLabTestPage() {
                   placeholder="e.g. 70-100"
                 />
               </div>
+              {!test.parentTestId ? (
               <div>
                 <Label htmlFor="price">Test price ($)</Label>
                 <input
@@ -275,8 +356,18 @@ export default function EditLabTestPage() {
                   className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   placeholder="0.00"
                 />
-                <p className="mt-1 text-xs text-gray-500">Charged to the client when this test is ordered.</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  For a panel with sub-tests, this fee is the only amount charged; it is split across lab result lines.
+                </p>
               </div>
+              ) : (
+              <div>
+                <Label>Test price ($)</Label>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                  Sub-tests have no separate fee. Set the price on the panel test ({test.parentTest?.name ?? "parent"}).
+                </p>
+              </div>
+              )}
             </div>
           </section>
 

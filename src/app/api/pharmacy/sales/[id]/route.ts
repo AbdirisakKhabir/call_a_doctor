@@ -48,6 +48,7 @@ export async function GET(
                 },
               },
             },
+            service: { select: { id: true, name: true } },
           },
         },
         depositTransaction: { select: { id: true } },
@@ -123,6 +124,16 @@ export async function PATCH(
         {
           error:
             "Outreach sales cannot be edited here. Adjust stock via outreach return or contact an administrator.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (existing.kind === "appointment" || existing.appointmentId != null) {
+      return NextResponse.json(
+        {
+          error:
+            "Visit billing sales are managed from the appointment. They cannot be edited in POS.",
         },
         { status: 400 }
       );
@@ -211,6 +222,7 @@ export async function PATCH(
 
       const updated = await prisma.$transaction(async (tx) => {
         for (const old of existing.items) {
+          if (old.productId == null) continue;
           const suOld = await getSaleUnitForProduct(tx, old.productId, old.saleUnit);
           const baseEach = suOld?.baseUnitsEach ?? 1;
           const convBase = lineQuantityToBaseUnits(old.quantity, baseEach);
