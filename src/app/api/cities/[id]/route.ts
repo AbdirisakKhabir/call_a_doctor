@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function PATCH(
   req: NextRequest,
@@ -83,7 +84,19 @@ export async function DELETE(
       );
     }
 
-    await prisma.city.delete({ where: { id: parsedId } });
+    const row = await prisma.city.findUnique({ where: { id: parsedId } });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "City",
+        recordId: parsedId,
+        title: row.name,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.city.delete({ where: { id: parsedId } });
+    });
     await logAuditFromRequest(req, {
       userId: auth.userId,
       action: "city.delete",

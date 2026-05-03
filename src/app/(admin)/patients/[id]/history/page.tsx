@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -14,6 +14,7 @@ import {
   User,
 } from "lucide-react";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
+import FormPickerQuickActionButtons from "@/components/forms/FormPickerQuickActionButtons";
 import { Modal } from "@/components/ui/modal";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -325,6 +326,9 @@ export default function PatientHistoryViewPage() {
     hasPermission("patient_history.create") ||
     hasPermission("patient_history.view") ||
     hasPermission("forms.view");
+  const canQuickLab = hasPermission("lab.view") && hasPermission("lab.create");
+  const canQuickPrescription =
+    hasPermission("prescriptions.view") && hasPermission("prescriptions.create");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -403,6 +407,23 @@ export default function PatientHistoryViewPage() {
     closeFormsPicker();
     router.push(`/patients/${patientId}/clinic-forms?formId=${formId}`);
   }
+
+  const chartBookingAnchor = useMemo(() => {
+    if (!data) {
+      return { appointmentId: null as number | null, doctorId: null as number | null, branchId: null as number | null };
+    }
+    const rx = data.prescriptions[0];
+    const lab = data.labOrders[0];
+    const src = rx ?? lab;
+    if (!src) {
+      return { appointmentId: null, doctorId: null, branchId: null };
+    }
+    return {
+      appointmentId: src.appointment.id,
+      doctorId: src.doctor.id,
+      branchId: src.appointment.branch.id,
+    };
+  }, [data]);
 
   if (!canView) {
     return (
@@ -624,7 +645,17 @@ export default function PatientHistoryViewPage() {
             className="max-w-lg max-h-[90vh] overflow-y-auto p-6 sm:max-w-xl sm:p-8"
           >
             <h2 className="pr-10 text-lg font-semibold text-gray-900 dark:text-white">Choose a form</h2>
-            <div className="mt-4 max-h-[min(50vh,24rem)] overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800">
+            {data ? (
+              <FormPickerQuickActionButtons
+                patientId={data.patient.id}
+                appointmentId={chartBookingAnchor.appointmentId}
+                doctorId={chartBookingAnchor.doctorId}
+                branchId={chartBookingAnchor.branchId}
+                showLab={canQuickLab}
+                showPrescription={canQuickPrescription}
+              />
+            ) : null}
+            <div className="mt-2 max-h-[min(50vh,24rem)] overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800">
               {formsListLoading ? (
                 <p className="p-4 text-sm text-gray-500">Loading forms…</p>
               ) : publishedForms.length === 0 ? (

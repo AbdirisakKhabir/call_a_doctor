@@ -97,7 +97,9 @@ export default function SaleReceiptModal({ saleId, open, onClose, bannerTitle }:
               </p>
             ) : null}
             <h2 id="sale-receipt-modal-title" className="text-lg font-semibold">
-              {detail ? `Receipt · Sale #${detail.id}` : "Receipt"}
+              {detail
+                ? `${detail.kind === "appointment" || detail.appointmentId != null ? "Appointment sales receipt" : "Receipt"} · Sale #${detail.id}`
+                : "Receipt"}
             </h2>
           </div>
           <button
@@ -127,6 +129,12 @@ export default function SaleReceiptModal({ saleId, open, onClose, bannerTitle }:
                   <p className="text-[11px] text-gray-700 dark:text-gray-300">
                     Call center: {CLINIC_CALL_CENTER}
                   </p>
+                  <p className="mt-1 text-[10px] leading-snug text-gray-700 dark:text-gray-300">
+                    {CLINIC_MERCHANT_NUMBERS.map((m) => `${m.label}: ${m.number}`).join(" | ")}
+                  </p>
+                  <p className="text-[10px] leading-snug text-gray-700 dark:text-gray-300">
+                    {CLINIC_CONTACT_NUMBERS.map((c) => `${c.label}: ${c.number}`).join(" | ")}
+                  </p>
                 </div>
                 <div className="flex h-30 w-30 shrink-0 items-center justify-center">
                   <img
@@ -149,7 +157,11 @@ export default function SaleReceiptModal({ saleId, open, onClose, bannerTitle }:
 
               <div className="flex justify-end pb-4 pt-3">
                 <div className="text-right">
-                  <h3 className="text-xl font-bold uppercase tracking-wide text-brand-900 dark:text-brand-400">Receipt</h3>
+                  <h3 className="text-xl font-bold uppercase tracking-wide text-brand-900 dark:text-brand-400">
+                    {detail.kind === "appointment" || detail.appointmentId != null
+                      ? "Appointment sales receipt"
+                      : "Receipt"}
+                  </h3>
                   <div className="mt-2 space-y-0.5 text-xs">
                     <p>
                       <span className="font-semibold text-brand-900 dark:text-brand-400">Receipt #: </span>
@@ -262,30 +274,12 @@ export default function SaleReceiptModal({ saleId, open, onClose, bannerTitle }:
                 ) : (
                   <p className="text-[11px] leading-relaxed text-gray-600 dark:text-gray-400">
                     Thank you for choosing Call a Doctor. Please retain this receipt for your records. For service or
-                    billing questions, use the clinic contact below.
+                    billing questions, use the contact numbers at the top of this receipt.
                   </p>
                 )}
-                <div className="text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
-                  <p className="font-bold text-brand-900 dark:text-brand-400">Merchant payment numbers</p>
-                  <ul className="mt-1 list-none space-y-0.5">
-                    {CLINIC_MERCHANT_NUMBERS.map((m) => (
-                      <li key={m.label}>
-                        {m.label}: <strong>{m.number}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-2 font-bold text-brand-900 dark:text-brand-400">Contact</p>
-                  <ul className="mt-1 list-none space-y-0.5">
-                    {CLINIC_CONTACT_NUMBERS.map((c) => (
-                      <li key={c.label}>
-                        {c.label}: <strong>{c.number}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-2">
-                    Call a Doctor — <span className="font-medium">{detail.branch?.name ?? "Main clinic"}</span>
-                  </p>
-                </div>
+                <p className="text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
+                  Call a Doctor — <span className="font-medium">{detail.branch?.name ?? "Main clinic"}</span>
+                </p>
               </div>
             </div>
           ) : (

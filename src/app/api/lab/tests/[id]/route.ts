@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { assertLabTestParentAssignment } from "@/lib/lab-test-parent";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 const testDetailInclude = {
   category: { select: { id: true, name: true } },
@@ -143,7 +144,22 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         { status: 400 }
       );
     }
-    await prisma.labTest.delete({ where: { id: parsedId } });
+    const row = await prisma.labTest.findUnique({
+      where: { id: parsedId },
+      include: { disposables: true },
+    });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "LabTest",
+        recordId: parsedId,
+        title: row.name,
+        detail: row.code,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.labTest.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete lab test error:", e);

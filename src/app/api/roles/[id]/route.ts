@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function GET(
   req: NextRequest,
@@ -110,7 +111,27 @@ export async function DELETE(
     if (!Number.isInteger(parsedId)) {
       return NextResponse.json({ error: "Invalid role id" }, { status: 400 });
     }
-    await prisma.role.delete({ where: { id: parsedId } });
+    const role = await prisma.role.findUnique({
+      where: { id: parsedId },
+      include: { permissions: true },
+    });
+    if (!role) return NextResponse.json({ error: "Role not found" }, { status: 404 });
+    const snapshot = {
+      name: role.name,
+      description: role.description,
+      permissionIds: role.permissions.map((rp) => rp.permissionId),
+    };
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "Role",
+        recordId: parsedId,
+        title: role.name,
+        snapshot: toTrashSnapshot(snapshot),
+        deletedById: auth.userId,
+      });
+      await tx.rolePermission.deleteMany({ where: { roleId: parsedId } });
+      await tx.role.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete role error:", e);

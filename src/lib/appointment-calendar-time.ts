@@ -65,6 +65,21 @@ export function formatMinutesFromMidnightAs12h(totalMin: number): string {
   return formatTime12hLabel(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
 }
 
+/**
+ * Calendar gutter: clock + AM/PM on separate lines (first 12h = AM, second 12h = PM).
+ * `clock` is 12-hour without the suffix (e.g. 7:00, 12:00).
+ */
+export function formatMinutesForAmPmGutter(totalMin: number): { clock: string; period: "AM" | "PM" } {
+  const clamped = Math.max(0, Math.min(totalMin, 23 * 60 + 59));
+  const period: "AM" | "PM" = clamped < 12 * 60 ? "AM" : "PM";
+  const h24 = Math.floor(clamped / 60);
+  const min = clamped % 60;
+  let h12 = h24 % 12;
+  if (h12 === 0) h12 = 12;
+  const clock = `${h12}:${String(min).padStart(2, "0")}`;
+  return { clock, period };
+}
+
 /** End of slot row in 12-hour form (for hover chip). Midnight end → "12:00 AM". */
 export function formatSlotEndTime12hLabel(startMin: number, slotMinutes: number): string {
   const end = slotRowEndMinutes(startMin, slotMinutes);

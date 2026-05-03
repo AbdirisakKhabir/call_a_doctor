@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -54,7 +55,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       );
     }
 
-    await prisma.branch.delete({ where: { id: parsedId } });
+    const row = await prisma.branch.findUnique({ where: { id: parsedId } });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "Branch",
+        recordId: parsedId,
+        title: row.name,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.branch.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete branch error:", e);

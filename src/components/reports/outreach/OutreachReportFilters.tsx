@@ -25,7 +25,7 @@ export function OutreachReportFilters() {
   } = useOutreachReport();
 
   return (
-    <div className="space-y-5">
+    <div className="no-print space-y-5">
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900/30">
         {data?.branch ? (
           <p className="mb-4 text-sm font-medium text-gray-800 dark:text-gray-200">

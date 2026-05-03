@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function PATCH(
   req: NextRequest,
@@ -50,7 +51,19 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid category id" }, { status: 400 });
     }
 
-    await prisma.expenseCategory.delete({ where: { id: parsedId } });
+    const row = await prisma.expenseCategory.findUnique({ where: { id: parsedId } });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "ExpenseCategory",
+        recordId: parsedId,
+        title: row.name,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.expenseCategory.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete expense category error:", e);

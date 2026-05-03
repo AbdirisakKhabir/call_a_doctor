@@ -5,6 +5,7 @@ import { userCanTransactInventoryAtBranch } from "@/lib/branch-access";
 import { logAuditFromRequest } from "@/lib/audit-log";
 import { replaceProductSaleUnits, validateSaleUnitsPayload, type SaleUnitInput } from "@/lib/product-sale-units";
 import { computeBaseQuantityFromPackagingLines } from "@/lib/product-quantity-lines";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function GET(
   req: NextRequest,
@@ -261,18 +262,28 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid product id" }, { status: 400 });
     }
 
-    const existing = await prisma.product.findUnique({
+    const full = await prisma.product.findUnique({
       where: { id: parsedId },
-      select: { branchId: true },
+      include: { saleUnits: { orderBy: { sortOrder: "asc" } } },
     });
-    if (!existing) {
+    if (!full) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
-    if (!(await userCanTransactInventoryAtBranch(auth.userId, existing.branchId))) {
+    if (!(await userCanTransactInventoryAtBranch(auth.userId, full.branchId))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await prisma.product.delete({ where: { id: parsedId } });
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "Product",
+        recordId: parsedId,
+        title: full.name,
+        detail: full.code,
+        snapshot: toTrashSnapshot(full),
+        deletedById: auth.userId,
+      });
+      await tx.product.delete({ where: { id: parsedId } });
+    });
     await logAuditFromRequest(req, {
       userId: auth.userId,
       action: "pharmacy.product.delete",

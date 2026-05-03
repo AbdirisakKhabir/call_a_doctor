@@ -777,6 +777,10 @@ span.flatpickr-weekday,
   .transcript-row td {
     padding: 1px 4px !important;
   }
+  .report-print-root .report-print-body tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   @page {
     size: A4;
     margin: 12mm;

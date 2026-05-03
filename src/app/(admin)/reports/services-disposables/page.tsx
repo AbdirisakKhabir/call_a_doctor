@@ -15,6 +15,8 @@ type ReportPayload = {
   range: { from: string; to: string };
   branchId: number | null;
   completedAppointmentCount: number;
+  /** Present when API returns new shape (shared with Service consume report). */
+  totalServiceQuantity?: number;
   services: {
     serviceId: number;
     serviceName: string;

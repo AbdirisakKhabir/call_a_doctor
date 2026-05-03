@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 import { userHasPermission } from "@/lib/permissions";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -59,7 +60,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params;
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    await prisma.doctor.delete({ where: { id: parsedId } });
+    const row = await prisma.doctor.findUnique({ where: { id: parsedId } });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "Doctor",
+        recordId: parsedId,
+        title: row.name,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.doctor.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete doctor error:", e);

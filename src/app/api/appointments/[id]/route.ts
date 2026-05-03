@@ -7,6 +7,7 @@ import { userHasPermission } from "@/lib/permissions";
 import { deductDisposablesForCompletedAppointment } from "@/lib/service-disposable-deduction";
 import { createAppointmentBillingSaleInTx } from "@/lib/appointment-billing-sale";
 import { getAppointmentBlockMessage } from "@/lib/appointment-schedule-blocks";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 const appointmentInclude = {
   branch: { select: { id: true, name: true } },
@@ -338,28 +339,39 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params;
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    const existing = await prisma.appointment.findUnique({
+    const apptSnapshot = await prisma.appointment.findUnique({
       where: { id: parsedId },
-      select: {
-        patientId: true,
-        totalAmount: true,
-        postedChargesToPatientOnCreate: true,
+      include: {
+        branch: { select: { id: true, name: true } },
+        doctor: { select: { id: true, name: true } },
+        patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
+        services: {
+          include: { service: { select: { id: true, name: true } } },
+        },
       },
     });
     const billingSales =
-      existing != null
+      apptSnapshot != null
         ? await prisma.sale.findMany({
             where: { appointmentId: parsedId, kind: "appointment" },
             select: { id: true, totalAmount: true },
           })
         : [];
-    if (!existing) {
+    if (!apptSnapshot) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
     await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "Appointment",
+        recordId: parsedId,
+        title: `${apptSnapshot.appointmentDate.toISOString().slice(0, 10)} · ${apptSnapshot.patient.patientCode}`,
+        detail: `${apptSnapshot.branch.name} · ${apptSnapshot.startTime}`,
+        snapshot: toTrashSnapshot(apptSnapshot),
+        deletedById: auth.userId,
+      });
       for (const s of billingSales) {
         await tx.patient.update({
-          where: { id: existing.patientId },
+          where: { id: apptSnapshot.patientId },
           data: { accountBalance: { increment: s.totalAmount } },
         });
         const dep = await tx.accountTransaction.findUnique({ where: { saleId: s.id } });
@@ -368,10 +380,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         }
         await tx.sale.delete({ where: { id: s.id } });
       }
-      if (existing.totalAmount > 0 && existing.postedChargesToPatientOnCreate) {
+      if (apptSnapshot.totalAmount > 0 && apptSnapshot.postedChargesToPatientOnCreate) {
         await tx.patient.update({
-          where: { id: existing.patientId },
-          data: { accountBalance: { decrement: existing.totalAmount } },
+          where: { id: apptSnapshot.patientId },
+          data: { accountBalance: { decrement: apptSnapshot.totalAmount } },
         });
       }
       await tx.appointment.delete({ where: { id: parsedId } });

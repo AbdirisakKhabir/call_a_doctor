@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 import { formatClientFullName, serializePatient } from "@/lib/patient-name";
 import { resolveReferralSourceIdForWrite } from "@/lib/referral-source";
 import { calculateAgeFromDate } from "@/lib/age-from-dob";
@@ -193,7 +194,22 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid client id" }, { status: 400 });
     }
 
-    await prisma.patient.delete({ where: { id: parsedId } });
+    const existing = await prisma.patient.findUnique({ where: { id: parsedId } });
+    if (!existing) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "Patient",
+        recordId: parsedId,
+        title: `${existing.firstName} ${existing.lastName}`.trim() || `Client #${parsedId}`,
+        detail: existing.patientCode,
+        snapshot: toTrashSnapshot(existing),
+        deletedById: auth.userId,
+      });
+      await tx.patient.delete({ where: { id: parsedId } });
+    });
     await logAuditFromRequest(req, {
       userId: auth.userId,
       action: "patient.delete",

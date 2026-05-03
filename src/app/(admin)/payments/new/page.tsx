@@ -98,9 +98,14 @@ export default function NewPaymentPage() {
     <div>
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="Record payment" />
-        <Link href="/payments" className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">
-          Back to client balances
-        </Link>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <Link href="/payments" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+            Client balances
+          </Link>
+          <Link href="/finance/payments" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+            Payment list
+          </Link>
+        </div>
       </div>
 
       {!selected ? (

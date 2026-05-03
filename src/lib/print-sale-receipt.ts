@@ -13,6 +13,8 @@ export type SaleReceiptPrintPayload = {
   paymentMethod?: string;
   /** Shown under the logo on the letterhead when present */
   branchName?: string | null;
+  /** Main document heading (default "Receipt"; appointment-linked sales use "Appointment sales receipt"). */
+  receiptTitle?: string;
   lines: SaleReceiptPrintLine[];
   discount: number;
   totalAmount: number;
@@ -34,8 +36,7 @@ import {
   RECEIPT_LOGO_PUBLIC_PATH,
   formatReceiptDateOnly,
   pharmacyA5PosReceiptStyles,
-  receiptPrintMastheadExtraLinesHtml,
-  receiptPrintA5FooterContactHtml,
+  receiptHeaderPaymentContactBarsHtml,
 } from "@/lib/receipt-print-theme";
 
 export { getReceiptLogoAbsoluteUrl, RECEIPT_LOGO_PUBLIC_PATH, formatReceiptDateOnly };
@@ -68,14 +69,11 @@ export async function printSaleReceipt(payload: SaleReceiptPrintPayload): Promis
       : "Main clinic";
   const receiptNoDisplay = String(payload.id).padStart(7, "0");
   const receiptDateStr = formatReceiptDateOnly(payload.saleDate);
+  const titleText = payload.receiptTitle?.trim() ? payload.receiptTitle.trim() : "Receipt";
   const paymentLine =
     payload.paymentMethod && String(payload.paymentMethod).trim()
       ? `<p class="billed-extra">Payment: ${escapeHtml(String(payload.paymentMethod).trim())}</p>`
       : "";
-  const notesBlock =
-    payload.notes && String(payload.notes).trim()
-      ? `<p class="notes-body">${escapeHtml(String(payload.notes).trim())}</p>`
-      : `<p class="notes-body">Thank you for choosing Call a Doctor. Please retain this receipt for your records. For service or billing questions, use the clinic contact below.</p>`;
 
   const printWindow = window.open("", "_blank");
   if (!printWindow) return;
@@ -93,7 +91,7 @@ export async function printSaleReceipt(payload: SaleReceiptPrintPayload): Promis
       <div class="company-block">
         <p class="company-name">Call a Doctor</p>
         <p class="company-line">${branchLine1}</p>
-        ${receiptPrintMastheadExtraLinesHtml()}
+        ${receiptHeaderPaymentContactBarsHtml()}
       </div>
       <div class="logo-box" aria-label="Clinic logo">
         ${logoImgInner}
@@ -102,7 +100,7 @@ export async function printSaleReceipt(payload: SaleReceiptPrintPayload): Promis
 
     <div class="title-band">
       <div class="title-right">
-        <h1 class="receipt-title">Receipt</h1>
+        <h1 class="receipt-title">${escapeHtml(titleText)}</h1>
         <div class="meta-lines">
           <div><span class="lbl">Receipt #:</span>${receiptNoDisplay}</div>
           <div><span class="lbl">Receipt date:</span>${receiptDateStr}</div>
@@ -150,12 +148,6 @@ export async function printSaleReceipt(payload: SaleReceiptPrintPayload): Promis
     </div>
 
     <div class="footer-spacer"></div>
-
-    <footer class="footer">
-      <h3 class="notes-heading">Notes</h3>
-      ${notesBlock}
-      ${receiptPrintA5FooterContactHtml(branchLine1)}
-    </footer>
   </div>
 </body>
 </html>
@@ -192,6 +184,8 @@ export async function printSaleReceipt(payload: SaleReceiptPrintPayload): Promis
 /** Shape returned by GET /api/pharmacy/sales/[id] (subset). */
 export type SaleApiDetailForReceipt = {
   id: number;
+  kind?: string | null;
+  appointmentId?: number | null;
   saleDate: string;
   totalAmount: number;
   discount: number;
@@ -257,12 +251,14 @@ export function saleApiDetailToPrintPayload(s: SaleApiDetailForReceipt): SaleRec
       unitLabel: line.saleUnit && line.saleUnit !== "pcs" ? line.saleUnit : undefined,
     };
   });
+  const isAppointmentSale = s.kind === "appointment" || s.appointmentId != null;
   return {
     id: s.id,
     saleDate: s.saleDate,
     customerLabel: customerLabelForReceiptPrint(s),
     paymentMethod: s.paymentMethod,
     branchName: s.branch?.name ?? null,
+    receiptTitle: isAppointmentSale ? "Appointment sales receipt" : undefined,
     lines,
     discount: s.discount ?? 0,
     totalAmount: s.totalAmount,

@@ -23,8 +23,18 @@ export const CLINIC_MERCHANT_NUMBERS: ReadonlyArray<{ label: string; number: str
 export const CLINIC_CONTACT_NUMBERS: ReadonlyArray<{ label: string; number: string }> = [
   { label: "Call 1", number: "0637980007" },
   { label: "Call 2", number: "0638239366" },
-  { label: "Main WhatsApp", number: "0637833687" },
+  { label: "WhatsApp", number: "0637833687" },
 ];
+
+/**
+ * Two header lines for all receipts: merchant wallets and phone/WhatsApp (pipe-separated).
+ * Uses `.company-line.receipt-header-pay-contact` (styled in A5 / A4 print CSS).
+ */
+export function receiptHeaderPaymentContactBarsHtml(): string {
+  const line1 = CLINIC_MERCHANT_NUMBERS.map((m) => `${m.label}: ${m.number}`).join(" | ");
+  const line2 = CLINIC_CONTACT_NUMBERS.map((c) => `${c.label}: ${c.number}`).join(" | ");
+  return `<p class="company-line receipt-header-pay-contact">${line1}</p><p class="company-line receipt-header-pay-contact">${line2}</p>`;
+}
 
 /** Lines under branch name on A5 POS-style receipts (uses `.company-line`). */
 export function receiptPrintMastheadExtraLinesHtml(): string {
@@ -161,6 +171,12 @@ export function clientInvoiceDocumentStyles(): string {
       margin: 0 0 2px 0;
       font-size: 8.5pt;
       color: #344054;
+    }
+    .receipt-header-pay-contact {
+      margin-top: 4px;
+      font-size: 7.5pt;
+      line-height: 1.35;
+      word-break: break-word;
     }
     .logo-box {
       width: 34mm;
@@ -320,6 +336,12 @@ export function pharmacyA5PosReceiptStyles(): string {
       margin: 0 0 2px 0;
       font-size: 8.5pt;
       color: #344054;
+    }
+    .receipt-header-pay-contact {
+      margin-top: 4px;
+      font-size: 7.5pt;
+      line-height: 1.35;
+      word-break: break-word;
     }
     .logo-box {
       width: 34mm;

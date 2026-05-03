@@ -5,7 +5,7 @@ import {
   formatReceiptDateOnly,
   pharmacyA5PosReceiptStyles,
   receiptPrintMastheadExtraLinesHtml,
-  receiptPrintA5FooterContactHtml,
+  receiptHeaderPaymentContactBarsHtml,
 } from "@/lib/receipt-print-theme";
 
 export type PurchaseReceiptPrintLine = {
@@ -133,6 +133,7 @@ export async function printPurchaseReceipt(payload: PurchaseReceiptPrintPayload)
         <p class="company-name">Call a Doctor</p>
         <p class="company-line">${branchLine1}</p>
         ${receiptPrintMastheadExtraLinesHtml()}
+        ${receiptHeaderPaymentContactBarsHtml()}
       </div>
       <div class="logo-box" aria-label="Clinic logo">
         ${logoImgInner}
@@ -189,7 +190,6 @@ export async function printPurchaseReceipt(payload: PurchaseReceiptPrintPayload)
     <footer class="footer">
       <h3 class="notes-heading">Notes</h3>
       ${notesBlock}
-      ${receiptPrintA5FooterContactHtml(branchLine1)}
     </footer>
   </div>
 </body>

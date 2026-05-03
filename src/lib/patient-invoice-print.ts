@@ -3,8 +3,7 @@ import {
   fetchReceiptLogoAsDataUrl,
   formatReceiptDateOnly,
   receiptLogoImgHtml,
-  receiptPrintMastheadExtraLinesHtml,
-  invoicePrintFooterContactHtml,
+  receiptHeaderPaymentContactBarsHtml,
 } from "@/lib/receipt-print-theme";
 import type { ClientInvoiceLine } from "@/lib/client-invoice-build";
 
@@ -92,7 +91,7 @@ export async function printConsolidatedInvoice(payload: {
       <div class="company-block">
         <p class="company-name">Call a Doctor</p>
         <p class="company-line">Client invoice</p>
-        ${receiptPrintMastheadExtraLinesHtml()}
+        ${receiptHeaderPaymentContactBarsHtml()}
       </div>
       <div class="logo-box" aria-hidden="true">${logoInner}</div>
     </header>
@@ -137,11 +136,6 @@ export async function printConsolidatedInvoice(payload: {
     </table>
 
     <div class="summary-box">Subtotal: $${payload.subtotal.toFixed(2)}</div>
-
-    <div class="footer-note">
-      ${invoicePrintFooterContactHtml()}
-      <p style="margin-top:10px">Medication lines use the product selling price at print time. Lab and service lines use amounts recorded on the order or visit.</p>
-    </div>
   </div>
 </body></html>`);
 

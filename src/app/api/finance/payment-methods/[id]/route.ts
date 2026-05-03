@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function PATCH(
   req: NextRequest,
@@ -77,7 +78,20 @@ export async function DELETE(
       );
     }
 
-    await prisma.ledgerPaymentMethod.delete({ where: { id: parsedId } });
+    const row = await prisma.ledgerPaymentMethod.findUnique({ where: { id: parsedId } });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "LedgerPaymentMethod",
+        recordId: parsedId,
+        title: row.name,
+        detail: `Account #${row.accountId}`,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.ledgerPaymentMethod.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete payment method error:", e);

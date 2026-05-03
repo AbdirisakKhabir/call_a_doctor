@@ -6,6 +6,7 @@ import { userHasPermission } from "@/lib/permissions";
 import { logAuditFromRequest } from "@/lib/audit-log";
 import { deleteRaw, deleteImage } from "@/lib/cloudinary";
 import { normalizeWorkingDays } from "@/lib/hr-staff";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 function parseSalary(input: unknown): number | null {
   if (input === null || input === undefined || input === "") return null;
@@ -152,6 +153,8 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     const existing = await prisma.staffMember.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    const snap = toTrashSnapshot(existing);
+
     if (existing.cvPublicId) {
       try {
         await deleteRaw(existing.cvPublicId);
@@ -167,7 +170,17 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
       }
     }
 
-    await prisma.staffMember.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "StaffMember",
+        recordId: id,
+        title: existing.name,
+        detail: existing.title,
+        snapshot: snap,
+        deletedById: auth.userId,
+      });
+      await tx.staffMember.delete({ where: { id } });
+    });
 
     await logAuditFromRequest(req, {
       userId: auth.userId,

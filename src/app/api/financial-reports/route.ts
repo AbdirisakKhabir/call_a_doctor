@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { userHasPermission } from "@/lib/permissions";
+import { computeIncomeStatement } from "@/lib/financial-income-statement";
 
 export async function GET(req: NextRequest) {
   try {
     const auth = await getAuthUser(req);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const ok =
+      (await userHasPermission(auth.userId, "financial.view")) ||
+      (await userHasPermission(auth.userId, "accounts.reports"));
+    if (!ok) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -21,54 +30,10 @@ export async function GET(req: NextRequest) {
       dateFilter.lte = toDate;
     }
 
-    const saleDateFilter = Object.keys(dateFilter).length ? { saleDate: dateFilter } : {};
-    const appointmentDateFilter = Object.keys(dateFilter).length ? { appointmentDate: dateFilter } : {};
-    const purchaseDateFilter = Object.keys(dateFilter).length ? { purchaseDate: dateFilter } : {};
-    const expenseDateFilter = Object.keys(dateFilter).length ? { expenseDate: dateFilter } : {};
-
-    const [sales, appointments, purchases, expenses] = await Promise.all([
-      prisma.sale.aggregate({
-        where: saleDateFilter,
-        _sum: { totalAmount: true },
-      }),
-      prisma.appointment.aggregate({
-        where: appointmentDateFilter,
-        _sum: { totalAmount: true },
-      }),
-      prisma.purchase.aggregate({
-        where: purchaseDateFilter,
-        _sum: { totalAmount: true },
-      }),
-      prisma.expense.aggregate({
-        where: expenseDateFilter,
-        _sum: { amount: true },
-      }),
-    ]);
-
-    const pharmacyRevenue = sales._sum.totalAmount ?? 0;
-    const appointmentRevenue = appointments._sum.totalAmount ?? 0;
-    const totalRevenue = pharmacyRevenue + appointmentRevenue;
-
-    const purchaseCost = purchases._sum.totalAmount ?? 0;
-    const operatingExpenses = expenses._sum.amount ?? 0;
-    const totalExpenses = purchaseCost + operatingExpenses;
-
-    const netIncome = totalRevenue - totalExpenses;
+    const incomeStatement = await computeIncomeStatement(prisma, dateFilter);
 
     return NextResponse.json({
-      incomeStatement: {
-        revenue: {
-          pharmacy: pharmacyRevenue,
-          appointments: appointmentRevenue,
-          total: totalRevenue,
-        },
-        expenses: {
-          purchases: purchaseCost,
-          operating: operatingExpenses,
-          total: totalExpenses,
-        },
-        netIncome,
-      },
+      incomeStatement,
       dateRange: { from: from ?? null, to: to ?? null },
     });
   } catch (e) {

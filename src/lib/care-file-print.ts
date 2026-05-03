@@ -6,7 +6,8 @@ import {
   formatReceiptDateOnly,
   receiptLogoImgHtml,
   receiptPrintMastheadExtraLinesHtml,
-  invoicePrintFooterContactHtml,
+  CLINIC_CALL_CENTER,
+  receiptHeaderPaymentContactBarsHtml,
 } from "@/lib/receipt-print-theme";
 
 function patientDisplayName(p: CareFileInvoicePayload["patient"]): string {
@@ -139,6 +140,7 @@ export async function printCareFileInvoice(payload: CareFileInvoicePayload): Pro
         <p class="company-name">Call a Doctor</p>
         <p class="company-line">${escapeHtml(branchLine)}</p>
         ${receiptPrintMastheadExtraLinesHtml()}
+        ${receiptHeaderPaymentContactBarsHtml()}
       </div>
       <div class="logo-box" aria-hidden="true">${logoInner}</div>
     </header>
@@ -218,7 +220,7 @@ export async function printCareFileInvoice(payload: CareFileInvoicePayload): Pro
     </div>
 
     <div class="footer-note">
-      ${invoicePrintFooterContactHtml()}
+      <p class="contact-title">Call center: ${CLINIC_CALL_CENTER}</p>
       <p style="margin-top:10px">Call a Doctor — ${escapeHtml(branchLine)}</p>
       <p style="margin-top:10px">Prescription lines use current product selling price (estimate). Account balance may include other charges.</p>
     </div>

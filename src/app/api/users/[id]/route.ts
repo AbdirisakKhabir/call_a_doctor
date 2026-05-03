@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function GET(
   req: NextRequest,
@@ -125,7 +126,19 @@ export async function DELETE(
         { status: 400 }
       );
     }
-    await prisma.user.delete({ where: { id: parsedId } });
+    const u = await prisma.user.findUnique({ where: { id: parsedId } });
+    if (!u) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "User",
+        recordId: parsedId,
+        title: u.email,
+        detail: u.name,
+        snapshot: toTrashSnapshot(u),
+        deletedById: auth.userId,
+      });
+      await tx.user.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete user error:", e);

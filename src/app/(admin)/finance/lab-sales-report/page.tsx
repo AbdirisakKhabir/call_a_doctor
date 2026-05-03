@@ -117,14 +117,14 @@ export default function FinanceLabSalesReportPage() {
 
   return (
     <>
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="no-print mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <PageBreadCrumb pageTitle="Lab sales report" />
         <Link href="/finance/lab-sales" className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">
           ← Lab sales list
         </Link>
       </div>
 
-      <div className="mb-6 space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/3">
+      <div className="no-print mb-6 space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/3">
         <DateRangeFilter
           from={from}
           to={to}

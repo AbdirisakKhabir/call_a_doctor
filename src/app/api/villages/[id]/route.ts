@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function PATCH(
   req: NextRequest,
@@ -75,7 +76,20 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
 
-    await prisma.village.delete({ where: { id: parsedId } });
+    const row = await prisma.village.findUnique({ where: { id: parsedId } });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "Village",
+        recordId: parsedId,
+        title: row.name,
+        detail: `City #${row.cityId}`,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.village.delete({ where: { id: parsedId } });
+    });
     await logAuditFromRequest(req, {
       userId: auth.userId,
       action: "village.delete",

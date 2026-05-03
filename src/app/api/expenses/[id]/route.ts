@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function PATCH(
   req: NextRequest,
@@ -57,7 +58,20 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid expense id" }, { status: 400 });
     }
 
-    await prisma.expense.delete({ where: { id: parsedId } });
+    const row = await prisma.expense.findUnique({ where: { id: parsedId } });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "Expense",
+        recordId: parsedId,
+        title: row.description ? String(row.description).slice(0, 200) : `Expense #${parsedId}`,
+        detail: `$${row.amount.toFixed(2)} · cat ${row.categoryId}`,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.expense.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete expense error:", e);

@@ -61,8 +61,9 @@ export default function AccountingHubPage() {
     <div>
       <PageBreadCrumb pageTitle="Accounting" />
       <p className="mt-2 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-        Ledger accounts, payment methods, deposits, withdrawals, and statements. Visit billing sales are listed under
-        Finance. Access is controlled by accounts permissions on your role.
+        Ledger accounts, payment methods, deposits, withdrawals, and statements. Visit billing and payment tools live under{" "}
+        <span className="font-medium text-gray-700 dark:text-gray-300">Finance</span> in the sidebar. Access is controlled
+        by accounts permissions on your role.
       </p>
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         {visible.map((c) => (

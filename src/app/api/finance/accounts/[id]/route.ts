@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { getFinanceAccountBalance } from "@/lib/finance-balance";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function PATCH(
   req: NextRequest,
@@ -73,8 +74,21 @@ export async function DELETE(
       );
     }
 
-    await prisma.ledgerPaymentMethod.deleteMany({ where: { accountId: parsedId } });
-    await prisma.financeAccount.delete({ where: { id: parsedId } });
+    const row = await prisma.financeAccount.findUnique({ where: { id: parsedId } });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "FinanceAccount",
+        recordId: parsedId,
+        title: row.name,
+        detail: row.code,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.ledgerPaymentMethod.deleteMany({ where: { accountId: parsedId } });
+      await tx.financeAccount.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete finance account error:", e);

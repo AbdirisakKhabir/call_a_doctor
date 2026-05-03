@@ -77,7 +77,9 @@ export default function AppointmentCalendarSettingsPage() {
     <div>
       <PageBreadCrumb pageTitle="Calendar settings" />
       <p className="mt-2 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-        Controls the time grid on the calendar and the time dropdowns when booking. Does not change stored booking lengths—those follow service duration.
+        Controls the time grid on the calendar and the time dropdowns when booking. Week and day views show the full day with
+        12-hour times; the first half is AM and the second half is PM (divider at noon). Does not change stored booking
+        lengths—those follow service duration.
       </p>
 
       {loading ? (

@@ -31,7 +31,7 @@ export default function DateRangeFilter({
   enforceOrder = true,
 }: DateRangeFilterProps) {
   return (
-    <div className="flex flex-wrap items-end gap-2">
+    <div className="no-print flex flex-wrap items-end gap-2">
       <div className="min-w-[160px]">
         <DateField
           label={fromLabel}

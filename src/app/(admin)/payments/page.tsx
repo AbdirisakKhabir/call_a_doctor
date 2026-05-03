@@ -74,6 +74,12 @@ export default function PaymentsPage() {
             </Link>
           )}
           <Link
+            href="/finance/payments"
+            className="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 transition hover:bg-gray-50 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-white/5"
+          >
+            Payment list
+          </Link>
+          <Link
             href="/patients"
             className="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 transition hover:bg-gray-50 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-white/5"
           >

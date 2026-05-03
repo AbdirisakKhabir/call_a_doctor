@@ -3,6 +3,7 @@
 import React, { useEffect, useLayoutEffect, useState, useMemo, useRef } from "react";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
+import FormPickerQuickActionButtons from "@/components/forms/FormPickerQuickActionButtons";
 import { Modal } from "@/components/ui/modal";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,7 +19,8 @@ import {
   DEFAULT_APPOINTMENT_DURATION_MIN,
   durationSlotRowCount,
   formatMinutesAsLabel,
-  formatMinutesFromMidnightAs24h,
+  formatMinutesForAmPmGutter,
+  formatMinutesFromMidnightAs12h,
   formatSlotEndTimeLabel,
   formatTime12hLabel,
   isAppointmentCalendarSlotMinutes,
@@ -90,12 +92,12 @@ function firstServiceColor(apt: Appointment): string | null {
   return null;
 }
 
-/** First minute shown in the day column (inclusive) — 6:00 AM. */
-const CAL_DAY_START_MIN = 6 * 60;
-/** End of visible day (exclusive) — 24:00; grid shows 06:00 through 23:45. */
+/** First minute in the day column (inclusive) — midnight. Full calendar day with 12-hour + AM/PM labels. */
+const CAL_DAY_START_MIN = 0;
+/** End of visible day (exclusive) — 24:00. */
 const CAL_DAY_END_MIN = 24 * 60;
-const CAL_START_HOUR = 6;
-const CAL_END_HOUR = 24;
+/** On first open, scroll the day grid so ~7:00 is near the top (working-day focus). */
+const CAL_INITIAL_SCROLL_HOUR = 7;
 /** Pixel height of one calendar row (one slot step). */
 const SLOT_PX = 28;
 
@@ -203,8 +205,8 @@ function formatServicesForCalendar(apt: Appointment): string {
   return apt.services.map((s) => s.service.name).join(", ");
 }
 
-/** Inner width of the time labels (HH:mm). */
-const TIME_GUTTER_PX = 58;
+/** Inner width of the time labels (12h clock + AM/PM column). */
+const TIME_GUTTER_PX = 64;
 /** Total width of the sticky time column including horizontal padding (same as day cells). */
 const timeGutterTotalWidth = `calc(${TIME_GUTTER_PX}px + 0.75rem)`;
 /** Minimum width per day column — wider columns + horizontal scroll when the viewport is narrower. */
@@ -290,24 +292,36 @@ function TimeGutterColumn({ slotMinutes }: { slotMinutes: number }) {
   return (
     <div className="relative shrink-0" style={{ width: TIME_GUTTER_PX, height: timelineH }}>
       {rowStarts.map((startMin, i) => {
-        const label = formatMinutesFromMidnightAs24h(startMin);
+        const { clock, period } = formatMinutesForAmPmGutter(startMin);
         const min = startMin % 60;
         const isHourStart = min === 0;
+        const isMidday = startMin === 12 * 60;
         return (
           <div
             key={startMin}
-            className="pointer-events-none absolute left-0 right-0 flex items-start justify-end border-b border-gray-100 dark:border-gray-800"
+            className={`pointer-events-none absolute left-0 right-0 flex items-start justify-end border-b border-gray-100 dark:border-gray-800 ${
+              isMidday ? "border-t-2 border-gray-200 dark:border-gray-600" : ""
+            }`}
             style={{ top: i * SLOT_PX, height: SLOT_PX }}
           >
-            <span
-              className={`max-w-[4.5rem] pr-1.5 pt-0.5 text-right text-[10px] leading-tight tabular-nums ${
-                isHourStart
-                  ? "font-semibold text-gray-700 dark:text-gray-200"
-                  : "text-gray-500 dark:text-gray-400"
-              }`}
-            >
-              {label}
-            </span>
+            <div className="flex items-start gap-0.5 pr-1 pt-0.5">
+              <span
+                className={`text-right text-[10px] leading-none tabular-nums ${
+                  isHourStart
+                    ? "font-semibold text-gray-800 dark:text-gray-100"
+                    : "text-gray-600 dark:text-gray-400"
+                }`}
+              >
+                {clock}
+              </span>
+              <span
+                className={`pt-0.5 text-[8px] font-bold leading-none tracking-wide text-gray-400 dark:text-gray-500 ${
+                  period === "AM" ? "text-sky-600/90 dark:text-sky-400/90" : "text-violet-600/90 dark:text-violet-400/90"
+                }`}
+              >
+                {period}
+              </span>
+            </div>
           </div>
         );
       })}
@@ -355,6 +369,9 @@ export default function AppointmentsPage() {
     hasPermission("patient_history.create") ||
     hasPermission("patient_history.view") ||
     hasPermission("forms.view");
+  const canQuickLab = hasPermission("lab.view") && hasPermission("lab.create");
+  const canQuickPrescription =
+    hasPermission("prescriptions.view") && hasPermission("prescriptions.create");
 
   const [calendarModal, setCalendarModal] = useState<CalendarQuickViewModal | null>(null);
   const [publishedForms, setPublishedForms] = useState<PublishedFormListItem[]>([]);
@@ -542,15 +559,19 @@ export default function AppointmentsPage() {
     };
   }, [calendarModal]);
 
-  /** On first load, keep window and calendar scroll areas at the top (no auto-scroll to "today" week). */
+  /** First load: scroll grid so morning is in view; times use 12-hour labels with AM (midnight–11:59 am) / PM (noon–11:59 pm). */
   useLayoutEffect(() => {
     if (loading) return;
     if (calendarInitialScrollResetDoneRef.current) return;
     calendarInitialScrollResetDoneRef.current = true;
     window.scrollTo(0, 0);
     if (calendarHScrollRef.current) calendarHScrollRef.current.scrollLeft = 0;
-    if (calendarVScrollRef.current) calendarVScrollRef.current.scrollTop = 0;
-  }, [loading]);
+    const v = calendarVScrollRef.current;
+    if (v) {
+      const row = (CAL_INITIAL_SCROLL_HOUR * 60) / slotMinutes;
+      v.scrollTop = Math.max(0, row * SLOT_PX - 32);
+    }
+  }, [loading, slotMinutes]);
 
   /** Live window listeners for grid time-range drag (cleanup on unmount). */
   const gridDragListenersRef = useRef<{ move: (e: PointerEvent) => void; up: (e: PointerEvent) => void } | null>(
@@ -909,7 +930,7 @@ export default function AppointmentsPage() {
                         className="flex shrink-0 items-center justify-center border-r border-gray-200 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
                         style={{ width: timeGutterTotalWidth }}
                       >
-                        Time
+                        Time · 12 hr
                       </div>
                       <div
                         className="grid min-w-0 flex-1"
@@ -979,8 +1000,9 @@ export default function AppointmentsPage() {
                                 )}
                                 {Array.from({ length: slotCount }, (_, slotIdx) => {
                                   const startMin = CAL_DAY_START_MIN + slotIdx * slotMinutes;
-                                  const rowLabel = formatMinutesFromMidnightAs24h(startMin);
+                                  const rowLabel = formatMinutesFromMidnightAs12h(startMin);
                                   const rowCenterPx = slotIdx * SLOT_PX + SLOT_PX / 2;
+                                  const isMidday = startMin === 12 * 60;
                                   const slotBlocked = isCalendarSlotBlocked(
                                     cell.date,
                                     slotIdx,
@@ -1020,6 +1042,8 @@ export default function AppointmentsPage() {
                                         setHoverSlotByDate((prev) => ({ ...prev, [cell.date]: null }))
                                       }
                                       className={`pointer-events-auto absolute right-0 left-0 border-b border-gray-200/80 dark:border-gray-700 ${
+                                        isMidday ? "border-t-2 border-gray-200 dark:border-gray-600" : ""
+                                      } ${
                                         slotBlocked
                                           ? "cursor-not-allowed bg-gray-200/50 opacity-60 dark:bg-gray-800/60"
                                           : `bg-gray-50/40 dark:bg-gray-900/30 ${
@@ -1210,8 +1234,8 @@ export default function AppointmentsPage() {
                 </span>
                 {canCreate && (
                   <span className="max-w-xl text-gray-500 dark:text-gray-400">
-                    Grid runs from 06:00–24:00. Drag across free slots to add a booking. Cancelled visits are not shown on
-                    the grid so you can reuse the same time.{" "}
+                    Full day 12:00 AM–11:59 PM (two 12-hour blocks: AM, then PM at noon). Drag across free slots to add a booking.
+                    Cancelled visits are not shown on the grid so you can reuse the same time.{" "}
                     <Link
                       href={`/appointments/cancelled?from=${encodeURIComponent(rangeForFetch().startStr)}&to=${encodeURIComponent(rangeForFetch().endStr)}`}
                       className="font-medium text-brand-600 hover:underline dark:text-brand-400"
@@ -1346,7 +1370,15 @@ export default function AppointmentsPage() {
               >
                 ← Back to booking
               </Button>
-              <div className="mt-4 max-h-[min(50vh,24rem)] overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800">
+              <FormPickerQuickActionButtons
+                patientId={calendarModal.apt.patient.id}
+                appointmentId={calendarModal.apt.id}
+                doctorId={calendarModal.apt.doctor.id}
+                branchId={calendarModal.apt.branch.id}
+                showLab={canQuickLab}
+                showPrescription={canQuickPrescription}
+              />
+              <div className="mt-2 max-h-[min(50vh,24rem)] overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800">
                 {formsListLoading ? (
                   <p className="p-4 text-sm text-gray-500">Loading forms…</p>
                 ) : publishedForms.length === 0 ? (

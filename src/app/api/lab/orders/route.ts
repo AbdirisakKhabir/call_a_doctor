@@ -38,18 +38,25 @@ export async function GET(req: NextRequest) {
         panelParentTest: { select: { id: true, name: true } },
       },
     };
-    const include = {
+    const includeFull = {
       patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
       doctor: { select: { id: true, name: true } },
       appointment: { select: { id: true, appointmentDate: true, startTime: true } },
       items: labItemInclude,
+    };
+    /** Paginated list: only fields needed for the orders table (lighter payload). */
+    const includeList = {
+      patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
+      doctor: { select: { id: true, name: true } },
+      appointment: { select: { id: true, appointmentDate: true, startTime: true } },
+      items: { select: { id: true, status: true } },
     };
 
     if (paginate) {
       const [orders, total] = await Promise.all([
         prisma.labOrder.findMany({
           where,
-          include,
+          include: includeList,
           orderBy: { createdAt: "desc" },
           skip,
           take: pageSize,
@@ -66,7 +73,7 @@ export async function GET(req: NextRequest) {
 
     const orders = await prisma.labOrder.findMany({
       where,
-      include,
+      include: includeFull,
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(orders.map((o) => ({ ...o, patient: serializePatient(o.patient) })));

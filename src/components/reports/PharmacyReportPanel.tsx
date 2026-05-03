@@ -106,17 +106,17 @@ export function PharmacyReportPanel({ report }: Props) {
     return p.toString();
   }, [from, to]);
 
+  /** Appointment sales: no branch picker — scope comes from the API (admins: all branches; others: assigned only). */
   const branchScopedReports =
     report === "sales" ||
-    report === "appointment_sales" ||
     report === "purchases" ||
     report === "inventory" ||
     report === "categories" ||
     report === "suppliers" ||
     report === "opening_inventory";
 
-  /** Transaction reports (sales / purchases) can use “all branches”; catalog reports always scope to one branch. */
-  const transactionReports = report === "sales" || report === "appointment_sales" || report === "purchases";
+  /** Sales / POS and purchases may filter by branch; appointment billing uses implicit branch scope only. */
+  const transactionReports = report === "sales" || report === "purchases";
   const showReportBranchFilter =
     branchScopedReports &&
     (seesAllBranches || hasMultipleAssignedBranches || hasPermission("settings.manage")) &&
@@ -181,7 +181,7 @@ export function PharmacyReportPanel({ report }: Props) {
         const p2 = new URLSearchParams();
         if (from) p2.set("from", from);
         if (to) p2.set("to", to);
-        if (reportBranchId && transactionReports) {
+        if (reportBranchId) {
           p2.set("branchId", reportBranchId);
         }
         const q2 = p2.toString() ? `?${p2.toString()}` : "";
@@ -313,7 +313,7 @@ export function PharmacyReportPanel({ report }: Props) {
         <p className="max-w-3xl text-sm text-gray-600 dark:text-gray-400">{meta.description}</p>
       </div>
 
-      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3 sm:flex-row sm:flex-wrap sm:items-end">
+      <div className="no-print mb-6 flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3 sm:flex-row sm:flex-wrap sm:items-end">
         {report === "inventory" && (
           <div className="min-w-[180px]">
             <Label>Stock type</Label>

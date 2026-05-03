@@ -15,6 +15,7 @@ import {
   setStoredAuth,
   getStoredToken,
   isSessionExpired,
+  touchSessionActivity,
 } from "@/types/auth";
 import { isAdminRoleName } from "@/lib/admin-role";
 
@@ -60,6 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         const auth = { user: data.user, token: t };
         setStoredAuth(auth, { preserveLoginAt: true });
+        touchSessionActivity({ force: true });
         setUser(data.user);
         setToken(t);
       } else {
@@ -91,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshUser, forceLogoutAndRedirect]);
 
-  // Session expiry: check every minute and on tab focus; logout after SESSION_TTL_MS (see types/auth)
+  // Idle session: sign out after SESSION_IDLE_TTL_MS with no input or authenticated API usage
   useEffect(() => {
     const check = () => {
       if (getStoredToken() && isSessionExpired()) {
@@ -109,6 +111,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [forceLogoutAndRedirect]);
 
+  useEffect(() => {
+    const onActivity = () => touchSessionActivity();
+    const events: (keyof WindowEventMap)[] = ["mousedown", "keydown", "scroll", "touchstart", "click"];
+    for (const e of events) {
+      window.addEventListener(e, onActivity, { passive: true });
+    }
+    return () => {
+      for (const e of events) {
+        window.removeEventListener(e, onActivity);
+      }
+    };
+  }, []);
+
   const login = useCallback(
     async (email: string, password: string): Promise<{ error?: string }> => {
       try {
@@ -121,7 +136,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!res.ok) {
           return { error: data.error || "Login failed" };
         }
-        setStoredAuth({ user: data.user, token: data.token, loginAt: Date.now() });
+        const t = Date.now();
+        setStoredAuth({
+          user: data.user,
+          token: data.token,
+          loginAt: t,
+          lastActivityAt: t,
+        });
         setUser(data.user);
         setToken(data.token);
         setIsLoading(false);

@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { logAuditFromRequest } from "@/lib/audit-log";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 import {
   fieldTypeNeedsOptions,
   isCustomFormFieldType,
@@ -204,10 +205,23 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
 
-    const existing = await prisma.customForm.findUnique({ where: { id } });
+    const existing = await prisma.customForm.findUnique({
+      where: { id },
+      include: { fields: { orderBy: { sortOrder: "asc" } } },
+    });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    await prisma.customForm.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "CustomForm",
+        recordId: id,
+        title: existing.title,
+        detail: existing.isPublished ? "Published" : "Draft",
+        snapshot: toTrashSnapshot(existing),
+        deletedById: auth.userId,
+      });
+      await tx.customForm.delete({ where: { id } });
+    });
 
     await logAuditFromRequest(req, {
       userId: auth.userId,

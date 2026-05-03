@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
@@ -56,7 +56,10 @@ function formatSaleListDate(iso: string): string {
 export default function PharmacySalesList({ variant }: Props) {
   const { hasPermission } = useAuth();
   const { allBranchesLabel } = useBranchScope();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const appointmentSalesListPath =
+    pathname.startsWith("/finance/appointment-sales") ? "/finance/appointment-sales" : "/accounting/appointment-sales";
   const appointmentIdFilter = searchParams.get("appointmentId")?.trim() ?? "";
 
   const canViewAll = hasPermission("pharmacy.view");
@@ -167,7 +170,7 @@ export default function PharmacySalesList({ variant }: Props) {
         if (from) params.set("from", from);
         if (to) params.set("to", to);
       }
-      if (branchId) params.set("branchId", branchId);
+      if (variant === "all" && branchId) params.set("branchId", branchId);
       if (appointmentIdFilter) params.set("appointmentId", appointmentIdFilter);
       if (variant === "appointment") params.set("kind", "appointment");
       const res = await authFetch(`/api/pharmacy/sales?${params.toString()}`);
@@ -186,10 +189,11 @@ export default function PharmacySalesList({ variant }: Props) {
   }, [page, from, to, branchId, appointmentIdFilter, variant]);
 
   useEffect(() => {
+    if (variant !== "all") return;
     authFetch("/api/branches").then((r) => {
       if (r.ok) r.json().then((d: Branch[]) => setBranches(d || []));
     });
-  }, []);
+  }, [variant]);
 
   useEffect(() => {
     load();
@@ -235,7 +239,7 @@ export default function PharmacySalesList({ variant }: Props) {
               </Link>
               .{" "}
               <Link
-                href={variant === "appointment" ? "/accounting/appointment-sales" : "/pharmacy/sales"}
+                href={variant === "appointment" ? appointmentSalesListPath : "/pharmacy/sales"}
                 className="text-brand-600 hover:underline dark:text-brand-400"
               >
                 Clear filter
@@ -253,21 +257,23 @@ export default function PharmacySalesList({ variant }: Props) {
       </div>
 
       <div className="mb-4 flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/3 sm:flex-row sm:flex-wrap sm:items-end">
-        <div>
-          <Label>Branch</Label>
-          <select
-            value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
-            className="mt-1.5 h-10 w-full min-w-[180px] rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto"
-          >
-            <option value="">{allBranchesLabel}</option>
-            {branches.map((b) => (
-              <option key={b.id} value={String(b.id)}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {variant === "all" ? (
+          <div>
+            <Label>Branch</Label>
+            <select
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              className="mt-1.5 h-10 w-full min-w-[180px] rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto"
+            >
+              <option value="">{allBranchesLabel}</option>
+              {branches.map((b) => (
+                <option key={b.id} value={String(b.id)}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <DateRangeFilter
           from={from}
           to={to}

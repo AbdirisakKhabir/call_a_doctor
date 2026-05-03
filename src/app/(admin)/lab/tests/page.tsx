@@ -6,7 +6,7 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import { ListIcon, PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 
 type LabTest = {
@@ -15,7 +15,6 @@ type LabTest = {
   code: string | null;
   unit: string | null;
   normalRange: string | null;
-  price: number;
   isActive: boolean;
   category: { id: number; name: string };
   parentTest?: { id: number; name: string } | null;
@@ -119,8 +118,11 @@ export default function LabTestsPage() {
                 <TableCell isHeader>Code</TableCell>
                 <TableCell isHeader>Unit</TableCell>
                 <TableCell isHeader>Normal Range</TableCell>
-                <TableCell isHeader className="text-right">Test price</TableCell>
-                {(canEdit || canDelete) && <TableCell isHeader>Actions</TableCell>}
+                {(canEdit || canDelete) && (
+                  <TableCell isHeader className="min-w-[9rem] whitespace-nowrap text-right align-middle">
+                    Actions
+                  </TableCell>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,44 +145,35 @@ export default function LabTestsPage() {
                   <TableCell>{t.code || "—"}</TableCell>
                   <TableCell>{t.unit || "—"}</TableCell>
                   <TableCell>{t.normalRange || "—"}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">
-                    {t.parentTest ? (
-                      <span className="text-gray-400 dark:text-gray-500" title="Fee is on the panel test">
-                        —
-                      </span>
-                    ) : (
-                      `$${(t.price ?? 0).toFixed(2)}`
-                    )}
-                  </TableCell>
                   {(canEdit || canDelete) && (
-                    <TableCell>
-                      <div className="flex gap-2">
+                    <TableCell className="text-right align-middle">
+                      <div className="flex items-center justify-end gap-1.5">
                         {(canEdit || canCreate) && !t.parentTest && (
                           <Link
                             href={`/lab/tests/${t.id}/subtests`}
-                            className="inline-flex text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                            className="inline-flex size-10 shrink-0 items-center justify-center overflow-visible rounded-lg border border-gray-200 bg-white p-0 leading-none text-gray-700 shadow-theme-xs hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
                             title="Manage sub-tests"
                           >
-                            Sub-tests
+                            <ListIcon className="block !size-5 max-h-none max-w-none shrink-0 overflow-visible" aria-hidden />
                           </Link>
                         )}
                         {canEdit && (
                           <Link
                             href={`/lab/tests/${t.id}/edit`}
-                            className="inline-flex text-brand-500 hover:underline"
-                            title="Edit"
+                            className="inline-flex size-10 shrink-0 items-center justify-center overflow-visible rounded-lg border border-gray-200 bg-white p-0 leading-none text-brand-600 shadow-theme-xs hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-brand-400 dark:hover:bg-gray-800"
+                            title="Edit test"
                           >
-                            <PencilIcon className="size-4" />
+                            <PencilIcon className="block !size-5 max-h-none max-w-none shrink-0 overflow-visible" aria-hidden />
                           </Link>
                         )}
                         {canDelete && (
                           <button
                             type="button"
                             onClick={() => handleDelete(t.id)}
-                            className="text-error-500 hover:underline"
-                            title="Delete"
+                            className="inline-flex size-10 shrink-0 items-center justify-center overflow-visible rounded-lg border border-gray-200 bg-white p-0 leading-none text-error-600 shadow-theme-xs hover:bg-error-50 dark:border-gray-600 dark:bg-gray-900 dark:text-error-400 dark:hover:bg-error-500/10"
+                            title="Delete test"
                           >
-                            <TrashBinIcon className="size-4" />
+                            <TrashBinIcon className="block !size-5 max-h-none max-w-none shrink-0 overflow-visible" aria-hidden />
                           </button>
                         )}
                       </div>

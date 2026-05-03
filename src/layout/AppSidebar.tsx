@@ -16,12 +16,19 @@ import {
   HorizontaLDots,
   ListIcon,
   LockIcon,
+  PageIcon,
   PieChartIcon,
   PlugInIcon,
   TableIcon,
   TaskIcon,
   UserCircleIcon,
 } from "../icons/index";
+import {
+  FINANCE_FORMS_AND_LISTS_NAV,
+  FINANCE_FORMS_PARENT_PERMISSION_ANY,
+  FINANCIAL_REPORTS_NAV,
+  FINANCIAL_REPORTS_PARENT_PERMISSION_ANY,
+} from "@/lib/financial-hub-nav";
 
 // --- Types ---
 
@@ -50,17 +57,14 @@ type NavItem = {
 
 type MenuCategory =
   | "main"
-  | "pharmacy"
-  | "reports"
-  | "outreachReports"
   | "appointments"
   | "visitCards"
   | "lab"
   | "prescriptions"
-  | "financial"
-  | "accounting"
-  | "services"
-  | "forms"
+  | "pharmacy"
+  | "financeAccounting"
+  | "reports"
+  | "clinicSetup"
   | "hr"
   | "settings"
   | "activities";
@@ -127,16 +131,17 @@ const labItems: NavItem[] = [
     path: "/lab/orders",
     permission: "lab.view",
     subItems: [
-      { name: "Categories", path: "/lab/categories", permission: "lab.view" },
+      { name: "Orders & results", path: "/lab/orders", permission: "lab.view" },
       { name: "Tests", path: "/lab/tests", permission: "lab.view" },
       { name: "Sub-tests", path: "/lab/tests/subtests", permission: "lab.view" },
-      { name: "Orders & Results", path: "/lab/orders", permission: "lab.view" },
+      { name: "Categories", path: "/lab/categories", permission: "lab.view" },
       { name: "Lab inventory", path: "/lab/inventory", permission: "lab.view", exact: true },
       {
         name: "New lab stock item",
         path: "/lab/inventory/new",
         permissionAny: ["lab.create", "lab.edit"],
       },
+      { name: "Lab consume report", path: "/reports/lab-consume", permission: "lab.view" },
     ],
   },
 ];
@@ -145,13 +150,13 @@ const labItems: NavItem[] = [
 const prescriptionsItems: NavItem[] = [
   {
     icon: <ListIcon />,
-    name: "Prescriptions & meds",
+    name: "Prescriptions",
     path: "/prescriptions",
     permission: "prescriptions.view",
   },
 ];
 
-// Pharmacy — stock & catalog → retail & billing → outreach field ops
+// Pharmacy — catalog & stock → retail → outreach
 const pharmacyItems: NavItem[] = [
   {
     icon: <BoxCubeIcon />,
@@ -160,11 +165,11 @@ const pharmacyItems: NavItem[] = [
     permission: "pharmacy.view",
     subItems: [
       { name: "Inventory", path: "/pharmacy/inventory", permission: "pharmacy.view" },
-      { name: "Unsellable stock", path: "/pharmacy/unsellable-stock", permission: "pharmacy.view" },
-      { name: "Opening inventory", path: "/pharmacy/opening-inventory", permission: "pharmacy.create" },
       { name: "Categories", path: "/pharmacy/categories", permission: "pharmacy.view" },
       { name: "Purchases", path: "/pharmacy/purchases", permission: "pharmacy.view" },
       { name: "Suppliers", path: "/pharmacy/suppliers", permission: "pharmacy.view" },
+      { name: "Opening inventory", path: "/pharmacy/opening-inventory", permission: "pharmacy.create" },
+      { name: "Unsellable stock", path: "/pharmacy/unsellable-stock", permission: "pharmacy.view" },
       { name: "POS", path: "/pharmacy/pos", permission: "pharmacy.pos" },
       { name: "Sale returns", path: "/pharmacy/sale-returns", permission: "pharmacy.pos" },
       { name: "Sales list", path: "/pharmacy/sales", permission: "pharmacy.view" },
@@ -179,46 +184,29 @@ const pharmacyItems: NavItem[] = [
     path: "/patients",
     permission: "pharmacy.view",
   },
-  {
-    icon: <DollarLineIcon />,
-    name: "Payments",
-    path: "/payments",
-    permissionAny: ["accounts.deposit", "pharmacy.pos"],
-    subItems: [
-      {
-        name: "Client balances",
-        path: "/payments",
-        permissionAny: ["accounts.deposit", "pharmacy.pos"],
-        exact: true,
-      },
-      {
-        name: "Record payment",
-        path: "/payments/new",
-        permissionAny: ["accounts.deposit", "pharmacy.pos"],
-      },
-    ],
-  },
 ];
 
 const reportsItems: NavItem[] = [
   {
+    icon: <DollarLineIcon />,
+    name: "Financial reports",
+    path: "/financial-reports",
+    permissionAny: [...FINANCIAL_REPORTS_PARENT_PERMISSION_ANY],
+    subItems: FINANCIAL_REPORTS_NAV.map((e) => ({
+      name: e.name,
+      path: e.path,
+      permission: e.permission,
+      permissionAny: e.permissionAny,
+      exact: e.exact,
+    })),
+  },
+  {
     icon: <PieChartIcon />,
-    name: "Pharmacy reports",
+    name: "Pharmacy & stock",
     path: "/reports/sales",
     permission: "pharmacy.view",
     subItems: [
       { name: "Sales report", path: "/reports/sales", permission: "pharmacy.view" },
-      {
-        name: "Appointment sales report",
-        path: "/reports/appointment-sales",
-        permissionAny: [
-          "pharmacy.view",
-          "accounts.view",
-          "accounts.reports",
-          "appointments.view",
-          "pharmacy.pos",
-        ],
-      },
       { name: "Purchase report", path: "/reports/purchases", permission: "pharmacy.view" },
       { name: "Inventory report", path: "/reports/inventory", permission: "pharmacy.view" },
       { name: "Categories report", path: "/reports/categories", permission: "pharmacy.view" },
@@ -229,7 +217,7 @@ const reportsItems: NavItem[] = [
   },
   {
     icon: <UserCircleIcon />,
-    name: "Client reports",
+    name: "Clients & visits",
     path: "/reports/new-members",
     permissionAny: ["patients.view", "appointments.view"],
     subItems: [
@@ -249,6 +237,11 @@ const reportsItems: NavItem[] = [
         permission: "appointments.view",
       },
       {
+        name: "Service consume report",
+        path: "/reports/service-consume",
+        permission: "appointments.view",
+      },
+      {
         name: "Form responses",
         path: "/reports/form-submissions",
         permission: "forms.view",
@@ -260,47 +253,26 @@ const reportsItems: NavItem[] = [
 const outreachReportsItems: NavItem[] = [
   {
     icon: <DocsIcon />,
-    name: "Outreach reports",
+    name: "Field outreach",
     path: "/reports/outreach",
     permission: "pharmacy.view",
   },
 ];
 
-// Financial
+// Finance: invoices, payments, expense entry, transactional lists (not period reports)
 const financialItems: NavItem[] = [
   {
     icon: <DollarLineIcon />,
     name: "Finance",
     path: "/expenses",
-    permissionAny: [
-      "expenses.view",
-      "financial.view",
-      "accounts.view",
-      "accounts.reports",
-      "pharmacy.view",
-      "pharmacy.pos",
-      "appointments.view",
-      "lab.view",
-    ],
-    subItems: [
-      { name: "Expenses", path: "/expenses", permission: "expenses.view" },
-      { name: "Financial Reports", path: "/financial-reports", permission: "financial.view" },
-      {
-        name: "Client invoice",
-        path: "/finance/client-invoice",
-        permissionAny: ["prescriptions.view", "pharmacy.view"],
-      },
-      {
-        name: "Lab sales",
-        path: "/finance/lab-sales",
-        permissionAny: ["financial.view", "accounts.reports", "lab.view"],
-      },
-      {
-        name: "Lab sales report",
-        path: "/finance/lab-sales-report",
-        permissionAny: ["financial.view", "accounts.reports", "lab.view"],
-      },
-    ],
+    permissionAny: [...FINANCE_FORMS_PARENT_PERMISSION_ANY],
+    subItems: FINANCE_FORMS_AND_LISTS_NAV.map((e) => ({
+      name: e.name,
+      path: e.path,
+      permission: e.permission,
+      permissionAny: e.permissionAny,
+      exact: e.exact,
+    })),
   },
 ];
 
@@ -308,7 +280,7 @@ const financialItems: NavItem[] = [
 const accountingItems: NavItem[] = [
   {
     icon: <TableIcon />,
-    name: "Accounting",
+    name: "Ledger & statements",
     path: "/accounting",
     subItems: [
       { name: "Overview", path: "/accounting", permission: "accounts.view" },
@@ -350,8 +322,8 @@ const hrItems: NavItem[] = [
 
 const formsItems: NavItem[] = [
   {
-    icon: <DocsIcon />,
-    name: "Forms",
+    icon: <PageIcon />,
+    name: "Custom forms",
     path: "/forms",
     permission: "forms.view",
     subItems: [
@@ -360,6 +332,15 @@ const formsItems: NavItem[] = [
     ],
   },
 ];
+
+/** Sidebar: finance operations + ledger & banking. */
+const financeAndAccountingItems: NavItem[] = [...financialItems, ...accountingItems];
+
+/** Sidebar: all analytics/reporting entries (one scroll group). */
+const allReportsItems: NavItem[] = [...reportsItems, ...outreachReportsItems];
+
+/** Sidebar: visit services + intake forms (one scroll group). */
+const clinicSetupItems: NavItem[] = [...servicesItems, ...formsItems];
 
 // Settings: branches, doctors, system preferences (settings.* + appointments.* for clinic setup)
 const settingsItems: NavItem[] = [
@@ -386,6 +367,7 @@ const settingsItems: NavItem[] = [
       },
       { name: "Active users", path: "/settings/active-users", permissionAny: ["audit.view", "audit.view_admins"] },
       { name: "Activity log", path: "/settings/activity", permission: "audit.view" },
+      { name: "Recycle bin", path: "/settings/trash", permission: "settings.manage" },
       {
         name: "Admin activity",
         path: "/settings/admin-activity",
@@ -458,19 +440,16 @@ const AppSidebar: React.FC = () => {
   // Filtered menus (memoized to prevent useEffect infinite loop)
   const mainNav = useMemo(() => filterByPermission(mainItems, hasPermission), [hasPermission]);
   const pharmacyNav = useMemo(() => filterByPermission(pharmacyItems, hasPermission), [hasPermission]);
-  const reportsNav = useMemo(() => filterByPermission(reportsItems, hasPermission), [hasPermission]);
-  const outreachReportsNav = useMemo(
-    () => filterByPermission(outreachReportsItems, hasPermission),
+  const financeAccountingNav = useMemo(
+    () => filterByPermission(financeAndAccountingItems, hasPermission),
     [hasPermission]
   );
+  const allReportsNav = useMemo(() => filterByPermission(allReportsItems, hasPermission), [hasPermission]);
+  const clinicSetupNav = useMemo(() => filterByPermission(clinicSetupItems, hasPermission), [hasPermission]);
   const appointmentsNav = useMemo(() => filterByPermission(appointmentsItems, hasPermission), [hasPermission]);
   const visitCardsNav = useMemo(() => filterByPermission(visitCardsItems, hasPermission), [hasPermission]);
   const labNav = useMemo(() => filterByPermission(labItems, hasPermission), [hasPermission]);
   const prescriptionsNav = useMemo(() => filterByPermission(prescriptionsItems, hasPermission), [hasPermission]);
-  const financialNav = useMemo(() => filterByPermission(financialItems, hasPermission), [hasPermission]);
-  const accountingNav = useMemo(() => filterByPermission(accountingItems, hasPermission), [hasPermission]);
-  const servicesNav = useMemo(() => filterByPermission(servicesItems, hasPermission), [hasPermission]);
-  const formsNav = useMemo(() => filterByPermission(formsItems, hasPermission), [hasPermission]);
   const hrNav = useMemo(() => filterByPermission(hrItems, hasPermission), [hasPermission]);
   const settingsNav = useMemo(() => filterByPermission(settingsItems, hasPermission), [hasPermission]);
   const activitiesNav = useMemo(() => filterByPermission(activitiesItems, hasPermission), [hasPermission]);
@@ -517,12 +496,9 @@ const AppSidebar: React.FC = () => {
       "lab",
       "prescriptions",
       "pharmacy",
+      "financeAccounting",
       "reports",
-      "outreachReports",
-      "financial",
-      "accounting",
-      "services",
-      "forms",
+      "clinicSetup",
       "hr",
       "settings",
       "activities",
@@ -535,30 +511,24 @@ const AppSidebar: React.FC = () => {
           : menuType === "pharmacy"
             ? pharmacyNav
             : menuType === "reports"
-              ? reportsNav
-              : menuType === "outreachReports"
-                ? outreachReportsNav
-                : menuType === "appointments"
-                  ? appointmentsNav
-                  : menuType === "visitCards"
-                    ? visitCardsNav
-                    : menuType === "lab"
-                      ? labNav
-                      : menuType === "prescriptions"
-                        ? prescriptionsNav
-                        : menuType === "financial"
-                          ? financialNav
-                          : menuType === "accounting"
-                            ? accountingNav
-                            : menuType === "services"
-                              ? servicesNav
-                : menuType === "forms"
-                  ? formsNav
-                  : menuType === "hr"
-                    ? hrNav
-                    : menuType === "settings"
-                                  ? settingsNav
-                                  : activitiesNav;
+              ? allReportsNav
+              : menuType === "appointments"
+                ? appointmentsNav
+                : menuType === "visitCards"
+                  ? visitCardsNav
+                  : menuType === "lab"
+                    ? labNav
+                    : menuType === "prescriptions"
+                      ? prescriptionsNav
+                      : menuType === "financeAccounting"
+                        ? financeAccountingNav
+                        : menuType === "clinicSetup"
+                          ? clinicSetupNav
+                          : menuType === "hr"
+                            ? hrNav
+                            : menuType === "settings"
+                              ? settingsNav
+                              : activitiesNav;
 
       items.forEach((nav, index) => {
         if (nav.subItems) {
@@ -584,16 +554,13 @@ const AppSidebar: React.FC = () => {
     pathname,
     mainNav,
     pharmacyNav,
-    reportsNav,
-    outreachReportsNav,
+    financeAccountingNav,
+    allReportsNav,
+    clinicSetupNav,
     appointmentsNav,
     visitCardsNav,
     labNav,
     prescriptionsNav,
-    financialNav,
-    accountingNav,
-    servicesNav,
-    formsNav,
     hrNav,
     settingsNav,
     activitiesNav,
@@ -735,170 +702,125 @@ const AppSidebar: React.FC = () => {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain duration-300 ease-linear custom-scrollbar pr-1">
         <nav className="mb-3">
-          <div className="flex flex-col [&>div+div]:mt-3 [&>div+div]:border-t [&>div+div]:border-gray-100 [&>div+div]:pt-3 dark:[&>div+div]:border-gray-800/60">
+          <div className="flex flex-col [&>section+section]:mt-5 [&>section+section]:border-t [&>section+section]:border-gray-100 [&>section+section]:pt-5 dark:[&>section+section]:border-gray-800/60">
             {mainNav.length > 0 && (
-              <div>
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Main" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Overview" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(mainNav, "main")}
-              </div>
+              </section>
             )}
 
-            {appointmentsNav.length > 0 && (
-              <div>
+            {(appointmentsNav.length > 0 || visitCardsNav.length > 0) && (
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Calendar" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Scheduling & reception" : <HorizontaLDots />}
                 </h2>
-                {renderMenuItems(appointmentsNav, "appointments")}
-              </div>
+                {appointmentsNav.length > 0 && renderMenuItems(appointmentsNav, "appointments")}
+                {visitCardsNav.length > 0 && (
+                  <div className={appointmentsNav.length > 0 ? "mt-1" : ""}>
+                    {renderMenuItems(visitCardsNav, "visitCards")}
+                  </div>
+                )}
+              </section>
             )}
 
-            {visitCardsNav.length > 0 && (
-              <div>
+            {(labNav.length > 0 || prescriptionsNav.length > 0) && (
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Visit cards" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Clinical" : <HorizontaLDots />}
                 </h2>
-                {renderMenuItems(visitCardsNav, "visitCards")}
-              </div>
-            )}
-
-            {labNav.length > 0 && (
-              <div>
-                <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
-                >
-                  {isExpanded || isHovered || isMobileOpen ? "Laboratory" : <HorizontaLDots />}
-                </h2>
-                {renderMenuItems(labNav, "lab")}
-              </div>
-            )}
-
-            {prescriptionsNav.length > 0 && (
-              <div>
-                <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
-                >
-                  {isExpanded || isHovered || isMobileOpen ? "Prescriptions & meds" : <HorizontaLDots />}
-                </h2>
-                {renderMenuItems(prescriptionsNav, "prescriptions")}
-              </div>
+                {labNav.length > 0 && renderMenuItems(labNav, "lab")}
+                {prescriptionsNav.length > 0 && (
+                  <div className={labNav.length > 0 ? "mt-1" : ""}>
+                    {renderMenuItems(prescriptionsNav, "prescriptions")}
+                  </div>
+                )}
+              </section>
             )}
 
             {pharmacyNav.length > 0 && (
-              <div>
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Pharmacy" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Pharmacy & clients" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(pharmacyNav, "pharmacy")}
-              </div>
+              </section>
             )}
 
-            {reportsNav.length > 0 && (
-              <div>
+            {financeAccountingNav.length > 0 && (
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Pharmacy reports" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Finance & accounting" : <HorizontaLDots />}
                 </h2>
-                {renderMenuItems(reportsNav, "reports")}
-              </div>
+                {renderMenuItems(financeAccountingNav, "financeAccounting")}
+              </section>
             )}
 
-            {outreachReportsNav.length > 0 && (
-              <div>
+            {allReportsNav.length > 0 && (
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Outreach" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Reports" : <HorizontaLDots />}
                 </h2>
-                {renderMenuItems(outreachReportsNav, "outreachReports")}
-              </div>
+                {renderMenuItems(allReportsNav, "reports")}
+              </section>
             )}
 
-            {financialNav.length > 0 && (
-              <div>
+            {clinicSetupNav.length > 0 && (
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Finance" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Clinic setup" : <HorizontaLDots />}
                 </h2>
-                {renderMenuItems(financialNav, "financial")}
-              </div>
-            )}
-
-            {accountingNav.length > 0 && (
-              <div>
-                <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
-                >
-                  {isExpanded || isHovered || isMobileOpen ? "Accounting" : <HorizontaLDots />}
-                </h2>
-                {renderMenuItems(accountingNav, "accounting")}
-              </div>
-            )}
-
-            {servicesNav.length > 0 && (
-              <div>
-                <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
-                >
-                  {isExpanded || isHovered || isMobileOpen ? "Services" : <HorizontaLDots />}
-                </h2>
-                {renderMenuItems(servicesNav, "services")}
-              </div>
+                {renderMenuItems(clinicSetupNav, "clinicSetup")}
+              </section>
             )}
 
             {hrNav.length > 0 && (
-              <div>
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Human Resources" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Human resources" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(hrNav, "hr")}
-              </div>
-            )}
-
-            {formsNav.length > 0 && (
-              <div>
-                <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
-                >
-                  {isExpanded || isHovered || isMobileOpen ? "Forms" : <HorizontaLDots />}
-                </h2>
-                {renderMenuItems(formsNav, "forms")}
-              </div>
+              </section>
             )}
 
             {settingsNav.length > 0 && (
-              <div>
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Settings" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "System" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(settingsNav, "settings")}
-              </div>
+              </section>
             )}
 
             {activitiesNav.length > 0 && (
-              <div>
+              <section>
                 <h2
-                  className={`mb-1.5 flex text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Administration" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? "Access control" : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(activitiesNav, "activities")}
-              </div>
+              </section>
             )}
           </div>
         </nav>

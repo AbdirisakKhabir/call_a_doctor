@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const order = await prisma.labOrder.findUnique({
       where: { id: parsedId },
       include: {
-        patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
+        patient: { select: { id: true, patientCode: true, firstName: true, lastName: true, gender: true, age: true, dateOfBirth: true } },
         doctor: { select: { id: true, name: true } },
         appointment: {
           select: {

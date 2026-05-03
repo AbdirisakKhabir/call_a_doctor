@@ -30,7 +30,14 @@ type LabOrderDetail = {
   notes: string | null;
   totalAmount: number;
   createdAt: string;
-  patient: { id: number; patientCode: string; name: string };
+  patient: {
+    id: number;
+    patientCode: string;
+    name: string;
+    gender?: string | null;
+    age?: number | null;
+    dateOfBirth?: string | null;
+  };
   doctor: { id: number; name: string };
   appointment: {
     id: number;
@@ -122,10 +129,28 @@ function toPrintItems(
   });
 }
 
+function patientAgeLabelForReport(p: {
+  age?: number | null;
+  dateOfBirth?: string | null;
+}): string {
+  if (p.age != null && Number.isFinite(p.age) && p.age >= 0 && p.age < 150) {
+    return `${Math.floor(p.age)}Yrs`;
+  }
+  if (p.dateOfBirth) {
+    const d = new Date(p.dateOfBirth);
+    if (!Number.isNaN(d.getTime())) {
+      const yrs = Math.floor((Date.now() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+      if (yrs >= 0 && yrs < 150) return `${yrs}Yrs`;
+    }
+  }
+  return "—";
+}
+
 function printPayloadFromOrder(
   order: LabOrderDetail,
   items: LabOrderPrintItem[],
-  isoNow: string
+  isoNow: string,
+  reportedByName?: string | null
 ): LabOrderPrintPayload {
   return {
     orderId: order.id,
@@ -137,6 +162,12 @@ function printPayloadFromOrder(
     patientCode: order.patient.patientCode,
     doctorName: order.doctor.name,
     orderNotes: order.notes,
+    patientSex: order.patient.gender ?? null,
+    patientAgeLabel: patientAgeLabelForReport({
+      age: order.patient.age,
+      dateOfBirth: order.patient.dateOfBirth ?? null,
+    }),
+    reportedByName: reportedByName?.trim() ? reportedByName.trim() : null,
     items,
   };
 }
@@ -147,7 +178,7 @@ export default function LabOrderResultsPage() {
   const orderIdRaw = params.id;
   const orderId = Number(orderIdRaw);
 
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const canEdit = hasPermission("lab.edit");
   const canView = hasPermission("lab.view");
 
@@ -341,7 +372,7 @@ export default function LabOrderResultsPage() {
   function handlePrintAnswer() {
     if (!order) return;
     const items = toPrintItems(order, lines, lineMeta);
-    printLabAnswerSheet(printPayloadFromOrder(order, items, new Date().toISOString()));
+    printLabAnswerSheet(printPayloadFromOrder(order, items, new Date().toISOString(), user?.name ?? null));
   }
 
   if (!canView) {

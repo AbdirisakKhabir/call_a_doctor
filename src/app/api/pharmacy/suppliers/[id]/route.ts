@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userCanTransactInventoryAtBranch } from "@/lib/branch-access";
+import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function PATCH(
   req: NextRequest,
@@ -68,7 +69,6 @@ export async function DELETE(
 
     const row = await prisma.supplier.findUnique({
       where: { id: parsedId },
-      select: { branchId: true },
     });
     if (!row) {
       return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
@@ -77,7 +77,16 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await prisma.supplier.delete({ where: { id: parsedId } });
+    await prisma.$transaction(async (tx) => {
+      await recordTrashEntry(tx, {
+        entityType: "Supplier",
+        recordId: parsedId,
+        title: row.name,
+        snapshot: toTrashSnapshot(row),
+        deletedById: auth.userId,
+      });
+      await tx.supplier.delete({ where: { id: parsedId } });
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Delete supplier error:", e);

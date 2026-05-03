@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { serializePatient } from "@/lib/patient-name";
@@ -75,6 +76,7 @@ export async function GET(
       include: {
         paymentMethod: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
+        cancelledBy: { select: { id: true, name: true } },
         labOrder: { select: { id: true, totalAmount: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -156,7 +158,9 @@ export async function POST(
 
     const balance = patient.accountBalance ?? 0;
 
-    const result = await prisma.$transaction(async (tx) => {
+      const batchGroupId = randomUUID();
+
+      const result = await prisma.$transaction(async (tx) => {
       let applyTotal: number;
       let addC: number;
       let addD: number;
@@ -240,6 +244,7 @@ export async function POST(
         const pp = await tx.patientPayment.create({
           data: {
             patientId,
+            batchGroupId,
             amount: cashParts[i],
             discount: discParts[i],
             category: cat,
@@ -260,6 +265,7 @@ export async function POST(
             accountId: pm.accountId,
             kind: "deposit",
             amount: addC,
+            patientPaymentBatchId: batchGroupId,
             description: `Client payment (${cats}) — ${patient.patientCode} (#${ids})`,
             paymentMethodId: pm.id,
             transactionDate: new Date(),

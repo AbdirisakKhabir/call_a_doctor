@@ -32,6 +32,7 @@ model User {
   outreachReturnsCreated       OutreachReturn[]     @relation("OutreachReturnCreatedBy")
   outreachDispensesCreated     OutreachDispense[]   @relation("OutreachDispenseCreatedBy")
   patientPaymentsCreated       PatientPayment[]     @relation("PatientPaymentCreatedBy")
+  patientPaymentsCancelled     PatientPayment[]     @relation("PatientPaymentCancelledBy")
   pharmacySaleReturnsCreated   PharmacySaleReturn[] @relation("PharmacySaleReturnCreatedBy")
   doctorProfile                Doctor?
   visitCardsCreated            DoctorVisitCard[]    @relation("VisitCardCreatedBy")
@@ -41,6 +42,7 @@ model User {
   customFormsCreated           CustomForm[]         @relation("CustomFormCreatedBy")
   customFormResponsesSubmitted CustomFormResponse[] @relation("CustomFormResponseSubmittedBy")
   staffMembersCreated          StaffMember[]        @relation("StaffMemberCreatedBy")
+  trashItemsDeleted            TrashItem[]         @relation("TrashDeletedBy")
   /// Last successful password sign-in.
   lastLoginAt                  DateTime?
   /// Last session validation via /api/auth/me (throttled server-side). Used for “active now” in Settings.
@@ -829,6 +831,8 @@ model PatientPayment {
   id              Int                  @id @default(autoincrement())
   patientId       Int
   patient         Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  /// Shared by all lines recorded in one “Record payment” action (links to `AccountTransaction.patientPaymentBatchId`).
+  batchGroupId    String?
   /// Cash/collected amount posted to the linked finance account (deposit).
   amount          Float
   /// Discount/write-off applied toward the client balance on this transaction (no cash movement).
@@ -845,11 +849,16 @@ model PatientPayment {
   notes           String?
   createdById     Int?
   createdBy       User?                @relation("PatientPaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cancelledAt     DateTime?
+  cancelledById   Int?
+  cancelledBy     User?                @relation("PatientPaymentCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   createdAt       DateTime             @default(now())
 
   @@index([patientId, createdAt])
+  @@index([patientId, batchGroupId])
   @@index([labOrderId])
   @@index([careFileId])
+  @@index([cancelledAt])
   @@map("patient_payments")
 }
 
@@ -1202,6 +1211,8 @@ model AccountTransaction {
   account           FinanceAccount       @relation(fields: [accountId], references: [id], onDelete: Restrict)
   kind              String // deposit | withdrawal
   amount            Float
+  /// Matches `PatientPayment.batchGroupId` for client payment deposits (reversal on cancel).
+  patientPaymentBatchId String?
   description       String?
   saleId            Int?                 @unique
   sale              Sale?                @relation(fields: [saleId], references: [id], onDelete: SetNull)
@@ -1217,6 +1228,7 @@ model AccountTransaction {
   createdAt         DateTime             @default(now())
 
   @@index([accountId, transactionDate])
+  @@index([patientPaymentBatchId])
   @@map("account_transactions")
 }
 
@@ -1337,4 +1349,25 @@ model StaffMember {
   @@index([hireDate])
   @@index([isActive])
   @@map("staff_members")
+}
+
+/// Soft tombstone: snapshot of a hard-deleted row for optional restore within the retention window.
+model TrashItem {
+  id          Int      @id @default(autoincrement())
+  /// Stable code matching server restore handlers, e.g. Patient, CustomForm, Product.
+  entityType  String
+  recordId    Int
+  title       String   @db.VarChar(512)
+  detail      String?  @db.VarChar(1024)
+  snapshot    Json
+  deletedById Int?
+  deletedBy   User?    @relation("TrashDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedAt   DateTime @default(now())
+  /// When <= now(), the trash row may be removed (data is already gone from the main table).
+  purgeAt     DateTime
+
+  @@index([purgeAt])
+  @@index([deletedAt])
+  @@index([entityType, recordId])
+  @@map("trash_items")
 }

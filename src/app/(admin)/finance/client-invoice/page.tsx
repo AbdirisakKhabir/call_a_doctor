@@ -279,7 +279,7 @@ export default function PatientInvoicePage() {
         <PageBreadCrumb pageTitle="Client invoice" />
         <div className="flex gap-4 text-sm">
           <Link href="/financial-reports" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
-            Finance
+            Financial reports
           </Link>
           <Link href="/prescriptions" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
             Prescriptions
@@ -341,57 +341,77 @@ export default function PatientInvoicePage() {
               </select>
             </div>
           </div>
-        </div>
 
-        <div className="px-4 py-4">
-          {!patient ? (
-            <div>
-              <Label>Client</Label>
-              <input
-                value={patientSearch}
-                onChange={(e) => setPatientSearch(e.target.value)}
-                placeholder="Search name or code"
-                disabled={!branchId}
-                className="mt-1 h-10 w-full max-w-md rounded-md border border-gray-300 px-3 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white"
-              />
-              {patientResults.length > 0 ? (
-                <ul className="mt-2 max-h-40 max-w-md overflow-auto rounded-md border border-gray-200 dark:border-gray-700">
-                  {patientResults.map((p) => (
-                    <li key={p.id}>
-                      <button
-                        type="button"
-                        className="flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
-                        onClick={() => {
-                          setPatient(p);
-                          setPatientSearch("");
-                          setPatientResults([]);
-                        }}
-                      >
-                        <span>{p.name}</span>
-                        <span className="text-gray-500">{p.patientCode}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="relative mt-3">
+            {!patient ? (
+              <>
+                <Label>Client name or code</Label>
+                <input
+                  value={patientSearch}
+                  onChange={(e) => setPatientSearch(e.target.value)}
+                  placeholder="Type to search…"
+                  disabled={!branchId}
+                  autoComplete="off"
+                  className="mt-1 h-10 w-full max-w-xl rounded-md border border-gray-300 px-3 text-sm disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                />
+                {!branchId ? (
+                  <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">Choose a branch first.</p>
+                ) : null}
+                {patientSearch.trim().length >= 2 && patientResults.length === 0 ? (
+                  <p className="mt-1 text-[11px] text-gray-500">No matches.</p>
+                ) : null}
+                {patientResults.length > 0 ? (
+                  <ul className="absolute left-0 top-full z-30 mt-1 max-h-48 w-full max-w-xl overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                    {patientResults.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          className="flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                          onClick={() => {
+                            setPatient(p);
+                            setPatientSearch("");
+                            setPatientResults([]);
+                          }}
+                        >
+                          <span>{p.name}</span>
+                          <span className="font-mono text-xs text-gray-500">{p.patientCode}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/50">
                 <div className="text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Client · </span>
                   <span className="font-medium text-gray-900 dark:text-white">{patient.name}</span>
-                  <span className="text-gray-500"> · {patient.patientCode}</span>
+                  <span className="ml-2 font-mono text-xs text-gray-600 dark:text-gray-400">{patient.patientCode}</span>
                 </div>
                 <button
                   type="button"
-                  className="text-sm text-brand-600 hover:underline dark:text-brand-400"
+                  className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
                   onClick={() => {
                     setPatient(null);
                     setSelected(new Set());
                   }}
                 >
-                  Change
+                  Change client
                 </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="px-4 py-4">
+          {!patient ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Use the filters above, then search by client name or code to load prescriptions, lab orders, and visits.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm text-gray-500 dark:text-gray-400">Billable items for this client and branch</div>
               </div>
 
               {tabCount > 1 ? (
