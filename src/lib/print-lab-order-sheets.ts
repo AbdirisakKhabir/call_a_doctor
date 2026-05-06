@@ -1,9 +1,6 @@
 import {
-  receiptLogoImgHtml,
   formatReceiptDateOnly,
-  pharmacyA5PosReceiptStyles,
-  receiptPrintMastheadExtraLinesHtml,
-  receiptHeaderPaymentContactBarsHtml,
+  RECEIPT_LOGO_PUBLIC_PATH,
 } from "@/lib/receipt-print-theme";
 import { groupLabOrderRowsByCategoryAndPanel } from "@/lib/lab-order-group";
 
@@ -81,43 +78,66 @@ function labClinicalReportCss(): string {
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    .lab-report-doc { max-width: 190mm; margin: 0 auto; }
+    .lab-report-doc {
+      max-width: 190mm;
+      margin: 0 auto;
+      position: relative;
+      min-height: calc(297mm - 28mm);
+      padding-bottom: 22mm;
+    }
+    .lab-header-logo {
+      text-align: center;
+      margin: 0 0 8mm 0;
+      padding-top: 1mm;
+      border-bottom: 2px solid #23b99a;
+    }
+    .lab-header-logo img {
+      width: 140px;
+      height: auto;
+      display: inline-block;
+      margin: 0 auto 6px auto;
+    }
     .lab-report-title {
       text-align: center;
-      font-size: 15pt;
+      font-size: 11pt;
       font-weight: 700;
-      letter-spacing: 0.14em;
+      letter-spacing: 0;
       text-transform: uppercase;
-      margin: 0 0 16px 0;
-      padding-bottom: 10px;
-      border-bottom: 2px solid #000;
+      text-decoration: underline;
+      margin: 0 0 10mm 0;
+      border: none;
+      padding: 0;
     }
     .lab-report-meta {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 6px;
-      font-size: 10pt;
+      margin-bottom: 4mm;
+      font-size: 9.5pt;
     }
     .lab-report-meta td {
-      padding: 5px 14px 5px 0;
+      padding: 2px 6px;
       vertical-align: top;
+      border-bottom: 1px solid #c8c8c8;
     }
     .lab-report-meta .lab-meta-key {
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0;
       white-space: nowrap;
-      width: 1%;
+      width: 92px;
       color: #000;
+      border-right: 1px solid #c8c8c8;
+      padding-left: 4px;
     }
     .lab-report-meta .lab-meta-val { font-weight: 600; color: #000; }
     .lab-report-meta .lab-meta-name { text-transform: uppercase; letter-spacing: 0.02em; }
     .lab-report-order-notes {
-      margin: 10px 0 16px 0;
-      padding: 8px 10px;
+      margin: 8px 0 12px 0;
+      padding: 6px 8px;
       border: 1px solid #000;
-      font-size: 9pt;
+      font-size: 8.8pt;
       line-height: 1.4;
+      background: #f7f7f7;
     }
     .lab-report-order-notes strong {
       text-transform: uppercase;
@@ -125,8 +145,10 @@ function labClinicalReportCss(): string {
       letter-spacing: 0.05em;
     }
     h2.lab-report-section {
-      margin: 16px 0 6px 0;
-      font-size: 10.5pt;
+      margin: 12px 0 0 0;
+      font-size: 0;
+      line-height: 0;
+      height: 0;
       font-weight: 700;
       color: #000;
       text-transform: capitalize;
@@ -134,39 +156,102 @@ function labClinicalReportCss(): string {
     table.lab-report-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 12px;
-      font-size: 9.5pt;
+      margin-bottom: 10mm;
+      font-size: 9pt;
     }
     table.lab-report-table th,
     table.lab-report-table td {
       border: 1px solid #000;
-      padding: 6px 8px;
+      padding: 3px 6px;
       vertical-align: top;
-      text-align: left;
+      text-align: center;
     }
     table.lab-report-table thead th {
       font-weight: 700;
-      text-transform: uppercase;
-      font-size: 8.5pt;
-      letter-spacing: 0.07em;
-      background: #e8e8e8;
+      text-transform: none;
+      font-size: 8.9pt;
+      letter-spacing: 0;
+      background: #bed8ad;
       color: #000;
+    }
+    table.lab-report-table thead .test-col-head {
+      background: #fff;
+      border-top-color: #fff;
+      border-left-color: #fff;
+      border-right-color: #000;
+      font-size: 0;
+      line-height: 0;
+      padding: 0;
+    }
+    table.lab-report-table thead .section-head {
+      text-align: left;
+      font-style: italic;
+      font-size: 11pt;
+      padding: 2px 10px;
+      background: #bed8ad;
     }
     th.col-result, td.col-result,
     th.col-unit, td.col-unit {
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
-    td.col-test { font-weight: 600; }
+    td.col-test {
+      font-style: italic;
+      width: 33%;
+      text-align: center;
+    }
+    td.col-result { width: 25%; font-weight: 700; }
+    td.col-unit { width: 25%; font-weight: 700; }
+    td.col-range { width: 27%; font-weight: 700; }
     td.col-range { white-space: normal; }
     .lab-report-by {
-      margin-top: 20px;
-      padding-top: 10px;
-      border-top: 1px solid #000;
-      font-size: 10pt;
-      font-weight: 700;
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 10mm;
+      margin: 0;
+      padding: 0;
+      border: none;
+      font-size: 9pt;
+      font-weight: 400;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0;
+    }
+    .lab-report-by .by-name {
+      display: inline-block;
+      min-width: 120px;
+      margin-left: 6px;
+      border-bottom: 1px solid #6e8ccf;
+      padding-bottom: 1px;
+      text-transform: none;
+    }
+    .lab-watermark {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.08;
+    }
+    .lab-watermark img {
+      width: 320px;
+      height: auto;
+    }
+    .lab-content {
+      position: relative;
+      z-index: 1;
+      padding-bottom: 20mm;
+    }
+    .lab-page-no {
+      position: absolute;
+      right: 0;
+      bottom: 1mm;
+      font-size: 10pt;
+    }
+    .lab-page-no::before {
+      content: counter(page);
     }
     @media print {
       body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -182,7 +267,9 @@ function renderLabAnswerReportBody(items: LabOrderPrintItem[]): string {
       const sectionTitle = seg.panelLabel ? `${catName}(${seg.panelLabel})` : catName;
       parts.push(`<h2 class="lab-report-section">${escapeHtml(sectionTitle)}</h2>`);
       parts.push(`<table class="lab-report-table"><thead><tr>
-        <th class="col-test">Test</th>
+        <th class="section-head" colspan="4">${escapeHtml(sectionTitle)}</th>
+      </tr><tr>
+        <th class="test-col-head"></th>
         <th class="col-result">Result</th>
         <th class="col-unit">Units</th>
         <th class="col-range">Normal Range</th>
@@ -203,26 +290,30 @@ function renderLabAnswerReportBody(items: LabOrderPrintItem[]): string {
   return parts.join("\n");
 }
 
-function renderCategoryBlocks(items: LabOrderPrintItem[]): string {
+function renderLabRequestReportBody(items: LabOrderPrintItem[]): string {
   const grouped = groupLabOrderRowsByCategoryAndPanel(items);
   const parts: string[] = [];
   for (const { categoryName: catName, segments } of grouped) {
-    parts.push(`<h2 class="lab-section-h2">${escapeHtml(catName)}</h2>`);
     for (const seg of segments) {
-      if (seg.panelLabel) {
-        parts.push(`<p class="lab-panel-label">Panel: ${escapeHtml(seg.panelLabel)}</p>`);
-      }
-      parts.push(`<table class="lab-sheet-table"><thead><tr>
-          <th>#</th><th>Test</th><th>Normal range</th><th>Unit</th><th class="num">Fee</th>
-        </tr></thead><tbody>`);
+      const sectionTitle = seg.panelLabel ? `${catName}(${seg.panelLabel})` : catName;
+      parts.push(`<h2 class="lab-report-section">${escapeHtml(sectionTitle)}</h2>`);
+      parts.push(`<table class="lab-report-table"><thead><tr>
+        <th class="section-head" colspan="4">${escapeHtml(sectionTitle)}</th>
+      </tr><tr>
+        <th class="test-col-head"></th>
+        <th class="col-result">Result</th>
+        <th class="col-unit">Units</th>
+        <th class="col-range">Normal Range</th>
+      </tr></thead><tbody>`);
       for (const r of seg.rows) {
+        const unitShown = (r.unit ?? "").trim() || "—";
+        const rangeShown = (r.normalRange ?? "").trim() || "—";
         parts.push(`<tr>
-            <td class="num">${r.lineNo}</td>
-            <td>${escapeHtml(r.testName)}</td>
-            <td class="muted">${escapeHtml(r.normalRange)}</td>
-            <td>${escapeHtml(r.unit)}</td>
-            <td class="num">$${r.unitPrice.toFixed(2)}</td>
-          </tr>`);
+          <td class="col-test">${escapeHtml(r.testName)}</td>
+          <td class="col-result">&nbsp;</td>
+          <td class="col-unit">${escapeHtml(unitShown)}</td>
+          <td class="col-range">${rangeShown === "—" ? "—" : escapeHtmlMultiline(rangeShown)}</td>
+        </tr>`);
       }
       parts.push(`</tbody></table>`);
     }
@@ -230,163 +321,16 @@ function renderCategoryBlocks(items: LabOrderPrintItem[]): string {
   return parts.join("\n");
 }
 
-const labSheetExtraStyles = `
-  h2.lab-section-h2 {
-    margin: 14px 0 6px 0;
-    font-size: 10pt;
-    font-weight: 700;
-    color: var(--brand);
-    border-bottom: 1px solid #e4e7ec;
-    padding-bottom: 4px;
-  }
-  p.lab-panel-label {
-    margin: 8px 0 4px 0;
-    font-size: 8.5pt;
-    font-weight: 600;
-    color: #344054;
-  }
-  table.lab-sheet-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 8.5pt;
-    margin-bottom: 10px;
-  }
-  table.lab-sheet-table th, table.lab-sheet-table td {
-    border: 1px solid #e4e7ec;
-    padding: 5px 4px;
-    vertical-align: top;
-  }
-  table.lab-sheet-table thead th {
-    background: var(--brand-tint);
-    color: var(--brand);
-    font-weight: 700;
-    text-align: left;
-    font-size: 8pt;
-  }
-  table.lab-sheet-table th.num, table.lab-sheet-table td.num {
-    text-align: right;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
-  table.lab-sheet-table .muted { color: #667085; }
-  table.lab-sheet-table .small { font-size: 8pt; }
-  table.lab-answer .write-cell { min-height: 1.4em; }
-  .title-band.lab-title-center {
-    justify-content: center;
-  }
-  .title-band.lab-title-center .title-wrap {
-    width: 100%;
-    text-align: center;
-  }
-  .title-band.lab-title-center .receipt-title {
-    margin-bottom: 0;
-  }
-`;
-
-/**
- * Opens a tab, writes the sheet HTML, and calls print() synchronously in the click stack.
- * No async work before print — otherwise browsers drop user activation and block the print dialog.
- * Logo uses same-origin URL (embedded via receiptLogoImgHtml(null)) so no preload fetch is needed.
- */
-function openLabSheetPrintWindow(
+function openLabClinicalReportWindow(
   title: string,
-  receiptTitle: string,
+  reportTitle: string,
   payload: LabOrderPrintPayload,
-  bodyInnerHtml: string,
-  opts?: { minimalFooterAndMeta?: boolean }
+  bodyInnerHtml: string
 ): void {
   const printWindow = window.open("", "_blank");
   if (!printWindow) return;
 
-  const minimal = opts?.minimalFooterAndMeta === true;
-  const logoImgInner = receiptLogoImgHtml(null);
-  const branchLine1 =
-    payload.branchName && String(payload.branchName).trim()
-      ? escapeHtml(String(payload.branchName).trim())
-      : "Main clinic";
-  const orderNoDisplay = String(payload.orderId).padStart(6, "0");
-  const docDateStr = formatReceiptDateOnly(payload.documentDate);
-  const visitStr = `${formatReceiptDateOnly(payload.appointmentDate)} · ${escapeHtml(payload.appointmentTime)}`;
-  const notesBlock =
-    payload.orderNotes && String(payload.orderNotes).trim()
-      ? `<p class="notes-body">${escapeHtml(String(payload.orderNotes).trim())}</p>`
-      : "";
-
-  const titleBandHtml = minimal
-    ? `<div class="title-band lab-title-center">
-      <div class="title-wrap">
-        <h1 class="receipt-title">${escapeHtml(receiptTitle)}</h1>
-      </div>
-    </div>`
-    : `<div class="title-band">
-      <div class="title-right">
-        <h1 class="receipt-title">${escapeHtml(receiptTitle)}</h1>
-        <div class="meta-lines">
-          <div><span class="lbl">Order #:</span>${orderNoDisplay}</div>
-          <div><span class="lbl">Printed:</span>${docDateStr}</div>
-          <div><span class="lbl">Visit:</span>${visitStr}</div>
-        </div>
-      </div>
-    </div>`;
-
-  const footerHtml = minimal
-    ? ""
-    : `<footer class="footer">
-      <h3 class="notes-heading">Notes</h3>
-      <p class="notes-body">Laboratory use — verify patient ID and order number before releasing results.</p>
-    </footer>`;
-
-  printWindow.document.open();
-  printWindow.document.write(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(title)}</title>
-  <style>${pharmacyA5PosReceiptStyles()}${labSheetExtraStyles}</style>
-</head>
-<body>
-  <div class="sheet">
-    <header class="top-header">
-      <div class="company-block">
-        <p class="company-name">Call a Doctor</p>
-        <p class="company-line">${branchLine1}</p>
-        ${receiptPrintMastheadExtraLinesHtml()}
-        ${receiptHeaderPaymentContactBarsHtml()}
-      </div>
-      <div class="logo-box" aria-label="Clinic logo">${logoImgInner}</div>
-    </header>
-    ${titleBandHtml}
-    <section class="billed" aria-label="Client">
-      <h2>Client</h2>
-      <p class="billed-name">${escapeHtml(payload.patientName)} (${escapeHtml(payload.patientCode)})</p>
-      <p class="billed-extra">Doctor: ${escapeHtml(payload.doctorName)}</p>
-    </section>
-    ${notesBlock ? `<div class="lab-order-notes"><h3 class="notes-heading">Order notes</h3>${notesBlock}</div>` : ""}
-    <div class="lab-body">${bodyInnerHtml}</div>
-    <div class="footer-spacer"></div>
-    ${footerHtml}
-  </div>
-</body>
-</html>`);
-  printWindow.document.close();
-
-  printWindow.focus();
-  printWindow.addEventListener(
-    "afterprint",
-    () => {
-      printWindow.close();
-    },
-    { once: true }
-  );
-  printWindow.print();
-}
-
-function openLabAnswerClinicalReportWindow(payload: LabOrderPrintPayload): void {
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) return;
-
   const dateStr = formatReceiptDateOnly(payload.documentDate);
-  const bodyInner = renderLabAnswerReportBody(payload.items);
   const reported =
     payload.reportedByName && payload.reportedByName.trim()
       ? escapeHtml(payload.reportedByName.trim())
@@ -395,18 +339,22 @@ function openLabAnswerClinicalReportWindow(payload: LabOrderPrintPayload): void 
     payload.orderNotes && String(payload.orderNotes).trim()
       ? `<div class="lab-report-order-notes"><strong>Order notes</strong> · ${escapeHtml(String(payload.orderNotes).trim())}</div>`
       : "";
+  const logoSrc = `${window.location.origin}${RECEIPT_LOGO_PUBLIC_PATH}`;
 
   printWindow.document.open();
   printWindow.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>${escapeHtml(`Laboratory report #${payload.orderId}`)}</title>
+  <title>${escapeHtml(title)}</title>
   <style>${labClinicalReportCss()}</style>
 </head>
 <body>
   <div class="lab-report-doc">
-    <h1 class="lab-report-title">Laboratory report</h1>
+    <div class="lab-watermark"><img src="${logoSrc}" alt="" width="140" height="140" /></div>
+    <div class="lab-content">
+    <div class="lab-header-logo"><img id="lab-header-logo-img" src="${logoSrc}" alt="Call a Doctor" width="140" height="140" /></div>
+    <h1 class="lab-report-title">${escapeHtml(reportTitle)}</h1>
     <table class="lab-report-meta" aria-label="Patient details">
       <tr>
         <td class="lab-meta-key">Patient name</td>
@@ -434,29 +382,70 @@ function openLabAnswerClinicalReportWindow(payload: LabOrderPrintPayload): void 
       </tr>
     </table>
     ${orderNotesBlock}
-    ${bodyInner}
-    <p class="lab-report-by">REPORTED BY: ${reported}</p>
+    ${bodyInnerHtml}
+    <p class="lab-report-by">REPORTED BY:<span class="by-name">${reported}</span></p>
+    <div class="lab-page-no" aria-hidden="true"></div>
+    </div>
   </div>
 </body>
 </html>`);
   printWindow.document.close();
 
-  printWindow.focus();
-  printWindow.addEventListener(
-    "afterprint",
-    () => {
-      printWindow.close();
-    },
-    { once: true }
+  const headerLogo = printWindow.document.getElementById("lab-header-logo-img") as HTMLImageElement | null;
+  const startPrint = () => {
+    printWindow.focus();
+    printWindow.addEventListener(
+      "afterprint",
+      () => {
+        printWindow.close();
+      },
+      { once: true }
+    );
+    printWindow.print();
+  };
+
+  if (headerLogo && !headerLogo.complete) {
+    const timeoutId = window.setTimeout(startPrint, 600);
+    headerLogo.addEventListener(
+      "load",
+      () => {
+        window.clearTimeout(timeoutId);
+        startPrint();
+      },
+      { once: true }
+    );
+    headerLogo.addEventListener(
+      "error",
+      () => {
+        window.clearTimeout(timeoutId);
+        startPrint();
+      },
+      { once: true }
+    );
+    return;
+  }
+
+  startPrint();
+}
+
+function openLabAnswerClinicalReportWindow(payload: LabOrderPrintPayload): void {
+  const bodyInner = renderLabAnswerReportBody(payload.items);
+  openLabClinicalReportWindow(
+    `Laboratory report #${payload.orderId}`,
+    "Laboratory report",
+    payload,
+    bodyInner
   );
-  printWindow.print();
 }
 
 export function printLabRequestSheet(payload: LabOrderPrintPayload): void {
-  const blocks = renderCategoryBlocks(payload.items);
-  openLabSheetPrintWindow(`Lab request #${payload.orderId}`, "Lab request", payload, blocks, {
-    minimalFooterAndMeta: true,
-  });
+  const bodyInner = renderLabRequestReportBody(payload.items);
+  openLabClinicalReportWindow(
+    `Laboratory request #${payload.orderId}`,
+    "Laboratory request",
+    payload,
+    bodyInner
+  );
 }
 
 export function printLabAnswerSheet(payload: LabOrderPrintPayload): void {

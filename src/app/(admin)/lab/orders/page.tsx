@@ -7,7 +7,9 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
-import { EyeIcon, PencilIcon } from "@/icons";
+import { Dropdown } from "@/components/ui/dropdown/Dropdown";
+import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
+import { ClipboardList, EllipsisVertical, Eye, FileText, Pencil } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -42,6 +44,13 @@ function itemProgressSummary(items: LabOrderListItem[]): string {
   return `${done}/${total}`;
 }
 
+function displayOrderStatus(order: LabOrder): string {
+  if (order.status === "cancelled") return "cancelled";
+  const total = order.items.length;
+  if (total > 0 && order.items.every((i) => i.status === "completed")) return "completed";
+  return order.status;
+}
+
 function formatDate(dateStr: string) {
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
@@ -63,6 +72,7 @@ export default function LabOrdersPage() {
   const [orderPage, setOrderPage] = useState(1);
   const orderPageSize = 20;
   const [loading, setLoading] = useState(true);
+  const [actionsMenuId, setActionsMenuId] = useState<number | null>(null);
 
   const canRecord = hasPermission("lab.edit");
 
@@ -156,7 +166,7 @@ export default function LabOrdersPage() {
                 <TableCell isHeader className="text-right whitespace-nowrap">
                   Total
                 </TableCell>
-                <TableCell isHeader className="min-w-[4.5rem] whitespace-nowrap text-right align-middle">
+                <TableCell isHeader className="min-w-18 whitespace-nowrap text-right align-middle">
                   Actions
                 </TableCell>
               </TableRow>
@@ -164,6 +174,7 @@ export default function LabOrdersPage() {
             <TableBody>
               {orders.map((order) => {
                 const progress = itemProgressSummary(order.items);
+                const shownStatus = displayOrderStatus(order);
                 return (
                   <TableRow key={order.id}>
                     <TableCell className="font-mono text-sm text-gray-900 dark:text-white">#{order.id}</TableCell>
@@ -182,31 +193,72 @@ export default function LabOrdersPage() {
                     <TableCell>
                       <span
                         className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium capitalize ${
-                          order.status === "completed"
+                          shownStatus === "completed"
                             ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
-                            : order.status === "cancelled"
+                            : shownStatus === "cancelled"
                               ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
                               : "bg-amber-50 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200"
                         }`}
                       >
-                        {order.status}
+                        {shownStatus}
                       </span>
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm tabular-nums text-gray-900 dark:text-white">
                       ${(order.totalAmount ?? 0).toFixed(2)}
                     </TableCell>
-                    <TableCell className="text-right align-middle">
-                      <Link
-                        href={`/lab/orders/${order.id}/results`}
-                        className="inline-flex size-10 shrink-0 items-center justify-center overflow-visible rounded-lg border border-gray-200 bg-white p-0 leading-none text-gray-800 shadow-theme-xs hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-                        title={canRecord ? "Enter results" : "View results"}
-                      >
-                        {canRecord ? (
-                          <PencilIcon className="block !size-5 max-h-none max-w-none shrink-0 overflow-visible" aria-hidden />
-                        ) : (
-                          <EyeIcon className="block !size-5 max-h-none max-w-none shrink-0 overflow-visible" aria-hidden />
-                        )}
-                      </Link>
+                    <TableCell className="text-right align-middle overflow-visible">
+                      <div className="relative inline-flex justify-end">
+                        <button
+                          type="button"
+                          className="dropdown-toggle inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                          aria-expanded={actionsMenuId === order.id}
+                          aria-haspopup="menu"
+                          aria-label={`Actions for order ${order.id}`}
+                          onClick={() => setActionsMenuId((cur) => (cur === order.id ? null : order.id))}
+                        >
+                          <EllipsisVertical className="h-5 w-5" aria-hidden />
+                        </button>
+                        <Dropdown
+                          isOpen={actionsMenuId === order.id}
+                          onClose={() => setActionsMenuId(null)}
+                          className="min-w-48 py-1"
+                        >
+                          <DropdownItem
+                            tag="a"
+                            href={`/lab/orders/${order.id}/results?action=result`}
+                            onItemClick={() => setActionsMenuId(null)}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <FileText className="h-4 w-4" aria-hidden />
+                              Print result
+                            </span>
+                          </DropdownItem>
+                          <DropdownItem
+                            tag="a"
+                            href={`/lab/orders/${order.id}/results?action=request`}
+                            onItemClick={() => setActionsMenuId(null)}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <ClipboardList className="h-4 w-4" aria-hidden />
+                              Print request
+                            </span>
+                          </DropdownItem>
+                          <DropdownItem
+                            tag="a"
+                            href={`/lab/orders/${order.id}/results`}
+                            onItemClick={() => setActionsMenuId(null)}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              {canRecord ? (
+                                <Pencil className="h-4 w-4" aria-hidden />
+                              ) : (
+                                <Eye className="h-4 w-4" aria-hidden />
+                              )}
+                              {canRecord ? "Enter results" : "View results"}
+                            </span>
+                          </DropdownItem>
+                        </Dropdown>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

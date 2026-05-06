@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
@@ -174,6 +174,7 @@ function printPayloadFromOrder(
 
 export default function LabOrderResultsPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const orderIdRaw = params.id;
   const orderId = Number(orderIdRaw);
@@ -188,6 +189,7 @@ export default function LabOrderResultsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const errorRef = useRef<HTMLDivElement | null>(null);
+  const autoPrintDoneRef = useRef(false);
   /** Snapshot when the order was loaded (or last known server state); used to detect unsaved edits. */
   const baselineLinesRef = useRef<Record<number, LineForm>>({});
 
@@ -374,6 +376,18 @@ export default function LabOrderResultsPage() {
     const items = toPrintItems(order, lines, lineMeta);
     printLabAnswerSheet(printPayloadFromOrder(order, items, new Date().toISOString(), user?.name ?? null));
   }
+
+  useEffect(() => {
+    if (!order || autoPrintDoneRef.current) return;
+    const action = searchParams.get("action");
+    if (action !== "request" && action !== "result") return;
+    autoPrintDoneRef.current = true;
+    if (action === "request") {
+      handlePrintRequest();
+      return;
+    }
+    handlePrintAnswer();
+  }, [order, searchParams, lines, lineMeta, user]);
 
   if (!canView) {
     return (
