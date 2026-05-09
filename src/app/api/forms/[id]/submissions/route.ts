@@ -125,6 +125,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       metadata: { formId: form.id, patientId, appointmentId },
     });
 
+    if (appointmentId != null) {
+      try {
+        const { tryFinalizePendingAppointmentAfterForm } = await import("@/lib/appointment-completion-workflow");
+        await tryFinalizePendingAppointmentAfterForm({ appointmentId, userId: auth.userId });
+      } catch (err) {
+        console.error("tryFinalizePendingAppointmentAfterForm:", err);
+      }
+    }
+
     return NextResponse.json(response);
   } catch (e) {
     console.error("Form submission error:", e);

@@ -237,6 +237,11 @@ const reportsItems: NavItem[] = [
         permission: "appointments.view",
       },
       {
+        name: "Appointment status",
+        path: "/reports/appointment-status",
+        permission: "appointments.view",
+      },
+      {
         name: "Service consume report",
         path: "/reports/service-consume",
         permission: "appointments.view",

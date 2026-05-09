@@ -11,7 +11,7 @@ import { Plus } from "lucide-react";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ArrowRightIcon, ChevronLeftIcon } from "@/icons";
-import { contrastingForeground } from "@/lib/service-color";
+import { contrastingForeground, normalizeServiceColor } from "@/lib/service-color";
 import {
   addCalendarDaysIso,
   APPOINTMENT_CALENDAR_SLOT_MINUTES,
@@ -28,6 +28,22 @@ import {
   type AppointmentCalendarSlotMinutes,
 } from "@/lib/appointment-calendar-time";
 
+type AppointmentPatient = {
+  id: number;
+  patientCode: string;
+  name: string;
+  phone: string | null;
+  mobile: string | null;
+  email: string | null;
+  dateOfBirth: string | null;
+  age: number | null;
+  gender: string | null;
+  address: string | null;
+  notes: string | null;
+  city: { id: number; name: string } | null;
+  village: { id: number; name: string } | null;
+};
+
 type Appointment = {
   id: number;
   appointmentDate: string;
@@ -38,8 +54,9 @@ type Appointment = {
   totalAmount: number;
   branch: { id: number; name: string };
   doctor: { id: number; name: string; specialty: string | null };
-  patient: { id: number; patientCode: string; name: string };
+  patient: AppointmentPatient;
   services: {
+    id: number;
     service: { name: string; color: string | null };
     quantity: number;
     unitPrice: number;
@@ -205,6 +222,64 @@ function formatServicesForCalendar(apt: Appointment): string {
   return apt.services.map((s) => s.service.name).join(", ");
 }
 
+/** Status pill on each calendar booking (visible on service-colored slots too). */
+function CalendarBookedSlotStatusBadge({ status }: { status: string }) {
+  const s = status.toLowerCase();
+  if (s === "completed") {
+    return (
+      <span className="inline-flex w-fit max-w-full shrink-0 rounded bg-emerald-700 px-1.5 py-0.5 text-[8px] font-bold uppercase leading-none tracking-wide text-white shadow-sm dark:bg-emerald-600">
+        Completed
+      </span>
+    );
+  }
+  if (s === "pending") {
+    return (
+      <span className="inline-flex w-fit max-w-full shrink-0 rounded bg-amber-700 px-1.5 py-0.5 text-[8px] font-bold uppercase leading-none tracking-wide text-white shadow-sm dark:bg-amber-600">
+        Pending
+      </span>
+    );
+  }
+  if (s === "scheduled") {
+    return (
+      <span className="inline-flex w-fit max-w-full shrink-0 rounded bg-white/95 px-1.5 py-0.5 text-[8px] font-bold uppercase leading-none tracking-wide text-gray-900 shadow-sm ring-1 ring-black/20 dark:bg-white/90 dark:ring-white/30">
+        Scheduled
+      </span>
+    );
+  }
+  if (s === "draft") {
+    return (
+      <span className="inline-flex w-fit max-w-full shrink-0 rounded bg-violet-800 px-1.5 py-0.5 text-[8px] font-bold uppercase leading-none tracking-wide text-white shadow-sm dark:bg-violet-700">
+        Draft
+      </span>
+    );
+  }
+  if (s === "no-show") {
+    return (
+      <span className="inline-flex w-fit max-w-full shrink-0 rounded bg-gray-700 px-1.5 py-0.5 text-[8px] font-bold uppercase leading-none tracking-wide text-white shadow-sm dark:bg-gray-600">
+        No-show
+      </span>
+    );
+  }
+  return null;
+}
+
+function appointmentPatientLocalityLine(p: AppointmentPatient): string | null {
+  const bits: string[] = [];
+  if (p.village?.name) bits.push(p.village.name);
+  if (p.city?.name) bits.push(p.city.name);
+  const locality = bits.length ? bits.join(", ") : null;
+  const addr = p.address?.trim() || null;
+  if (addr && locality) return `${addr} · ${locality}`;
+  return addr || locality;
+}
+
+function appointmentPatientDobAgeLine(p: AppointmentPatient): string | null {
+  const parts: string[] = [];
+  if (p.dateOfBirth) parts.push(p.dateOfBirth.slice(0, 10));
+  if (p.age != null && Number.isFinite(p.age)) parts.push(`Age ${p.age}`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /** Inner width of the time labels (12h clock + AM/PM column). */
 const TIME_GUTTER_PX = 64;
 /** Total width of the sticky time column including horizontal padding (same as day cells). */
@@ -238,14 +313,14 @@ function buildWeekCells(weekStartIso: string, refYear: number, refMonth: number)
 
 function dayColumnsTemplate(viewMode: CalendarViewMode): string {
   if (viewMode === "day") return `minmax(${MIN_DAY_COLUMN_DAY_VIEW_PX}px, 1fr)`;
-  return `repeat(7, minmax(${MIN_DAY_COLUMN_PX}px, 1fr))`;
+  return "repeat(7, minmax(0, 1fr))";
 }
 
 function weekRowMinWidthForView(viewMode: CalendarViewMode): string {
   if (viewMode === "day") {
     return `calc(${TIME_GUTTER_PX}px + 0.75rem + ${MIN_DAY_COLUMN_DAY_VIEW_PX}px)`;
   }
-  return `calc(${TIME_GUTTER_PX}px + 0.75rem + ${7 * MIN_DAY_COLUMN_PX}px)`;
+  return "100%";
 }
 
 function DayColumnHeader({
@@ -364,6 +439,7 @@ export default function AppointmentsPage() {
   } | null>(null);
 
   const canCreate = hasPermission("appointments.create") || hasPermission("appointments.view");
+  const canEditAppointments = hasPermission("appointments.edit");
   const canManageSlotStep = hasPermission("settings.manage");
   const canOpenClinicForms =
     hasPermission("patient_history.create") ||
@@ -474,8 +550,6 @@ export default function AppointmentsPage() {
     return map;
   }, [appointments]);
 
-  const calendarSettingsFetched = useRef(false);
-
   function rangeForFetch(): { startStr: string; endStr: string } {
     if (viewMode === "month") {
       const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
@@ -500,32 +574,21 @@ export default function AppointmentsPage() {
     const load = async () => {
       try {
         const apUrl = `/api/appointments?startDate=${startStr}&endDate=${endStr}`;
-        if (calendarSettingsFetched.current) {
-          const [apRes, blockRes] = await Promise.all([authFetch(apUrl), authFetch(blockUrl)]);
-          if (cancelled) return;
-          if (apRes.ok) setAppointments(await apRes.json());
-          if (blockRes.ok) {
-            const j = (await blockRes.json()) as { blocks?: ScheduleBlock[] };
-            setScheduleBlocks(Array.isArray(j.blocks) ? j.blocks : []);
-          } else setScheduleBlocks([]);
-        } else {
-          const [apRes, blockRes, calRes] = await Promise.all([
-            authFetch(apUrl),
-            authFetch(blockUrl),
-            authFetch("/api/settings/appointment-calendar"),
-          ]);
-          if (cancelled) return;
-          if (apRes.ok) setAppointments(await apRes.json());
-          if (blockRes.ok) {
-            const j = (await blockRes.json()) as { blocks?: ScheduleBlock[] };
-            setScheduleBlocks(Array.isArray(j.blocks) ? j.blocks : []);
-          } else setScheduleBlocks([]);
-          if (calRes.ok) {
-            calendarSettingsFetched.current = true;
-            const data = (await calRes.json()) as { slotMinutes?: number };
-            const n = data.slotMinutes;
-            if (typeof n === "number" && isAppointmentCalendarSlotMinutes(n)) setSlotMinutes(n);
-          }
+        const [apRes, blockRes, calRes] = await Promise.all([
+          authFetch(apUrl),
+          authFetch(blockUrl),
+          authFetch("/api/settings/appointment-calendar"),
+        ]);
+        if (cancelled) return;
+        if (apRes.ok) setAppointments(await apRes.json());
+        if (blockRes.ok) {
+          const j = (await blockRes.json()) as { blocks?: ScheduleBlock[] };
+          setScheduleBlocks(Array.isArray(j.blocks) ? j.blocks : []);
+        } else setScheduleBlocks([]);
+        if (calRes.ok) {
+          const data = (await calRes.json()) as { slotMinutes?: number };
+          const n = data.slotMinutes;
+          if (typeof n === "number" && isAppointmentCalendarSlotMinutes(n)) setSlotMinutes(n);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -591,6 +654,19 @@ export default function AppointmentsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    setHoverSlotByDate({});
+    setGridDragRange(null);
+    const L = gridDragListenersRef.current;
+    if (L) {
+      window.removeEventListener("pointermove", L.move);
+      window.removeEventListener("pointerup", L.up);
+      window.removeEventListener("pointercancel", L.up);
+      gridDragListenersRef.current = null;
+    }
+    activeGridDragRef.current = null;
+  }, [slotMinutes]);
+
   function goToAppointment(apt: Appointment) {
     router.push(`/appointments/${apt.id}`);
   }
@@ -622,6 +698,8 @@ export default function AppointmentsPage() {
     slotCount: number
   ) {
     if (!canCreate) return;
+    // On touch devices, let native scrolling win so swipes do not create accidental bookings.
+    if (e.pointerType === "touch") return;
     if (isCalendarSlotBlocked(cellDate, slotIdx, slotMinutes, scheduleBlocks)) {
       e.preventDefault();
       e.stopPropagation();
@@ -894,7 +972,8 @@ export default function AppointmentsPage() {
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ minWidth: weekRowMinWidthForView(viewMode) }}>
                   <div
                     ref={calendarVScrollRef}
-                    className="min-h-0 flex-1 basis-0 overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+                    className="min-h-0 flex-1 basis-0 overflow-y-scroll overflow-x-hidden overscroll-y-contain border-r border-gray-200 dark:border-gray-700 [-webkit-overflow-scrolling:touch]"
+                    style={{ scrollbarGutter: "stable" }}
                     onWheel={(e) => {
                       const h = calendarHScrollRef.current;
                       if (!h) return;
@@ -913,39 +992,68 @@ export default function AppointmentsPage() {
                     }}
                   >
                     <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                {viewMode === "month" && weeksToRender[0] ? (
+                  <div
+                    className="sticky top-0 z-30 flex w-full shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/30"
+                    style={{ minWidth: weekRowMinWidthForView(viewMode) }}
+                  >
+                    <div
+                      className="flex shrink-0 items-center justify-center border-r border-gray-200 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                      style={{ width: timeGutterTotalWidth }}
+                    >
+                      Time · 12 hr
+                    </div>
+                    <div
+                      className="grid min-w-0 flex-1"
+                      style={{ gridTemplateColumns: dayColumnsTemplate(viewMode) }}
+                    >
+                      {weeksToRender[0].map((cell) => (
+                        <DayColumnHeader
+                          key={cell.date}
+                          isoDate={cell.date}
+                          viewMode={viewMode}
+                          isToday={cell.date === todayIso}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {weeksToRender.map((week, weekIndex) => (
                   <div
                     key={week[0]?.date ?? weekIndex}
                     className="bg-white dark:bg-gray-900/20"
                   >
-                    <div className="border-b border-gray-100 bg-gray-50/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-400">
-                      {viewMode === "month" ? `Week ${weekIndex + 1} · ` : ""}
-                      {formatWeekRangeLabel(week)}
-                    </div>
-                    <div
-                      className="flex w-full shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/30"
-                      style={{ minWidth: weekRowMinWidthForView(viewMode) }}
-                    >
-                      <div
-                        className="flex shrink-0 items-center justify-center border-r border-gray-200 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
-                        style={{ width: timeGutterTotalWidth }}
-                      >
-                        Time · 12 hr
+                    {viewMode !== "month" ? (
+                      <div className="border-b border-gray-100 bg-gray-50/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-400">
+                        {formatWeekRangeLabel(week)}
                       </div>
+                    ) : null}
+                    {viewMode !== "month" ? (
                       <div
-                        className="grid min-w-0 flex-1"
-                        style={{ gridTemplateColumns: dayColumnsTemplate(viewMode) }}
+                        className="sticky top-0 z-30 flex w-full shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/30"
+                        style={{ minWidth: weekRowMinWidthForView(viewMode) }}
                       >
-                        {week.map((cell) => (
-                          <DayColumnHeader
-                            key={cell.date}
-                            isoDate={cell.date}
-                            viewMode={viewMode}
-                            isToday={cell.date === todayIso}
-                          />
-                        ))}
+                        <div
+                          className="flex shrink-0 items-center justify-center border-r border-gray-200 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                          style={{ width: timeGutterTotalWidth }}
+                        >
+                          Time · 12 hr
+                        </div>
+                        <div
+                          className="grid min-w-0 flex-1"
+                          style={{ gridTemplateColumns: dayColumnsTemplate(viewMode) }}
+                        >
+                          {week.map((cell) => (
+                            <DayColumnHeader
+                              key={cell.date}
+                              isoDate={cell.date}
+                              viewMode={viewMode}
+                              isToday={cell.date === todayIso}
+                            />
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
                     <div className="flex w-full" style={{ minWidth: weekRowMinWidthForView(viewMode) }}>
                       <div
                         className="sticky left-0 z-20 shrink-0 border-r border-gray-200 bg-white shadow-[2px_0_8px_-2px_rgba(0,0,0,0.06)] dark:border-gray-700 dark:bg-gray-900 dark:shadow-[2px_0_8px_-2px_rgba(0,0,0,0.35)]"
@@ -968,22 +1076,31 @@ export default function AppointmentsPage() {
                         .filter((a) => a.status !== "cancelled")
                         .sort(sortByStartTime);
                       const isBooked = dayApts.length > 0;
-                      const baseBg = cell.isCurrentMonth
-                        ? isBooked
-                          ? "bg-emerald-50/90 dark:bg-emerald-500/10"
-                          : "bg-white dark:bg-gray-900"
-                        : isBooked
-                          ? "bg-emerald-50/50 dark:bg-emerald-500/5"
-                          : "bg-gray-50 dark:bg-gray-800/50";
+                      const baseBg =
+                        viewMode === "month" && !cell.isCurrentMonth
+                          ? isBooked
+                            ? "bg-brand-100/70 dark:bg-brand-900/25"
+                            : "bg-brand-50/85 dark:bg-brand-950/30"
+                          : cell.isCurrentMonth
+                            ? isBooked
+                              ? "bg-emerald-50/90 dark:bg-emerald-500/10"
+                              : "bg-white dark:bg-gray-900"
+                            : isBooked
+                              ? "bg-emerald-50/50 dark:bg-emerald-500/5"
+                              : "bg-gray-50 dark:bg-gray-800/50";
                       const timelineH = dayTimelineHeightPx(slotMinutes);
                       const slotCount = (CAL_DAY_END_MIN - CAL_DAY_START_MIN) / slotMinutes;
+                      const slotSurfaceBg =
+                        viewMode === "month" && !cell.isCurrentMonth
+                          ? "border-brand-200/80 bg-brand-50/75 dark:border-brand-700/40 dark:bg-brand-950/25"
+                          : "border-gray-200/80 bg-white/90 dark:border-gray-700 dark:bg-gray-950/40";
                       return (
                         <div
                           key={cell.date}
                           className={`flex min-h-[220px] min-w-0 flex-col border-b border-r border-gray-200 p-1.5 pt-1 last:border-r-0 dark:border-gray-700 ${baseBg} ${canCreate ? "dark:hover:bg-brand-500/5" : ""} transition-colors`}
                         >
                           <div className="flex-1">
-                            <div className="rounded-lg border border-gray-200/80 bg-white/90 dark:border-gray-700 dark:bg-gray-950/40">
+                            <div className={`rounded-lg border ${slotSurfaceBg}`}>
                               <div
                                 data-calendar-timeline
                                 className="relative touch-none overflow-visible select-none"
@@ -1100,6 +1217,8 @@ export default function AppointmentsPage() {
                                   {dayApts.map((apt, aptIndex) => {
                                     const dur = appointmentDurationMinutes(apt.startTime, apt.endTime);
                                     const svcColor = firstServiceColor(apt);
+                                    const isDraft = apt.status === "draft";
+                                    const isPending = apt.status === "pending";
                                     const top = appointmentTopPx(apt.startTime, slotMinutes);
                                     const durationPx = appointmentHeightPx(apt, slotMinutes);
                                     const maxDownPx = Math.max(0, timelineH - top);
@@ -1117,9 +1236,9 @@ export default function AppointmentsPage() {
                                     const titleLine = `${formatTime12hLabel(apt.startTime)} — ${apt.patient.name.toUpperCase()}`;
 
                                     const cardInner = (
-                                      <div className="relative flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-4 text-left [-webkit-overflow-scrolling:touch]">
+                                      <div className="relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-4 text-left [-webkit-overflow-scrolling:touch]">
                                         <span
-                                          className="pointer-events-none absolute top-1.5 right-1 shrink-0 opacity-70"
+                                          className="pointer-events-none absolute top-1.5 right-1 z-[1] shrink-0 opacity-70"
                                           aria-hidden
                                         >
                                           <svg
@@ -1133,7 +1252,10 @@ export default function AppointmentsPage() {
                                             <path d="M12 2.5l2.2 6.8h7.1l-5.7 4.4 2.2 6.8L12 16.9 6.2 20.5l2.2-6.8L2.7 9.3h7.1L12 2.5z" />
                                           </svg>
                                         </span>
-                                        <span className="break-words text-[10px] font-extrabold uppercase leading-snug tracking-tight">
+                                        <div className="relative z-[2] flex w-full min-w-0 shrink-0 items-start pr-5">
+                                          <CalendarBookedSlotStatusBadge status={apt.status} />
+                                        </div>
+                                        <span className="min-w-0 break-words text-[10px] font-extrabold uppercase leading-snug tracking-tight">
                                           {titleLine}
                                         </span>
                                         <span className="break-words text-[10px] font-normal leading-snug opacity-95">
@@ -1144,6 +1266,42 @@ export default function AppointmentsPage() {
                                         </span>
                                       </div>
                                     );
+
+                                    if (isDraft) {
+                                      return (
+                                        <button
+                                          key={apt.id}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openAppointmentQuickView(apt);
+                                          }}
+                                          className={`${baseCard} border-violet-300 bg-violet-100 text-violet-950 dark:border-violet-700 dark:bg-violet-900/35 dark:text-violet-50`}
+                                          style={cardStyle}
+                                          title={`${titleLine} · Draft`}
+                                        >
+                                          {cardInner}
+                                        </button>
+                                      );
+                                    }
+
+                                    if (isPending) {
+                                      return (
+                                        <button
+                                          key={apt.id}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openAppointmentQuickView(apt);
+                                          }}
+                                          className={`${baseCard} border-amber-400 bg-amber-100 text-amber-950 dark:border-amber-600 dark:bg-amber-900/40 dark:text-amber-50`}
+                                          style={cardStyle}
+                                          title={`${titleLine} · Pending documentation`}
+                                        >
+                                          {cardInner}
+                                        </button>
+                                      );
+                                    }
 
                                     if (svcColor) {
                                       return (
@@ -1214,47 +1372,6 @@ export default function AppointmentsPage() {
                 </div>
               </div>
             </div>
-            <div className="shrink-0 border-t border-gray-200 dark:border-gray-700">
-              <div className="flex flex-wrap items-center gap-4 border-b border-gray-100 px-4 py-3 text-xs dark:border-gray-800 dark:bg-gray-900/20">
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-sm border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" />
-                  Available
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-sm border border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/20" />
-                  Booked
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-sm border border-red-200 bg-red-100 dark:border-red-800 dark:bg-red-950/50" />
-                  Cancelled (see list — time is free)
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
-                  Today
-                </span>
-                {canCreate && (
-                  <span className="max-w-xl text-gray-500 dark:text-gray-400">
-                    Full day 12:00 AM–11:59 PM (two 12-hour blocks: AM, then PM at noon). Drag across free slots to add a booking.
-                    Cancelled visits are not shown on the grid so you can reuse the same time.{" "}
-                    <Link
-                      href={`/appointments/cancelled?from=${encodeURIComponent(rangeForFetch().startStr)}&to=${encodeURIComponent(rangeForFetch().endStr)}`}
-                      className="font-medium text-brand-600 hover:underline dark:text-brand-400"
-                    >
-                      Open cancelled bookings for this period
-                    </Link>
-                    .
-                  </span>
-                )}
-              </div>
-              <div className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                <Link
-                  href="/appointments/cancelled"
-                  className="font-medium text-brand-600 hover:underline dark:text-brand-400"
-                >
-                  Full cancelled bookings list (pick any date range)
-                </Link>
-              </div>
-            </div>
           </>
         )}
       </div>
@@ -1274,7 +1391,7 @@ export default function AppointmentsPage() {
       <Modal
         isOpen={calendarModal != null}
         onClose={closeAppointmentQuickView}
-        className="max-w-lg max-h-[90vh] overflow-y-auto p-6 sm:max-w-xl sm:p-8"
+        className="max-w-lg max-h-[90vh] overflow-y-auto p-6 sm:max-w-2xl sm:p-8"
       >
         {calendarModal ? (
           calendarModal.step === "detail" ? (
@@ -1302,6 +1419,55 @@ export default function AppointmentsPage() {
                     </span>
                   </p>
                 </div>
+                <div className="rounded-lg border border-gray-100 bg-gray-50/90 px-3 py-3 dark:border-gray-800 dark:bg-gray-900/50">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    Patient information
+                  </p>
+                  <dl className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs text-gray-500 dark:text-gray-400">Phone</dt>
+                      <dd className="mt-0.5 font-medium">
+                        {calendarModal.apt.patient.phone?.trim() || "—"}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs text-gray-500 dark:text-gray-400">Mobile</dt>
+                      <dd className="mt-0.5 font-medium">
+                        {calendarModal.apt.patient.mobile?.trim() || "—"}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs text-gray-500 dark:text-gray-400">Email</dt>
+                      <dd className="mt-0.5 break-all font-medium">
+                        {calendarModal.apt.patient.email?.trim() || "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-gray-500 dark:text-gray-400">Date of birth · age</dt>
+                      <dd className="mt-0.5 font-medium">
+                        {appointmentPatientDobAgeLine(calendarModal.apt.patient) || "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-gray-500 dark:text-gray-400">Gender</dt>
+                      <dd className="mt-0.5 font-medium">
+                        {calendarModal.apt.patient.gender?.trim() || "—"}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs text-gray-500 dark:text-gray-400">Address · locality</dt>
+                      <dd className="mt-0.5 font-medium">
+                        {appointmentPatientLocalityLine(calendarModal.apt.patient) || "—"}
+                      </dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs text-gray-500 dark:text-gray-400">Allergies and Infections</dt>
+                      <dd className="mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap font-medium text-gray-700 dark:text-gray-300">
+                        {calendarModal.apt.patient.notes?.trim() || "—"}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Status</p>
@@ -1322,7 +1488,26 @@ export default function AppointmentsPage() {
                   </div>
                   <div className="sm:col-span-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Services</p>
-                    <p className="mt-1">{formatServicesForCalendar(calendarModal.apt)}</p>
+                    <div className="mt-1 space-y-2">
+                      {calendarModal.apt.services.length === 0 ? (
+                        <p className="text-sm">No service listed</p>
+                      ) : (
+                        calendarModal.apt.services.map((line) => {
+                          const c = normalizeServiceColor(line.service.color);
+                          return (
+                            <div key={line.id} className="flex items-center gap-2">
+                              <span
+                                className="h-5 w-5 shrink-0 rounded-md border border-gray-200 dark:border-gray-700"
+                                style={{ backgroundColor: c ?? "#e5e7eb" }}
+                                aria-hidden
+                                title={c ? `${line.service.name} color` : "No service color"}
+                              />
+                              <span className="text-sm font-medium">{line.service.name}</span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Duration</p>
@@ -1334,24 +1519,36 @@ export default function AppointmentsPage() {
                   </div>
                 </div>
               </div>
-              <div className="mt-6 flex flex-col-reverse gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  onClick={() => goToAppointment(calendarModal.apt)}
-                >
-                  Open full booking
-                </Button>
-                {canOpenClinicForms ? (
+              <div className="mt-6 space-y-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <Button
-                    type="button"
+                    variant="outline"
                     size="sm"
-                    onClick={openFormsPickerFromCalendar}
-                    startIcon={<Plus className="h-4 w-4" />}
+                    type="button"
+                    onClick={() => goToAppointment(calendarModal.apt)}
                   >
-                    Clinic form
+                    Edit booking
                   </Button>
+                  {canOpenClinicForms ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={openFormsPickerFromCalendar}
+                      startIcon={<Plus className="h-4 w-4" />}
+                    >
+                      Clinic form
+                    </Button>
+                  ) : null}
+                </div>
+                {canEditAppointments &&
+                (calendarModal.apt.status === "scheduled" || calendarModal.apt.status === "pending") ? (
+                  <Link
+                    href={`/appointments/${calendarModal.apt.id}/complete-workflow`}
+                    onClick={closeAppointmentQuickView}
+                    className="flex w-full items-center justify-center rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-500"
+                  >
+                    Mark as completed
+                  </Link>
                 ) : null}
               </div>
             </>

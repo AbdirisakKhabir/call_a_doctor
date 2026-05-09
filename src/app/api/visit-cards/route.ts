@@ -16,6 +16,22 @@ import { resolveReferralSourceIdForWrite } from "@/lib/referral-source";
 import { calculateAgeFromDate } from "@/lib/age-from-dob";
 import { assertActiveBranch, assertVillageInCity } from "@/lib/patient-location";
 import { assertOpenCareFileForPatient, ensureOpenCareFile } from "@/lib/care-file";
+import {
+  VISIT_CARD_DAILY_SLOT_COUNT,
+  formatVisitCardSlotNumber,
+  parseVisitCardSlotNumber,
+} from "@/lib/visit-card-slots";
+
+function parseVisitDateForDb(visitDate: unknown): Date | null {
+  if (typeof visitDate !== "string" || !visitDate.trim()) return null;
+  const s = visitDate.trim().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, mo, d] = s.split("-").map(Number);
+    return new Date(y, mo - 1, d, 12, 0, 0, 0);
+  }
+  const t = new Date(String(visitDate));
+  return Number.isNaN(t.getTime()) ? null : t;
+}
 
 const visitInclude = {
   branch: { select: { id: true, name: true } },
@@ -142,8 +158,22 @@ export async function POST(req: NextRequest) {
     if (!cardNumber || typeof cardNumber !== "string" || !String(cardNumber).trim()) {
       return NextResponse.json({ error: "Visit card number is required" }, { status: 400 });
     }
+    const slotNum = parseVisitCardSlotNumber(String(cardNumber).trim());
+    if (slotNum == null) {
+      return NextResponse.json(
+        {
+          error: `Visit card number must be a daily slot from 1 to ${VISIT_CARD_DAILY_SLOT_COUNT}`,
+        },
+        { status: 400 }
+      );
+    }
+    const normalizedCardNumber = formatVisitCardSlotNumber(slotNum);
     if (!visitDate) {
       return NextResponse.json({ error: "Visit date is required" }, { status: 400 });
+    }
+    const visitDateDb = parseVisitDateForDb(visitDate);
+    if (!visitDateDb) {
+      return NextResponse.json({ error: "Invalid visit date" }, { status: 400 });
     }
 
     const branchFilter = await getUserBranchIdFilter(auth.userId);
@@ -274,11 +304,11 @@ export async function POST(req: NextRequest) {
 
         const created = await tx.doctorVisitCard.create({
           data: {
-            cardNumber: String(cardNumber).trim(),
+            cardNumber: normalizedCardNumber,
             branchId,
             patientId,
             doctorId,
-            visitDate: new Date(visitDate),
+            visitDate: visitDateDb,
             status: "inWaiting",
             paymentStatus: pay,
             visitFee: fee,
@@ -352,7 +382,10 @@ export async function POST(req: NextRequest) {
     const msg = e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "P2002";
     if (msg) {
       return NextResponse.json(
-        { error: "This visit card number is already used for this branch" },
+        {
+          error:
+            "This visit card slot is already assigned for this branch on the selected visit date",
+        },
         { status: 409 }
       );
     }

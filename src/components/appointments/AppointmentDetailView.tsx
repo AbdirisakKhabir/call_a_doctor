@@ -49,7 +49,7 @@ export type AppointmentDetail = {
   doctor: { id: number; name: string; specialty: string | null };
   patient: { id: number; patientCode: string; name: string };
   services: {
-    service: { name: string; color: string | null };
+    service: { id: number; name: string; color: string | null };
     quantity: number;
     unitPrice: number;
     totalAmount: number;
@@ -66,6 +66,10 @@ export type AppointmentDetail = {
 };
 
 type Props = { appointmentId: number };
+type BranchOption = { id: number; name: string };
+type DoctorOption = { id: number; name: string; specialty: string | null };
+type ServiceOption = { id: number; name: string; price: number; color: string | null };
+type EditableServiceLine = { serviceId: number; name: string; quantity: number; unitPrice: number; color: string | null };
 
 export default function AppointmentDetailView({ appointmentId }: Props) {
   const router = useRouter();
@@ -82,8 +86,16 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
   const [patchLoading, setPatchLoading] = useState(false);
   const [adjacentLoading, setAdjacentLoading] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
+  const [paymentMethodDraft, setPaymentMethodDraft] = useState("");
   const [billingDiscount, setBillingDiscount] = useState("");
   const [scheduleBlocks, setScheduleBlocks] = useState<ClientScheduleBlock[]>([]);
+  const [branches, setBranches] = useState<BranchOption[]>([]);
+  const [doctors, setDoctors] = useState<DoctorOption[]>([]);
+  const [serviceCatalog, setServiceCatalog] = useState<ServiceOption[]>([]);
+  const [servicePick, setServicePick] = useState("");
+  const [editBranchId, setEditBranchId] = useState("");
+  const [editDoctorId, setEditDoctorId] = useState("");
+  const [editServices, setEditServices] = useState<EditableServiceLine[]>([]);
 
   const rescheduleTimeOptions = useMemo(() => buildDayTimeSlots(slotMinutes), [slotMinutes]);
 
@@ -145,7 +157,62 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
     const rawEnd =
       appointment.endTime ?? addMinutesToHHmm(appointment.startTime, 30) ?? appointment.startTime;
     setRescheduleEnd(snapTimeToSlotList(rawEnd, slots));
+    setEditBranchId(String(appointment.branch.id));
+    setEditDoctorId(String(appointment.doctor.id));
+    setEditServices(
+      appointment.services.map((s) => ({
+        serviceId: s.service.id,
+        name: s.service.name,
+        color: s.service.color,
+        quantity: s.quantity,
+        unitPrice: s.unitPrice,
+      }))
+    );
+    setPaymentMethodDraft(appointment.paymentMethod?.id ? String(appointment.paymentMethod.id) : "");
   }, [appointment, slotMinutes]);
+
+  useEffect(() => {
+    if (!canEditAppointments) return;
+    let cancelled = false;
+    authFetch("/api/branches")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: BranchOption[]) => {
+        if (cancelled) return;
+        setBranches(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setBranches([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canEditAppointments]);
+
+  useEffect(() => {
+    if (!canEditAppointments) return;
+    const bid = Number(editBranchId);
+    if (!Number.isInteger(bid) || bid <= 0) {
+      setDoctors([]);
+      setServiceCatalog([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([authFetch(`/api/doctors?branchId=${bid}`), authFetch(`/api/services?branchId=${bid}`)])
+      .then(async ([drRes, svcRes]) => {
+        if (cancelled) return;
+        setDoctors(drRes.ok ? await drRes.json() : []);
+        setServiceCatalog(svcRes.ok ? await svcRes.json() : []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDoctors([]);
+          setServiceCatalog([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canEditAppointments, editBranchId]);
 
   useEffect(() => {
     if (!appointment || !/^\d{4}-\d{2}-\d{2}$/.test(rescheduleDate)) {
@@ -272,10 +339,6 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
 
   async function completeVisit() {
     if (!appointment || !canEditAppointments) return;
-    if (appointment.totalAmount > 0 && !appointment.paymentMethod?.id) {
-      window.alert("Choose a payment method before completing a billed visit.");
-      return;
-    }
     if (
       !window.confirm(
         "Mark this visit as completed? Service consumables will be deducted and, if the visit has a total, a sale and till deposit will be recorded."
@@ -325,10 +388,21 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
       window.alert("End time must be after start time.");
       return;
     }
+    if (!editBranchId || !editDoctorId) {
+      window.alert("Branch and doctor are required.");
+      return;
+    }
+    if (editServices.length === 0) {
+      window.alert("Select at least one service.");
+      return;
+    }
     const r = await patchAppointment({
       appointmentDate: rescheduleDate,
       startTime: rescheduleStart,
       endTime: rescheduleEnd,
+      branchId: Number(editBranchId),
+      doctorId: Number(editDoctorId),
+      services: editServices.map((s) => ({ serviceId: s.serviceId, quantity: s.quantity, unitPrice: s.unitPrice })),
     });
     if (!r.ok) {
       await showSwalForAppointmentError(
@@ -338,6 +412,18 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
       return;
     }
     goToCalendar();
+  }
+
+  function addEditableService(svcIdRaw: string) {
+    const svcId = Number(svcIdRaw);
+    if (!Number.isInteger(svcId) || svcId <= 0) return;
+    const svc = serviceCatalog.find((s) => s.id === svcId);
+    if (!svc) return;
+    setEditServices((rows) =>
+      rows.some((r) => r.serviceId === svcId)
+        ? rows
+        : [...rows, { serviceId: svc.id, name: svc.name, color: svc.color, quantity: 1, unitPrice: svc.price }]
+    );
   }
 
   async function shiftTimeBy(deltaMin: number) {
@@ -467,25 +553,36 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
             )}
           </div>
 
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-            <span className="shrink-0 text-gray-500">Payment method:</span>
-            {canEditAppointments && a.status === "scheduled" ? (
+          <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-600 dark:bg-gray-800/50">
+            <p className="text-xs font-medium text-gray-600 dark:text-gray-300">Payment details</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <select
-                value={a.paymentMethod?.id ?? ""}
-                disabled={patchLoading || paymentMethods.length === 0}
-                onChange={(e) => void updatePaymentPreference(e.target.value)}
-                className="h-10 w-full max-w-md rounded-lg border border-gray-200 bg-transparent px-3 text-sm dark:border-gray-700 dark:text-white"
+                value={paymentMethodDraft}
+                disabled={!canEditAppointments || patchLoading || paymentMethods.length === 0}
+                onChange={(e) => setPaymentMethodDraft(e.target.value)}
+                className="h-10 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
               >
-                <option value="">Select for visit billing…</option>
+                <option value="">Select payment method…</option>
                 {paymentMethods.map((pm) => (
                   <option key={pm.id} value={String(pm.id)}>
                     {pm.name}
                   </option>
                 ))}
               </select>
-            ) : (
-              <span>{a.paymentMethod?.name ?? "—"}</span>
-            )}
+              {canEditAppointments ? (
+                <button
+                  type="button"
+                  disabled={patchLoading || paymentMethods.length === 0}
+                  onClick={() => void updatePaymentPreference(paymentMethodDraft)}
+                  className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                >
+                  Save payment details
+                </button>
+              ) : null}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Current method: {a.paymentMethod?.name ?? "—"}
+            </p>
           </div>
           {canEditAppointments && a.status === "scheduled" && paymentMethods.length === 0 ? (
             <p className="text-xs text-amber-700 dark:text-amber-300">
@@ -552,6 +649,36 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
                   />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Branch</label>
+                      <select
+                        value={editBranchId}
+                        disabled={patchLoading}
+                        onChange={(e) => setEditBranchId(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      >
+                        {branches.map((b) => (
+                          <option key={b.id} value={String(b.id)}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Doctor</label>
+                      <select
+                        value={editDoctorId}
+                        disabled={patchLoading}
+                        onChange={(e) => setEditDoctorId(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      >
+                        {doctors.map((d) => (
+                          <option key={d.id} value={String(d.id)}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
                       <label htmlFor="reschedule-start" className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
                         Start time
                       </label>
@@ -612,9 +739,50 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
                       </select>
                     </div>
                   </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">Services</label>
+                    <select
+                      value={servicePick}
+                      disabled={patchLoading}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v) addEditableService(v);
+                        setServicePick("");
+                      }}
+                      className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                    >
+                      <option value="">Add service…</option>
+                      {serviceCatalog
+                        .filter((s) => !editServices.some((x) => x.serviceId === s.id))
+                        .map((s) => (
+                          <option key={s.id} value={String(s.id)}>
+                            {s.name}
+                          </option>
+                        ))}
+                    </select>
+                    {editServices.length > 0 ? (
+                      <div className="mt-2 space-y-1">
+                        {editServices.map((s) => (
+                          <div key={s.serviceId} className="flex items-center justify-between rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                            <span className="text-xs">{s.name}</span>
+                            <button
+                              type="button"
+                              disabled={patchLoading}
+                              className="text-xs text-error-600 hover:underline"
+                              onClick={() => setEditServices((rows) => rows.filter((r) => r.serviceId !== s.serviceId))}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   {appointment &&
                     /^\d{4}-\d{2}-\d{2}$/.test(rescheduleDate) &&
-                    scheduleBlocks.some((b) => blockAppliesToBookingDay(b, rescheduleDate, appointment.branch.id)) && (
+                    scheduleBlocks.some((b) =>
+                      blockAppliesToBookingDay(b, rescheduleDate, Number(editBranchId) || appointment.branch.id)
+                    ) && (
                       <p className="text-[11px] text-gray-500 dark:text-gray-400">
                         Times that fall in branch closed hours are unavailable.
                       </p>
@@ -646,76 +814,6 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
             </div>
           )}
 
-          <p>
-            <span className="text-gray-500">Location (branch):</span> {a.branch.name}
-          </p>
-          <p>
-            <span className="text-gray-500">Practitioner:</span> {a.doctor.name}
-            {a.doctor.specialty ? ` · ${a.doctor.specialty}` : ""}
-          </p>
-          <p>
-            <span className="text-gray-500">Client:</span> {a.patient.name} ({a.patient.patientCode})
-          </p>
-          <p>
-            <span className="text-gray-500">Status:</span> {a.status}
-          </p>
-          {a.services.length > 0 && (
-            <div>
-              <p className="mb-1 text-gray-500">Service(s) booked:</p>
-              <ul className="list-inside list-disc text-sm">
-                {a.services.map((s, i) => (
-                  <li key={i} className="flex items-center gap-2">
-                    {s.service.color ? (
-                      <span
-                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border border-black/10 dark:border-white/20"
-                        style={{ backgroundColor: s.service.color }}
-                        title={s.service.color}
-                      />
-                    ) : null}
-                    <span>
-                      {s.service.name} x{s.quantity} @ ${s.unitPrice.toFixed(2)} = ${s.totalAmount.toFixed(2)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-1 font-semibold">Total: ${a.totalAmount.toFixed(2)}</p>
-            </div>
-          )}
-          {canEditAppointments && a.status === "scheduled" && (
-            <div className="rounded-lg border border-brand-200 bg-brand-500/5 p-3 dark:border-brand-800 dark:bg-brand-500/10">
-              <p className="text-xs font-medium text-gray-800 dark:text-gray-200">Complete visit</p>
-              {a.totalAmount > 0 ? (
-                <div className="mt-2 space-y-1">
-                  <label htmlFor="visit-billing-discount" className="block text-[11px] text-gray-600 dark:text-gray-400">
-                    Billing discount ($) — optional, applied before recording payment
-                  </label>
-                  <input
-                    id="visit-billing-discount"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={billingDiscount}
-                    disabled={patchLoading}
-                    onChange={(e) => setBillingDiscount(e.target.value)}
-                    className="h-9 w-full max-w-[200px] rounded-lg border border-gray-200 bg-white px-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                  />
-                </div>
-              ) : null}
-              {a.totalAmount > 0 && !a.paymentMethod?.id ? (
-                <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                  Choose a payment method above to record visit billing when you complete this booking.
-                </p>
-              ) : null}
-              <button
-                type="button"
-                disabled={patchLoading || (a.totalAmount > 0 && !a.paymentMethod?.id)}
-                onClick={() => void completeVisit()}
-                className="mt-3 w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 dark:bg-emerald-700 dark:hover:bg-emerald-600"
-              >
-                Mark visit complete
-              </button>
-            </div>
-          )}
           {(a.sales?.length ?? 0) > 0 && (
             <div className="space-y-2 border-t border-gray-200 pt-4 dark:border-gray-700">
               <p className="font-medium text-gray-800 dark:text-gray-200">Sales for this booking</p>

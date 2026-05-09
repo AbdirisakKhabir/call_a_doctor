@@ -12,8 +12,17 @@ import {
 } from "@/lib/care-file";
 import { createAppointmentBillingSaleInTx } from "@/lib/appointment-billing-sale";
 import { getAppointmentBlockMessage } from "@/lib/appointment-schedule-blocks";
+import { DEFAULT_APPOINTMENT_DURATION_MIN, parseTimeToMinutes } from "@/lib/appointment-calendar-time";
 
-const ALLOWED_APPOINTMENT_STATUS_FILTERS = ["scheduled", "completed", "cancelled", "no-show"] as const;
+const ALLOWED_APPOINTMENT_STATUS_FILTERS = ["scheduled", "pending", "completed", "cancelled", "no-show"] as const;
+
+function dayBoundsFromIsoDate(isoDate: string): { start: Date; end: Date } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+  const [y, mo, d] = isoDate.split("-").map(Number);
+  const start = new Date(y, mo - 1, d, 0, 0, 0, 0);
+  const end = new Date(y, mo - 1, d, 23, 59, 59, 999);
+  return { start, end };
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -98,7 +107,24 @@ export async function GET(req: NextRequest) {
     const include = {
       branch: { select: { id: true, name: true } },
       doctor: { select: { id: true, name: true, specialty: true } },
-      patient: { select: { id: true, patientCode: true, firstName: true, lastName: true } },
+      patient: {
+        select: {
+          id: true,
+          patientCode: true,
+          firstName: true,
+          lastName: true,
+          phone: true,
+          mobile: true,
+          email: true,
+          dateOfBirth: true,
+          age: true,
+          gender: true,
+          address: true,
+          notes: true,
+          city: { select: { id: true, name: true } },
+          village: { select: { id: true, name: true } },
+        },
+      },
       services: {
         include: { service: { select: { id: true, name: true, color: true } } },
       },
@@ -241,6 +267,43 @@ export async function POST(req: NextRequest) {
     });
     if (blockMsg) {
       return NextResponse.json({ error: blockMsg }, { status: 400 });
+    }
+
+    const requestedStart = String(startTime);
+    const requestedEnd = endTime ? String(endTime) : null;
+    const requestedStartMin = parseTimeToMinutes(requestedStart);
+    const requestedEndMin = requestedEnd ? parseTimeToMinutes(requestedEnd) : null;
+    if (requestedStartMin == null) {
+      return NextResponse.json({ error: "Invalid start time" }, { status: 400 });
+    }
+    const fallbackEnd = requestedStartMin + DEFAULT_APPOINTMENT_DURATION_MIN;
+    const requestedEndMinSafe =
+      requestedEndMin != null && requestedEndMin > requestedStartMin ? requestedEndMin : fallbackEnd;
+    const bounds = dayBoundsFromIsoDate(String(appointmentDate).slice(0, 10));
+    if (!bounds) {
+      return NextResponse.json({ error: "Invalid appointment date" }, { status: 400 });
+    }
+    const sameDayAppointments = await prisma.appointment.findMany({
+      where: {
+        doctorId: Number(doctorId),
+        appointmentDate: { gte: bounds.start, lte: bounds.end },
+        status: { not: "cancelled" },
+      },
+      select: { id: true, startTime: true, endTime: true, patient: { select: { firstName: true, lastName: true } } },
+    });
+    const conflicting = sameDayAppointments.find((a) => {
+      const sm = parseTimeToMinutes(String(a.startTime));
+      const emRaw = a.endTime ? parseTimeToMinutes(String(a.endTime)) : null;
+      if (sm == null) return false;
+      const em = emRaw != null && emRaw > sm ? emRaw : sm + DEFAULT_APPOINTMENT_DURATION_MIN;
+      return requestedStartMin < em && requestedEndMinSafe > sm;
+    });
+    if (conflicting) {
+      const name = `${conflicting.patient.firstName ?? ""} ${conflicting.patient.lastName ?? ""}`.trim() || "another client";
+      return NextResponse.json(
+        { error: `This slot is already booked (${name}). Please choose an available time.` },
+        { status: 400 }
+      );
     }
 
     let createdBillingSaleId: number | null = null;

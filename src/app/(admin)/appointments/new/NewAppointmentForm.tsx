@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
@@ -44,6 +44,10 @@ function addMinutesToTime(start: string, minutes: number): string {
   const nh = Math.floor(total / 60) % 24;
   const nm = total % 60;
   return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
+function formatNowHHmm(now: Date): string {
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
 function totalDurationMinutes(
@@ -118,6 +122,9 @@ export default function NewAppointmentForm() {
   const [servicePick, setServicePick] = useState("");
   const [receiptSaleId, setReceiptSaleId] = useState<number | null>(null);
   const [scheduleBlocks, setScheduleBlocks] = useState<ClientScheduleBlock[]>([]);
+  const defaultTimeInitializedRef = useRef(false);
+  const patientSearchCacheRef = useRef<Map<string, Patient[]>>(new Map());
+  const patientSearchAbortRef = useRef<AbortController | null>(null);
 
   const canCreate = hasPermission("appointments.create") || hasPermission("appointments.view");
   const canCreatePatient = hasPermission("patients.create") || hasPermission("pharmacy.create");
@@ -138,6 +145,20 @@ export default function NewAppointmentForm() {
         : new Date().toISOString().slice(0, 10);
     setForm((f) => ({ ...f, appointmentDate: initialDate }));
   }, [dateParam]);
+
+  useEffect(() => {
+    if (defaultTimeInitializedRef.current) return;
+    const stRaw = startTimeParam?.trim();
+    if (stRaw && /^\d{1,2}:\d{2}$/.test(stRaw)) {
+      defaultTimeInitializedRef.current = true;
+      return;
+    }
+    const now = new Date();
+    const nowStart = formatNowHHmm(now);
+    const nowEnd = addMinutesToTime(nowStart, calendarSlotMinutes);
+    setForm((f) => ({ ...f, startTime: nowStart, endTime: nowEnd }));
+    defaultTimeInitializedRef.current = true;
+  }, [startTimeParam, calendarSlotMinutes]);
 
   useEffect(() => {
     if (timeSlots.length === 0) return;
@@ -290,33 +311,76 @@ export default function NewAppointmentForm() {
   }, [bookingBranchIdN, bookingDateOk, form.appointmentDate]);
 
   useEffect(() => {
-    if (timeSlots.length === 0) return;
     setForm((f) => {
-      const start = snapTimeToSlotList(f.startTime, timeSlots);
-      const end = snapTimeToSlotList(f.endTime, timeSlots);
-      if (start === f.startTime && end === f.endTime) return f;
+      const startOk = parseTimeToMinutes(f.startTime) != null;
+      const endOk = parseTimeToMinutes(f.endTime) != null;
+      if (startOk && endOk) return f;
+      const now = new Date();
+      const start = startOk ? f.startTime : formatNowHHmm(now);
+      const end = endOk ? f.endTime : addMinutesToTime(start, calendarSlotMinutes);
       return { ...f, startTime: start, endTime: end };
     });
-  }, [calendarSlotMinutes, timeSlots]);
+  }, [calendarSlotMinutes]);
 
   useEffect(() => {
     const q = patientSearch.trim();
     if (q.length < 2) {
+      if (patientSearchAbortRef.current) {
+        patientSearchAbortRef.current.abort();
+        patientSearchAbortRef.current = null;
+      }
       setPatientSearchResults([]);
       setSearchingPatients(false);
       return;
     }
+    const cacheKey = q.toLowerCase();
+    const cached = patientSearchCacheRef.current.get(cacheKey);
+    if (cached) {
+      setPatientSearchResults(cached);
+      setSearchingPatients(false);
+      return;
+    }
+    if (patientSearchAbortRef.current) {
+      patientSearchAbortRef.current.abort();
+      patientSearchAbortRef.current = null;
+    }
     setSearchingPatients(true);
+    const controller = new AbortController();
+    patientSearchAbortRef.current = controller;
     const t = setTimeout(() => {
-      authFetch(`/api/patients?search=${encodeURIComponent(q)}`)
-        .then((r) => (r.ok ? r.json() : []))
-        .then((data: Patient[] | unknown) => {
-          setPatientSearchResults(Array.isArray(data) ? data : []);
+      authFetch(`/api/patients?page=1&pageSize=15&search=${encodeURIComponent(q)}`, { signal: controller.signal })
+        .then((r) => (r.ok ? r.json() : { data: [] }))
+        .then((data: { data?: Patient[] } | Patient[] | unknown) => {
+          const list = Array.isArray(data)
+            ? data
+            : Array.isArray((data as { data?: unknown }).data)
+              ? ((data as { data: Patient[] }).data ?? [])
+              : [];
+          patientSearchCacheRef.current.set(cacheKey, list);
+          if (patientSearchCacheRef.current.size > 40) {
+            const firstKey = patientSearchCacheRef.current.keys().next().value;
+            if (firstKey) patientSearchCacheRef.current.delete(firstKey);
+          }
+          setPatientSearchResults(list);
         })
-        .catch(() => setPatientSearchResults([]))
-        .finally(() => setSearchingPatients(false));
-    }, 300);
-    return () => clearTimeout(t);
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setPatientSearchResults([]);
+        })
+        .finally(() => {
+          if (patientSearchAbortRef.current === controller) {
+            patientSearchAbortRef.current = null;
+          }
+          setSearchingPatients(false);
+        });
+    }, 180);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+      if (patientSearchAbortRef.current === controller) {
+        patientSearchAbortRef.current = null;
+      }
+    };
   }, [patientSearch]);
 
   function applyEndTimeFromServices(
@@ -384,8 +448,9 @@ export default function NewAppointmentForm() {
 
       let next = { ...f };
       let changed = false;
+      const startIsGridSlot = timeSlots.includes(next.startTime);
 
-      if (isStartSlotBlockedForNewBooking(next.startTime, scheduleBlocks, d, bid)) {
+      if (startIsGridSlot && isStartSlotBlockedForNewBooking(next.startTime, scheduleBlocks, d, bid)) {
         const firstStart = timeSlots.find((t) => !isStartSlotBlockedForNewBooking(t, scheduleBlocks, d, bid));
         if (!firstStart) return f;
         next.startTime = firstStart;
@@ -441,13 +506,20 @@ export default function NewAppointmentForm() {
     form.patientId &&
     (patientSearchResults.find((p) => p.id === Number(form.patientId))?.name ||
       patientSearch);
+  const startTimeIsCustom = !timeSlots.includes(form.startTime);
+  const endTimeIsCustom = !timeSlots.includes(form.endTime);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return;
     setError("");
     if (!canCreate) return;
     if (!form.branchId || !form.doctorId || !form.patientId) {
       setError("Branch, doctor and client are required");
+      return;
+    }
+    if (form.services.length === 0) {
+      setError("Select at least one service before creating the booking.");
       return;
     }
     const paidTrim = form.paidAmount.trim();
@@ -615,7 +687,7 @@ export default function NewAppointmentForm() {
                 <p className="px-4 py-3 text-sm text-gray-500">Type at least 2 characters to search.</p>
               ) : searchingPatients ? (
                 <p className="px-4 py-3 text-sm text-gray-500">Searching…</p>
-              ) : patientSearchResults.length === 0 ? (
+              ) : patientSearchResults.length === 0 && !form.patientId ? (
                 <p className="px-4 py-3 text-sm text-gray-500">No clients found.</p>
               ) : (
                 patientSearchResults.slice(0, 15).map((p) => (
@@ -673,6 +745,7 @@ export default function NewAppointmentForm() {
                 }}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               >
+                {startTimeIsCustom ? <option value={form.startTime}>{form.startTime} — current</option> : null}
                 {timeSlots.map((t) => {
                   const blocked =
                     blocksApplyToUi &&
@@ -687,12 +760,13 @@ export default function NewAppointmentForm() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">End time (from service duration)</label>
+              <label className="mb-1 block text-sm font-medium">End time</label>
               <select
                 value={form.endTime}
                 onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               >
+                {endTimeIsCustom ? <option value={form.endTime}>{form.endTime}</option> : null}
                 {timeSlots.map((t) => {
                   const sm = parseTimeToMinutes(form.startTime);
                   const em = parseTimeToMinutes(t);
@@ -735,7 +809,7 @@ export default function NewAppointmentForm() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Services / treatments (charge)</label>
+            <label className="mb-1 block text-sm font-medium">Services / treatments (charge) *</label>
             <select
               className="h-11 w-full max-w-md rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               value={servicePick}
@@ -766,32 +840,15 @@ export default function NewAppointmentForm() {
                 {form.services.map((s) => (
                   <div
                     key={s.serviceId}
-                    className="flex flex-wrap items-center gap-2 rounded-md border border-gray-100 py-2 pl-3 pr-2 dark:border-gray-800"
-                    style={
-                      s.color
-                        ? { borderLeftWidth: 4, borderLeftColor: s.color, borderLeftStyle: "solid" }
-                        : undefined
-                    }
+                    className="flex flex-wrap items-center gap-3 rounded-md border border-gray-100 py-2 pl-3 pr-2 dark:border-gray-800"
                   >
+                    <span
+                      className="h-5 w-5 shrink-0 rounded-md border border-gray-200 dark:border-gray-700"
+                      style={s.color ? { backgroundColor: s.color } : { backgroundColor: "#e5e7eb" }}
+                      aria-hidden
+                      title={s.color ? `${s.name} color` : "No service color"}
+                    />
                     <span className="min-w-0 flex-1 text-sm font-medium">{s.name}</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={s.quantity}
-                      onChange={(e) => updateServiceQty(s.serviceId, Number(e.target.value))}
-                      className="h-9 w-16 rounded border border-gray-200 px-2 text-sm dark:border-gray-700"
-                      aria-label={`Quantity for ${s.name}`}
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={s.unitPrice}
-                      onChange={(e) => updateServicePrice(s.serviceId, Number(e.target.value))}
-                      className="h-9 w-24 rounded border border-gray-200 px-2 text-sm dark:border-gray-700"
-                      aria-label={`Unit price for ${s.name}`}
-                    />
-                    <span className="text-sm font-medium tabular-nums">${(s.quantity * s.unitPrice).toFixed(2)}</span>
                     <button
                       type="button"
                       onClick={() => removeService(s.serviceId)}
@@ -919,7 +976,7 @@ export default function NewAppointmentForm() {
               Cancel
             </Button>
             <Button type="submit" disabled={submitting} size="sm">
-              {submitting ? "Saving…" : "Save booking"}
+              {submitting ? "Saving ...." : "Save booking"}
             </Button>
           </div>
         </form>

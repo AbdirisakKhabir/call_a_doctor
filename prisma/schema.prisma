@@ -368,7 +368,11 @@ model Appointment {
   endTime               String? // e.g. "09:30"
   /// Minutes before start to remind (e.g. 15, 60); null = no reminder
   reminderMinutesBefore Int?
-  status                String               @default("scheduled") // scheduled, completed, cancelled, no-show
+  status                String               @default("scheduled") // scheduled, pending, completed, cancelled, no-show
+  /// Visit wrap-up checklist: yes | no | na (set via complete-workflow).
+  completionChecklistLab           String?
+  completionChecklistPrescription  String?
+  completionChecklistClinicNote    String?
   notes                 String?
   totalAmount           Float                @default(0)
   /// False when visit billing was posted at booking (immediate sale); delete logic skips reversing an AR bump that never happened.
@@ -438,7 +442,7 @@ model DoctorVisitCard {
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
-  @@unique([branchId, cardNumber])
+  @@unique([branchId, visitDate, cardNumber])
   @@index([careFileId])
   @@index([branchId, visitDate])
   @@index([doctorId, visitDate])

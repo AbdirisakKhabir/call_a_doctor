@@ -18,6 +18,10 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
 import { PAYMENT_STATUS_OPTIONS, type PaymentStatusValue } from "@/lib/visit-card-labels";
+import {
+  VISIT_CARD_DAILY_SLOT_COUNT,
+  parseVisitCardSlotNumber,
+} from "@/lib/visit-card-slots";
 
 type PatientMini = { id: number; patientCode: string; name: string; phone: string | null };
 type DoctorMini = { id: number; name: string; specialty?: string | null; branch?: { id: number; name: string } | null };
@@ -73,6 +77,8 @@ function NewVisitCardPage() {
   const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [takenSlots, setTakenSlots] = useState<number[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
 
   const [form, setForm] = useState({
     doctorId: "",
@@ -194,6 +200,43 @@ function NewVisitCardPage() {
   }, [branchId]);
 
   useEffect(() => {
+    const bid = branchId ? Number(branchId) : null;
+    const vd = form.visitDate?.trim() ?? "";
+    if (!bid || !Number.isInteger(bid) || !/^\d{4}-\d{2}-\d{2}$/.test(vd)) {
+      setTakenSlots([]);
+      setSlotsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSlotsLoading(true);
+    authFetch(
+      `/api/visit-cards/slot-availability?branchId=${bid}&visitDate=${encodeURIComponent(vd)}`
+    )
+      .then(async (r) => {
+        const data = (await r.json()) as { takenSlots?: number[]; error?: string };
+        if (!r.ok) throw new Error(data.error || "Failed to load slots");
+        const taken = Array.isArray(data.takenSlots) ? data.takenSlots : [];
+        if (!cancelled) {
+          setTakenSlots(taken);
+          setForm((f) => {
+            const cur = parseVisitCardSlotNumber(f.cardNumber);
+            if (cur != null && taken.includes(cur)) return { ...f, cardNumber: "" };
+            return f;
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setTakenSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId, form.visitDate]);
+
+  useEffect(() => {
     let cancelled = false;
     setPaymentMethodsLoading(true);
     authFetch("/api/finance/payment-methods")
@@ -224,12 +267,17 @@ function NewVisitCardPage() {
       setError("Select a branch");
       return;
     }
-    if (!form.cardNumber.trim()) {
-      setError("Visit card number is required");
-      return;
-    }
     if (!form.doctorId) {
       setError("Select a doctor");
+      return;
+    }
+    if (!parseVisitCardSlotNumber(form.cardNumber)) {
+      setError(`Select a visit card slot from 1 to ${VISIT_CARD_DAILY_SLOT_COUNT}`);
+      return;
+    }
+    const selectedSlot = parseVisitCardSlotNumber(form.cardNumber)!;
+    if (takenSlots.includes(selectedSlot)) {
+      setError("That slot is already booked for this day. Choose another.");
       return;
     }
     if (!useNewPatient && !selectedPatient) {
@@ -277,7 +325,7 @@ function NewVisitCardPage() {
       const body: Record<string, unknown> = {
         branchId: bid,
         doctorId: Number(form.doctorId),
-        cardNumber: form.cardNumber.trim(),
+        cardNumber: String(selectedSlot),
         visitDate: form.visitDate,
         visitFee: fee,
         paymentStatus: form.paymentStatus,
@@ -569,17 +617,6 @@ function NewVisitCardPage() {
           )}
         </div>
 
-        <div>
-          <Label>Visit card number *</Label>
-          <input
-            required
-            value={form.cardNumber}
-            onChange={(e) => setForm((f) => ({ ...f, cardNumber: e.target.value }))}
-            className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-            placeholder="e.g. VC-2026-001"
-          />
-        </div>
-
         <DateField
           id="visit-card-date"
           label="Visit date *"
@@ -588,6 +625,62 @@ function NewVisitCardPage() {
           onChange={(v) => setForm((f) => ({ ...f, visitDate: v }))}
           appendToBody
         />
+
+        <div>
+          <Label>Visit card slot *</Label>
+          <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+            Slots 1–{VISIT_CARD_DAILY_SLOT_COUNT} for this branch: each number is available once per day. Booked slots
+            are disabled.
+          </p>
+          {!branchId || !/^\d{4}-\d{2}-\d{2}$/.test(form.visitDate) ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">Select branch and visit date to load slots.</p>
+          ) : slotsLoading ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading slots…</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-6 gap-2 sm:grid-cols-10">
+                {Array.from({ length: VISIT_CARD_DAILY_SLOT_COUNT }, (_, i) => {
+                  const n = i + 1;
+                  const taken = takenSlots.includes(n);
+                  const selected = form.cardNumber === String(n);
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      disabled={taken}
+                      onClick={() => setForm((f) => ({ ...f, cardNumber: String(n) }))}
+                      className={[
+                        "flex h-10 items-center justify-center rounded-lg border text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
+                        taken
+                          ? "cursor-not-allowed border-gray-100 bg-gray-100 text-gray-400 line-through dark:border-gray-800 dark:bg-gray-800 dark:text-gray-500"
+                          : selected
+                            ? "border-brand-500 bg-brand-500 text-white dark:border-brand-400 dark:bg-brand-500"
+                            : "border-gray-200 bg-white text-gray-800 hover:border-brand-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:border-brand-600",
+                      ].join(" ")}
+                    >
+                      {n}
+                    </button>
+                  );
+                })}
+              </div>
+              {form.cardNumber ? (
+                <p className="mt-3 text-sm font-medium text-gray-800 dark:text-gray-200">
+                  Selected slot:{" "}
+                  <span className="text-brand-600 dark:text-brand-400">{form.cardNumber}</span>
+                </p>
+              ) : (
+                <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No slot selected yet.</p>
+              )}
+              {takenSlots.length > 0 ? (
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Booked for this date: {[...takenSlots].sort((a, b) => a - b).join(", ")}
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">No slots booked yet for this date.</p>
+              )}
+            </>
+          )}
+        </div>
 
         <div>
           <Label>Visit fee</Label>

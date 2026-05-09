@@ -19,6 +19,10 @@ import {
 } from "@/lib/phone-country";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
+import {
+  encodeAllergiesInfectionsNotes,
+  type AllergiesInfectionsSelection,
+} from "@/lib/patient-allergies-notes";
 
 type ReferralOption = { id: number; name: string };
 type CityOpt = { id: number; name: string };
@@ -39,7 +43,8 @@ const emptyForm = {
   cityId: "",
   villageId: "",
   registeredBranchId: "",
-  notes: "",
+  allergiesInfections: "" as AllergiesInfectionsSelection,
+  allergiesInfectionsDetail: "",
   referralSourceId: "",
 };
 
@@ -156,6 +161,14 @@ export default function NewPatientPage() {
       setError(mobileErr);
       return;
     }
+    if (form.allergiesInfections !== "yes" && form.allergiesInfections !== "no") {
+      setError("Please select Yes or No for allergies and infections.");
+      return;
+    }
+    if (form.allergiesInfections === "yes" && !form.allergiesInfectionsDetail.trim()) {
+      setError("Please describe the allergies or infections.");
+      return;
+    }
     setSubmitting(true);
     try {
       const {
@@ -163,10 +176,14 @@ export default function NewPatientPage() {
         phoneNational,
         mobileCountryIso2,
         mobileNational,
+        allergiesInfections,
+        allergiesInfectionsDetail,
         ...formRest
       } = form;
+      const notes = encodeAllergiesInfectionsNotes(allergiesInfections, allergiesInfectionsDetail);
       const payload = {
         ...formRest,
+        notes,
         phone: formatInternationalPhoneForStorage(phoneCountryIso2, phoneNational),
         mobile: formatInternationalPhoneForStorage(mobileCountryIso2, mobileNational),
         referralSourceId: form.referralSourceId ? Number(form.referralSourceId) : null,
@@ -417,15 +434,57 @@ export default function NewPatientPage() {
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Configure options under Settings → Referred from.</p>
           </div>
           <div>
-            <Label>Client chart notes (alerts / allergies)</Label>
-            <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Shown when booking and prescribing.</p>
-            <textarea
-              value={form.notes}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-              rows={2}
-              className="mt-1 min-h-20 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-              placeholder="Allergies, warnings, demographics…"
-            />
+            <Label>
+              Allergies and infections <span className="text-red-500">*</span>
+            </Label>
+            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+              Shown when booking and prescribing. Select Yes if there are known allergies or infections to document.
+            </p>
+            <div className="flex flex-wrap gap-6">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-white/90">
+                <input
+                  type="radio"
+                  name="allergiesInfections"
+                  className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600"
+                  checked={form.allergiesInfections === "yes"}
+                  onChange={() =>
+                    setForm((f) => ({ ...f, allergiesInfections: "yes" }))
+                  }
+                />
+                Yes
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-white/90">
+                <input
+                  type="radio"
+                  name="allergiesInfections"
+                  className="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600"
+                  checked={form.allergiesInfections === "no"}
+                  onChange={() =>
+                    setForm((f) => ({
+                      ...f,
+                      allergiesInfections: "no",
+                      allergiesInfectionsDetail: "",
+                    }))
+                  }
+                />
+                No
+              </label>
+            </div>
+            {form.allergiesInfections === "yes" && (
+              <div className="mt-3">
+                <Label>Description</Label>
+                <textarea
+                  value={form.allergiesInfectionsDetail}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, allergiesInfectionsDetail: e.target.value }))
+                  }
+                  rows={3}
+                  required
+                  className="mt-1 min-h-24 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                  placeholder="Describe allergies, infections, or related alerts…"
+                />
+              </div>
+            )}
           </div>
         </ClientFormCard>
 
