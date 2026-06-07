@@ -17,6 +17,7 @@ type FormRow = {
   createdAt: string;
   updatedAt: string;
   _count: { fields: number };
+  service: { id: number; name: string } | null;
   createdBy: { id: number; name: string | null; email: string } | null;
 };
 
@@ -90,6 +91,7 @@ export default function FormsListPage() {
             <TableHeader>
               <TableRow>
                 <TableCell isHeader>Title</TableCell>
+                <TableCell isHeader>Service</TableCell>
                 <TableCell isHeader>Fields</TableCell>
                 <TableCell isHeader>Status</TableCell>
                 <TableCell isHeader>Updated</TableCell>
@@ -108,6 +110,13 @@ export default function FormsListPage() {
                         {r.createdBy?.name || r.createdBy?.email}
                       </span>
                     ) : null}
+                  </TableCell>
+                  <TableCell>
+                    {r.service ? (
+                      <span className="text-sm text-gray-700 dark:text-gray-300">{r.service.name}</span>
+                    ) : (
+                      <span className="text-sm text-gray-400 dark:text-gray-500">Any</span>
+                    )}
                   </TableCell>
                   <TableCell>{r._count.fields}</TableCell>
                   <TableCell>

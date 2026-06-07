@@ -80,6 +80,7 @@ export async function restoreFromTrashSnapshot(
           title: String(s.title),
           description: s.description != null ? String(s.description) : null,
           isPublished: Boolean(s.isPublished ?? false),
+          serviceId: typeof s.serviceId === "number" ? s.serviceId : null,
           createdById: typeof s.createdById === "number" ? s.createdById : null,
         },
       });

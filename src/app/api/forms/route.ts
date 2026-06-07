@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
       include: {
         _count: { select: { fields: true } },
         createdBy: { select: { id: true, name: true, email: true } },
+        service: { select: { id: true, name: true } },
       },
     });
     return NextResponse.json(rows);

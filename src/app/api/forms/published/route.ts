@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
+import { publishedFormsWhereForServices } from "@/lib/custom-form-service-filter";
+
+const publishedFormSelect = {
+  id: true,
+  title: true,
+  description: true,
+  updatedAt: true,
+  serviceId: true,
+  service: { select: { id: true, name: true } },
+  _count: { select: { fields: true } },
+} as const;
 
 /** Published forms for appointment / clinic note picker. */
 export async function GET(req: NextRequest) {
@@ -18,15 +29,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const appointmentIdRaw = searchParams.get("appointmentId");
+    const appointmentId =
+      appointmentIdRaw && /^\d+$/.test(appointmentIdRaw) ? Number.parseInt(appointmentIdRaw, 10) : null;
+
+    let where = { isPublished: true } as ReturnType<typeof publishedFormsWhereForServices>;
+
+    if (appointmentId != null && appointmentId > 0) {
+      const appt = await prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        select: { services: { select: { serviceId: true } } },
+      });
+      if (!appt) {
+        return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+      }
+      where = publishedFormsWhereForServices(appt.services.map((s) => s.serviceId));
+    }
+
     const rows = await prisma.customForm.findMany({
-      where: { isPublished: true },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        updatedAt: true,
-        _count: { select: { fields: true } },
-      },
+      where,
+      select: publishedFormSelect,
       orderBy: [{ title: "asc" }],
     });
     return NextResponse.json(rows);

@@ -404,6 +404,197 @@ function TimeGutterColumn({ slotMinutes }: { slotMinutes: number }) {
   );
 }
 
+const CALENDAR_WEEKDAY_SHORT = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+const MONTH_DAY_MAX_CHIPS = 3;
+
+function monthAppointmentChipClass(apt: Appointment): string {
+  const svcColor = firstServiceColor(apt);
+  if (svcColor) {
+    return "w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] font-semibold leading-tight shadow-sm ring-1 ring-black/5 dark:ring-white/10";
+  }
+  const s = apt.status.toLowerCase();
+  if (s === "draft") {
+    return "w-full truncate rounded border border-violet-300 bg-violet-100 px-1.5 py-0.5 text-left text-[10px] font-semibold leading-tight text-violet-950 dark:border-violet-700 dark:bg-violet-900/35 dark:text-violet-50";
+  }
+  if (s === "pending") {
+    return "w-full truncate rounded border border-amber-400 bg-amber-100 px-1.5 py-0.5 text-left text-[10px] font-semibold leading-tight text-amber-950 dark:border-amber-600 dark:bg-amber-900/40 dark:text-amber-50";
+  }
+  if (s === "completed") {
+    return "w-full truncate rounded border border-green-200 bg-green-100 px-1.5 py-0.5 text-left text-[10px] font-semibold leading-tight text-green-950 dark:border-green-800 dark:bg-green-900/35 dark:text-green-50";
+  }
+  return "w-full truncate rounded border border-brand-200 bg-brand-100 px-1.5 py-0.5 text-left text-[10px] font-semibold leading-tight text-brand-950 dark:border-brand-800 dark:bg-brand-900/35 dark:text-brand-50";
+}
+
+function monthAppointmentChipStyle(apt: Appointment): React.CSSProperties | undefined {
+  const svcColor = firstServiceColor(apt);
+  if (!svcColor) return undefined;
+  return {
+    backgroundColor: svcColor,
+    color: contrastingForeground(svcColor),
+    borderColor: "transparent",
+  };
+}
+
+function MonthDayCell({
+  cell,
+  appointments,
+  isToday,
+  hasBlock,
+  canCreate,
+  onOpenAppointment,
+  onOpenDay,
+  onNewBooking,
+}: {
+  cell: CalendarDayCell;
+  appointments: Appointment[];
+  isToday: boolean;
+  hasBlock: boolean;
+  canCreate: boolean;
+  onOpenAppointment: (apt: Appointment) => void;
+  onOpenDay: (isoDate: string) => void;
+  onNewBooking: (isoDate: string) => void;
+}) {
+  const visible = appointments.slice(0, MONTH_DAY_MAX_CHIPS);
+  const overflow = appointments.length - visible.length;
+  const muted = !cell.isCurrentMonth;
+
+  return (
+    <div
+      className={`flex min-h-[5.25rem] min-w-0 flex-col rounded-lg border p-1.5 transition-colors sm:min-h-[6.25rem] sm:p-2 ${
+        isToday
+          ? "border-brand-400 bg-brand-50/90 ring-2 ring-brand-400/40 dark:border-brand-500 dark:bg-brand-950/40 dark:ring-brand-500/30"
+          : muted
+            ? "border-gray-100 bg-gray-50/80 dark:border-gray-800 dark:bg-gray-900/40"
+            : appointments.length > 0
+              ? "border-emerald-200/80 bg-emerald-50/50 dark:border-emerald-800/40 dark:bg-emerald-500/5"
+              : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/30"
+      } ${canCreate ? "hover:border-brand-300 dark:hover:border-brand-600" : ""}`}
+    >
+      <div className="mb-1 flex items-start justify-between gap-1">
+        <button
+          type="button"
+          onClick={() => onOpenDay(cell.date)}
+          className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-bold tabular-nums sm:h-7 sm:min-w-7 sm:text-sm ${
+            isToday
+              ? "bg-brand-500 text-white"
+              : muted
+                ? "text-gray-400 dark:text-gray-500"
+                : "text-gray-800 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-800"
+          }`}
+          title={`Open ${cell.date} in day view`}
+        >
+          {cell.day}
+        </button>
+        {hasBlock ? (
+          <span
+            className="shrink-0 rounded bg-gray-500/15 px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
+            title="Blocked"
+          >
+            Block
+          </span>
+        ) : null}
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={() => onNewBooking(cell.date)}
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-brand-500/10 hover:text-brand-600 dark:hover:text-brand-400"
+            title="New booking"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+            <span className="sr-only">New booking</span>
+          </button>
+        ) : null}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
+        {visible.map((apt) => (
+          <button
+            key={apt.id}
+            type="button"
+            onClick={() => onOpenAppointment(apt)}
+            className={monthAppointmentChipClass(apt)}
+            style={monthAppointmentChipStyle(apt)}
+            title={`${formatTime12hLabel(apt.startTime)} — ${apt.patient.name}`}
+          >
+            {formatTime12hLabel(apt.startTime)} · {apt.patient.name}
+          </button>
+        ))}
+        {overflow > 0 ? (
+          <button
+            type="button"
+            onClick={() => onOpenDay(cell.date)}
+            className="truncate text-left text-[10px] font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            +{overflow} more
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function MonthCalendarGrid({
+  weeks,
+  todayIso,
+  appointmentsByDate,
+  scheduleBlocks,
+  canCreate,
+  onOpenAppointment,
+  onOpenDay,
+  onNewBooking,
+}: {
+  weeks: CalendarDayCell[][];
+  todayIso: string;
+  appointmentsByDate: Record<string, Appointment[]>;
+  scheduleBlocks: ScheduleBlock[];
+  canCreate: boolean;
+  onOpenAppointment: (apt: Appointment) => void;
+  onOpenDay: (isoDate: string) => void;
+  onNewBooking: (isoDate: string) => void;
+}) {
+  function dayHasBlock(isoDate: string): boolean {
+    return scheduleBlocks.some((b) => b.isActive !== false && b.allDay && blockAppliesToDate(b, isoDate));
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-2 sm:p-3 [-webkit-overflow-scrolling:touch]">
+      <div className="grid grid-cols-7 gap-1 pb-1">
+        {CALENDAR_WEEKDAY_SHORT.map((label) => (
+          <div
+            key={label}
+            className="py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 sm:text-xs"
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+      <div className="space-y-1">
+        {weeks.map((week, weekIndex) => (
+          <div key={week[0]?.date ?? weekIndex} className="grid grid-cols-7 gap-1">
+            {week.map((cell) => {
+              const dayApts = (appointmentsByDate[cell.date] || [])
+                .filter((a) => a.status !== "cancelled")
+                .sort(sortByStartTime);
+              return (
+                <MonthDayCell
+                  key={cell.date}
+                  cell={cell}
+                  appointments={dayApts}
+                  isToday={cell.date === todayIso}
+                  hasBlock={dayHasBlock(cell.date)}
+                  canCreate={canCreate}
+                  onOpenAppointment={onOpenAppointment}
+                  onOpenDay={onOpenDay}
+                  onNewBooking={onNewBooking}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AppointmentsPage() {
   const router = useRouter();
   const { hasPermission } = useAuth();
@@ -604,7 +795,8 @@ export default function AppointmentsPage() {
     if (!calendarModal || calendarModal.step !== "forms") return;
     let cancelled = false;
     setFormsListLoading(true);
-    authFetch("/api/forms/published")
+    const aptId = calendarModal.apt.id;
+    authFetch(`/api/forms/published?appointmentId=${aptId}`)
       .then(async (res) => {
         if (cancelled || !res.ok) {
           if (!cancelled) setPublishedForms([]);
@@ -671,6 +863,15 @@ export default function AppointmentsPage() {
     router.push(`/appointments/${apt.id}`);
   }
 
+  function openDayView(isoDate: string) {
+    setAnchorDate(isoDate);
+    setViewMode("day");
+  }
+
+  function newBookingForDate(isoDate: string) {
+    router.push(`/appointments/new?date=${encodeURIComponent(isoDate)}`);
+  }
+
   function openAppointmentQuickView(apt: Appointment) {
     setCalendarModal({ apt, step: "detail" });
   }
@@ -686,9 +887,9 @@ export default function AppointmentsPage() {
 
   function selectFormForCalendarClient(formId: number) {
     if (!calendarModal) return;
-    const pid = calendarModal.apt.patient.id;
+    const aptId = calendarModal.apt.id;
     closeAppointmentQuickView();
-    router.push(`/patients/${pid}/clinic-forms?formId=${formId}`);
+    router.push(`/appointments/${aptId}/clinic-forms?formId=${formId}`);
   }
 
   function handleGridSlotPointerDown(
@@ -781,6 +982,7 @@ export default function AppointmentsPage() {
     const mo = Number(mStr);
     if (!Number.isFinite(y) || !Number.isFinite(mo) || mo < 1 || mo > 12) return;
     setCurrentMonth({ year: y, month: mo - 1 });
+    setViewMode("month");
     if (viewMode !== "month") {
       setAnchorDate(`${y}-${String(mo).padStart(2, "0")}-01`);
     }
@@ -902,7 +1104,7 @@ export default function AppointmentsPage() {
                 </button>
               ))}
             </div>
-            {canManageSlotStep ? (
+            {canManageSlotStep && viewMode !== "month" ? (
               <div className="flex min-w-0 flex-col items-end gap-0.5">
                 <div
                   className="flex shrink-0 rounded-lg border border-gray-200 bg-white p-0.5 dark:border-gray-600 dark:bg-gray-900"
@@ -931,7 +1133,7 @@ export default function AppointmentsPage() {
                   </span>
                 ) : null}
               </div>
-            ) : (
+            ) : viewMode !== "month" ? (
               <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
                 {slotMinutes} min grid
                 <Link
@@ -941,7 +1143,7 @@ export default function AppointmentsPage() {
                   Calendar settings
                 </Link>
               </span>
-            )}
+            ) : null}
             {canCreate && (
               <Link
                 href="/appointments/new"
@@ -957,6 +1159,17 @@ export default function AppointmentsPage() {
           <div className="flex flex-1 justify-center py-24">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-brand-500" />
           </div>
+        ) : viewMode === "month" ? (
+          <MonthCalendarGrid
+            weeks={weeksInMonth}
+            todayIso={todayIso}
+            appointmentsByDate={appointmentsByDate}
+            scheduleBlocks={scheduleBlocks}
+            canCreate={canCreate}
+            onOpenAppointment={openAppointmentQuickView}
+            onOpenDay={openDayView}
+            onNewBooking={newBookingForDate}
+          />
         ) : (
           <>
             {/*
@@ -992,68 +1205,38 @@ export default function AppointmentsPage() {
                     }}
                   >
                     <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                {viewMode === "month" && weeksToRender[0] ? (
-                  <div
-                    className="sticky top-0 z-30 flex w-full shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/30"
-                    style={{ minWidth: weekRowMinWidthForView(viewMode) }}
-                  >
-                    <div
-                      className="flex shrink-0 items-center justify-center border-r border-gray-200 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
-                      style={{ width: timeGutterTotalWidth }}
-                    >
-                      Time · 12 hr
-                    </div>
-                    <div
-                      className="grid min-w-0 flex-1"
-                      style={{ gridTemplateColumns: dayColumnsTemplate(viewMode) }}
-                    >
-                      {weeksToRender[0].map((cell) => (
-                        <DayColumnHeader
-                          key={cell.date}
-                          isoDate={cell.date}
-                          viewMode={viewMode}
-                          isToday={cell.date === todayIso}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
                 {weeksToRender.map((week, weekIndex) => (
                   <div
                     key={week[0]?.date ?? weekIndex}
                     className="bg-white dark:bg-gray-900/20"
                   >
-                    {viewMode !== "month" ? (
-                      <div className="border-b border-gray-100 bg-gray-50/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-400">
-                        {formatWeekRangeLabel(week)}
-                      </div>
-                    ) : null}
-                    {viewMode !== "month" ? (
+                    <div className="border-b border-gray-100 bg-gray-50/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-400">
+                      {formatWeekRangeLabel(week)}
+                    </div>
+                    <div
+                      className="sticky top-0 z-30 flex w-full shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/30"
+                      style={{ minWidth: weekRowMinWidthForView(viewMode) }}
+                    >
                       <div
-                        className="sticky top-0 z-30 flex w-full shrink-0 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/30"
-                        style={{ minWidth: weekRowMinWidthForView(viewMode) }}
+                        className="flex shrink-0 items-center justify-center border-r border-gray-200 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
+                        style={{ width: timeGutterTotalWidth }}
                       >
-                        <div
-                          className="flex shrink-0 items-center justify-center border-r border-gray-200 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400"
-                          style={{ width: timeGutterTotalWidth }}
-                        >
-                          Time · 12 hr
-                        </div>
-                        <div
-                          className="grid min-w-0 flex-1"
-                          style={{ gridTemplateColumns: dayColumnsTemplate(viewMode) }}
-                        >
-                          {week.map((cell) => (
-                            <DayColumnHeader
-                              key={cell.date}
-                              isoDate={cell.date}
-                              viewMode={viewMode}
-                              isToday={cell.date === todayIso}
-                            />
-                          ))}
-                        </div>
+                        Time · 12 hr
                       </div>
-                    ) : null}
+                      <div
+                        className="grid min-w-0 flex-1"
+                        style={{ gridTemplateColumns: dayColumnsTemplate(viewMode) }}
+                      >
+                        {week.map((cell) => (
+                          <DayColumnHeader
+                            key={cell.date}
+                            isoDate={cell.date}
+                            viewMode={viewMode}
+                            isToday={cell.date === todayIso}
+                          />
+                        ))}
+                      </div>
+                    </div>
                     <div className="flex w-full" style={{ minWidth: weekRowMinWidthForView(viewMode) }}>
                       <div
                         className="sticky left-0 z-20 shrink-0 border-r border-gray-200 bg-white shadow-[2px_0_8px_-2px_rgba(0,0,0,0.06)] dark:border-gray-700 dark:bg-gray-900 dark:shadow-[2px_0_8px_-2px_rgba(0,0,0,0.35)]"
@@ -1076,24 +1259,17 @@ export default function AppointmentsPage() {
                         .filter((a) => a.status !== "cancelled")
                         .sort(sortByStartTime);
                       const isBooked = dayApts.length > 0;
-                      const baseBg =
-                        viewMode === "month" && !cell.isCurrentMonth
-                          ? isBooked
-                            ? "bg-brand-100/70 dark:bg-brand-900/25"
-                            : "bg-brand-50/85 dark:bg-brand-950/30"
-                          : cell.isCurrentMonth
-                            ? isBooked
-                              ? "bg-emerald-50/90 dark:bg-emerald-500/10"
-                              : "bg-white dark:bg-gray-900"
-                            : isBooked
-                              ? "bg-emerald-50/50 dark:bg-emerald-500/5"
-                              : "bg-gray-50 dark:bg-gray-800/50";
+                      const baseBg = cell.isCurrentMonth
+                        ? isBooked
+                          ? "bg-emerald-50/90 dark:bg-emerald-500/10"
+                          : "bg-white dark:bg-gray-900"
+                        : isBooked
+                          ? "bg-emerald-50/50 dark:bg-emerald-500/5"
+                          : "bg-gray-50 dark:bg-gray-800/50";
                       const timelineH = dayTimelineHeightPx(slotMinutes);
                       const slotCount = (CAL_DAY_END_MIN - CAL_DAY_START_MIN) / slotMinutes;
                       const slotSurfaceBg =
-                        viewMode === "month" && !cell.isCurrentMonth
-                          ? "border-brand-200/80 bg-brand-50/75 dark:border-brand-700/40 dark:bg-brand-950/25"
-                          : "border-gray-200/80 bg-white/90 dark:border-gray-700 dark:bg-gray-950/40";
+                        "border-gray-200/80 bg-white/90 dark:border-gray-700 dark:bg-gray-950/40";
                       return (
                         <div
                           key={cell.date}
@@ -1556,7 +1732,7 @@ export default function AppointmentsPage() {
             <>
               <h2 className="pr-10 text-lg font-semibold text-gray-900 dark:text-white">Choose a form</h2>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                For {calendarModal.apt.patient.name}. After you submit, you will be taken to client history.
+                For {calendarModal.apt.patient.name}. Only forms linked to this booking&apos;s services are listed.
               </p>
               <Button
                 variant="outline"
@@ -1579,7 +1755,9 @@ export default function AppointmentsPage() {
                 {formsListLoading ? (
                   <p className="p-4 text-sm text-gray-500">Loading forms…</p>
                 ) : publishedForms.length === 0 ? (
-                  <p className="p-4 text-sm text-gray-500 dark:text-gray-400">No published forms.</p>
+                  <p className="p-4 text-sm text-gray-500 dark:text-gray-400">
+                    No published forms match the services on this booking.
+                  </p>
                 ) : (
                   <ul className="divide-y divide-gray-100 dark:divide-gray-800">
                     {publishedForms.map((f) => (

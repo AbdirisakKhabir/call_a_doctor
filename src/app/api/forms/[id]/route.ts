@@ -74,6 +74,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       include: {
         fields: { orderBy: { sortOrder: "asc" } },
         createdBy: { select: { id: true, name: true, email: true } },
+        service: { select: { id: true, name: true } },
       },
     });
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -116,6 +117,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       title?: string;
       description?: string | null;
       isPublished?: boolean;
+      serviceId?: number | null;
     } = {};
 
     if (typeof body.title === "string") {
@@ -131,6 +133,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
     if (typeof body.isPublished === "boolean") {
       data.isPublished = body.isPublished;
+    }
+    if (body.serviceId !== undefined) {
+      if (body.serviceId === null || body.serviceId === "") {
+        data.serviceId = null;
+      } else {
+        const sid = Number(body.serviceId);
+        if (!Number.isInteger(sid) || sid < 1) {
+          return NextResponse.json({ error: "Invalid service" }, { status: 400 });
+        }
+        const svc = await prisma.service.findUnique({ where: { id: sid }, select: { id: true } });
+        if (!svc) return NextResponse.json({ error: "Service not found" }, { status: 400 });
+        data.serviceId = sid;
+      }
     }
 
     const fieldsResult = parseFields(body.fields);
@@ -170,6 +185,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       include: {
         fields: { orderBy: { sortOrder: "asc" } },
         createdBy: { select: { id: true, name: true, email: true } },
+        service: { select: { id: true, name: true } },
       },
     });
 

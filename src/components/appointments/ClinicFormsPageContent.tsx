@@ -79,13 +79,17 @@ export default function ClinicFormsPageContent({
   const loadPublished = useCallback(async () => {
     setListLoading(true);
     try {
-      const res = await authFetch("/api/forms/published");
+      const url =
+        appointmentId != null && appointmentId > 0
+          ? `/api/forms/published?appointmentId=${appointmentId}`
+          : "/api/forms/published";
+      const res = await authFetch(url);
       if (res.ok) setPublished(await res.json());
       else setPublished([]);
     } finally {
       setListLoading(false);
     }
-  }, []);
+  }, [appointmentId]);
 
   useEffect(() => {
     void loadPublished();
@@ -231,7 +235,9 @@ export default function ClinicFormsPageContent({
               <p className="px-2 text-sm text-gray-500">Loading…</p>
             ) : published.length === 0 ? (
               <p className="px-2 text-sm text-gray-500 dark:text-gray-400">
-                No published forms. An admin can create and publish forms under Forms.
+                {appointmentId != null
+                  ? "No published forms match the services on this booking."
+                  : "No published forms. An admin can create and publish forms under Forms."}
               </p>
             ) : (
               <ul className="space-y-1">

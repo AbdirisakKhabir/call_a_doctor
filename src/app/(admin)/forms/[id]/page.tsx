@@ -33,8 +33,12 @@ type ApiForm = {
   title: string;
   description: string | null;
   isPublished: boolean;
+  serviceId: number | null;
+  service: { id: number; name: string } | null;
   fields: ApiField[];
 };
+
+type ServiceOption = { id: number; name: string };
 
 type BuilderField = {
   key: string;
@@ -68,12 +72,14 @@ function snapshotForm(
   title: string,
   description: string,
   isPublished: boolean,
+  serviceId: string,
   fields: BuilderField[]
 ): string {
   return JSON.stringify({
     title: title.trim(),
     description: description.trim(),
     isPublished,
+    serviceId: serviceId.trim() || null,
     fields: fields.map((f) => ({
       fieldType: f.fieldType,
       label: f.label.trim(),
@@ -114,12 +120,26 @@ export default function EditFormPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [isPublished, setIsPublished] = useState(false);
+  const [serviceId, setServiceId] = useState("");
+  const [services, setServices] = useState<ServiceOption[]>([]);
   const [fields, setFields] = useState<BuilderField[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveOk, setSaveOk] = useState(false);
   const [addFieldType, setAddFieldType] = useState<CustomFormFieldType>("SHORT_TEXT");
   const baselineSnapshotRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!canView) return;
+    authFetch("/api/services")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as ServiceOption[] | { data?: ServiceOption[] };
+        const rows = Array.isArray(data) ? data : Array.isArray(data.data) ? data.data : [];
+        setServices(rows.map((s) => ({ id: s.id, name: s.name })));
+      })
+      .catch(() => setServices([]));
+  }, [canView]);
 
   const load = useCallback(async () => {
     if (!Number.isInteger(id) || id < 1) {
@@ -151,11 +171,13 @@ export default function EditFormPage() {
         data.title,
         data.description ?? "",
         data.isPublished,
+        data.serviceId != null ? String(data.serviceId) : "",
         mapped
       );
       setTitle(data.title);
       setDescription(data.description ?? "");
       setIsPublished(data.isPublished);
+      setServiceId(data.serviceId != null ? String(data.serviceId) : "");
       setFields(mapped);
     } finally {
       setLoading(false);
@@ -176,7 +198,7 @@ export default function EditFormPage() {
       router.push("/forms");
       return;
     }
-    if (snapshotForm(title, description, isPublished, fields) === baseline) {
+    if (snapshotForm(title, description, isPublished, serviceId, fields) === baseline) {
       router.push("/forms");
       return;
     }
@@ -190,7 +212,7 @@ export default function EditFormPage() {
       reverseButtons: true,
     });
     if (res.isConfirmed) router.push("/forms");
-  }, [title, description, isPublished, fields, router]);
+  }, [title, description, isPublished, serviceId, fields, router]);
 
   useEffect(() => {
     if (!canEdit || loading || loadError) return;
@@ -198,16 +220,17 @@ export default function EditFormPage() {
     const t = title;
     const d = description;
     const p = isPublished;
+    const sid = serviceId;
     const flds = fields;
     function onBeforeUnload(e: BeforeUnloadEvent) {
       if (baseline === null) return;
-      if (snapshotForm(t, d, p, flds) === baseline) return;
+      if (snapshotForm(t, d, p, sid, flds) === baseline) return;
       e.preventDefault();
       e.returnValue = "";
     }
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [canEdit, loading, loadError, title, description, isPublished, fields]);
+  }, [canEdit, loading, loadError, title, description, isPublished, serviceId, fields]);
 
   function moveField(index: number, dir: -1 | 1) {
     const next = index + dir;
@@ -259,6 +282,7 @@ export default function EditFormPage() {
           title: title.trim(),
           description: description.trim() || null,
           isPublished,
+          serviceId: serviceId.trim() ? Number(serviceId) : null,
           fields: fields.map((f) => ({
             fieldType: f.fieldType,
             label: f.label.trim(),
@@ -274,7 +298,7 @@ export default function EditFormPage() {
         setSaveError(typeof data.error === "string" ? data.error : "Save failed");
         return;
       }
-      baselineSnapshotRef.current = snapshotForm(title, description, isPublished, fields);
+      baselineSnapshotRef.current = snapshotForm(title, description, isPublished, serviceId, fields);
       setSaveOk(true);
       router.refresh();
       setTimeout(() => setSaveOk(false), 2500);
@@ -359,6 +383,25 @@ export default function EditFormPage() {
                 className="mt-1 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
                 placeholder="Optional introduction"
               />
+            </div>
+            <div>
+              <Label>Service (optional)</Label>
+              <select
+                value={serviceId}
+                onChange={(e) => setServiceId(e.target.value)}
+                className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+              >
+                <option value="">Any service — always available</option>
+                {services.map((s) => (
+                  <option key={s.id} value={String(s.id)}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                When set, this form only appears during form-taking for bookings that include this service. Leave empty
+                for general forms shown on every visit.
+              </p>
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-800 dark:text-gray-200">
               <input

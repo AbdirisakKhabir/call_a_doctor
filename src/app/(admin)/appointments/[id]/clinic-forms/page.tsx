@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import ClinicFormsPageContent from "@/components/appointments/ClinicFormsPageContent";
 import { authFetch } from "@/lib/api";
@@ -15,9 +15,14 @@ type AppointmentHeader = {
 
 export default function AppointmentClinicFormsPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const rawId = params?.id;
   const appointmentId =
     typeof rawId === "string" ? Number(rawId) : Array.isArray(rawId) ? Number(rawId[0]) : NaN;
+
+  const formIdRaw = searchParams.get("formId");
+  const initialFormId =
+    formIdRaw && /^\d+$/.test(formIdRaw) ? Number.parseInt(formIdRaw, 10) : null;
 
   const { hasPermission } = useAuth();
   const allowed =
@@ -112,6 +117,7 @@ export default function AppointmentClinicFormsPage() {
       appointmentId={appt.id}
       patientId={appt.patient.id}
       patientLabel={`${appt.patient.name} (${appt.patient.patientCode})`}
+      initialFormId={initialFormId && initialFormId > 0 ? initialFormId : null}
     />
   );
 }
