@@ -9,7 +9,13 @@ export const metadata: Metadata = {
 
 export default function SignIn() {
   return (
-    <Suspense fallback={<div className="flex flex-1 items-center justify-center"><span className="text-gray-500">Loading...</span></div>}>
+    <Suspense
+      fallback={
+        <div className="flex w-full max-w-md items-center justify-center py-20">
+          <span className="text-gray-500 dark:text-gray-400">Loading...</span>
+        </div>
+      }
+    >
       <SignInForm />
     </Suspense>
   );

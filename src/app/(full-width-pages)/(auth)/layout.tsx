@@ -1,74 +1,41 @@
-import GridShape from "@/components/common/GridShape";
 import ThemeTogglerTwo from "@/components/common/ThemeTogglerTwo";
 
 import { ThemeProvider } from "@/context/ThemeContext";
-import Image from "next/image";
-import Link from "next/link";
 import React from "react";
 
+/**
+ * Single-column auth shell: the form sits centred on the page at every breakpoint.
+ * Background washes live here rather than in the forms so they cover the whole viewport.
+ */
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative z-1 bg-white p-6 dark:bg-gray-900 sm:p-0">
-      <ThemeProvider>
-        <div className="relative flex h-screen w-full flex-col justify-center lg:flex-row dark:bg-gray-900 sm:p-0">
+    <ThemeProvider>
+      <div className="relative min-h-screen overflow-hidden bg-white dark:bg-gray-900">
+        <div
+          className="pointer-events-none absolute inset-0 bg-linear-to-br from-gray-50 via-brand-50/50 to-blue-light-50/40 dark:from-gray-950 dark:via-gray-900 dark:to-brand-950/40"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -right-24 -top-24 h-[26rem] w-[26rem] rounded-full bg-brand-300/25 blur-3xl dark:bg-brand-500/15"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -bottom-24 -left-24 h-[22rem] w-[22rem] rounded-full bg-blue-light-300/20 blur-3xl dark:bg-blue-light-600/10"
+          aria-hidden
+        />
+
+        <main className="relative z-10 flex min-h-screen w-full flex-col items-center justify-center px-4 py-10 sm:px-6 sm:py-12">
           {children}
-          <div className="relative hidden h-full w-full items-center overflow-hidden bg-linear-to-br from-brand-900 via-brand-950 to-gray-950 lg:grid lg:w-1/2">
-            <div
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_70%_20%,rgba(95,185,112,0.22),transparent_55%)]"
-              aria-hidden
-            />
-            <div
-              className="pointer-events-none absolute -bottom-32 right-0 h-96 w-96 rounded-full bg-brand-500/10 blur-3xl"
-              aria-hidden
-            />
-            <GridShape />
-            <div className="relative z-10 flex max-w-md flex-col items-center px-10 text-center">
-              <Link href="/" className="mb-8 block">
-                <Image
-                  width={220}
-                  height={60}
-                  src="/logo/call-a-doctor.png"
-                  alt="Call a Doctor"
-                  className="mx-auto w-[220px] object-contain drop-shadow-md"
-                />
-              </Link>
-              <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-                Care that fits your clinic
-              </h2>
-              <p className="mt-4 text-pretty text-base leading-relaxed text-brand-100/90">
-                Calendar, clients, lab, pharmacy, and finances — one calm workspace for your team.
-              </p>
-              <ul className="mt-10 space-y-3 text-left text-sm text-white/85">
-                <li className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-500/40 text-xs font-bold text-brand-100">
-                    ✓
-                  </span>
-                  <span>Secure access for staff with role-based permissions</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-500/40 text-xs font-bold text-brand-100">
-                    ✓
-                  </span>
-                  <span>Real-time client records and prescription workflows</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-500/40 text-xs font-bold text-brand-100">
-                    ✓
-                  </span>
-                  <span>Pharmacy POS and inventory tied to your branches</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="fixed bottom-6 right-6 z-50 hidden sm:block">
-            <ThemeTogglerTwo />
-          </div>
+        </main>
+
+        <div className="fixed bottom-6 right-6 z-50 hidden sm:block">
+          <ThemeTogglerTwo />
         </div>
-      </ThemeProvider>
-    </div>
+      </div>
+    </ThemeProvider>
   );
 }

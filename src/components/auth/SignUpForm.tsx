@@ -4,7 +4,7 @@ import Checkbox from "@/components/form/input/Checkbox";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
-import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "@/icons";
+import { EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
 import Image from "next/image";
 import React, { useEffect, useState } from "react";
@@ -80,24 +80,15 @@ export default function SignUpForm() {
 
   if (isLoading || user) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex w-full max-w-md items-center justify-center py-20">
         <span className="text-gray-500 dark:text-gray-400">Loading...</span>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col flex-1 lg:w-1/2 w-full overflow-y-auto no-scrollbar">
-      <div className="w-full max-w-md sm:pt-10 mx-auto mb-5">
-        <Link
-          href="/"
-          className="inline-flex items-center text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-        >
-          <ChevronLeftIcon />
-          Back to dashboard
-        </Link>
-      </div>
-      <div className="flex flex-col justify-center flex-1 w-full max-w-md mx-auto">
+    <div className="w-full max-w-md">
+      <div className="rounded-[1.75rem] border border-gray-200/90 bg-white/95 p-8 shadow-[0_8px_40px_-12px_rgba(15,23,42,0.12)] backdrop-blur-sm dark:border-white/10 dark:bg-gray-900/95 dark:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.45)] sm:p-10">
         <div>
           <div className="mb-5 sm:mb-8">
             <Link href="/" className="inline-block mb-5">
