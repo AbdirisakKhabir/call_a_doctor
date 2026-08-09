@@ -20,6 +20,9 @@
 # misc
 .DS_Store
 *.pem
+# Accidental home-dir symlink/folder (breaks Turbopack if it points at ~/.pm2 etc.)
+/~
+~/
 
 # debug
 npm-debug.log*
