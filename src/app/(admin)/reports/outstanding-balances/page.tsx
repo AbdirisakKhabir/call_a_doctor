@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import * as XLSX from "xlsx";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
@@ -10,6 +9,7 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
+import { downloadExcelWorkbook } from "@/lib/excel-export";
 
 type Branch = { id: number; name: string };
 
@@ -93,22 +93,22 @@ export default function OutstandingBalancesReportPage() {
 
   const exportXlsx = () => {
     if (!data?.patients.length) return;
-    const sheet = XLSX.utils.json_to_sheet(
-      data.patients.map((p) => ({
-        Code: p.patientCode,
-        Name: p.name,
-        Phone: p.phone ?? "",
-        Mobile: p.mobile ?? "",
-        Email: p.email ?? "",
-        City: p.city?.name ?? "",
-        Village: p.village?.name ?? "",
-        "Registered branch": p.registeredBranch?.name ?? "",
-        "Balance due": Number(p.accountBalance.toFixed(2)),
-      }))
-    );
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheet, "Outstanding");
-    XLSX.writeFile(wb, `outstanding-balances-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    void downloadExcelWorkbook(`outstanding-balances-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      {
+        name: "Outstanding",
+        rows: data.patients.map((p) => ({
+          Code: p.patientCode,
+          Name: p.name,
+          Phone: p.phone ?? "",
+          Mobile: p.mobile ?? "",
+          Email: p.email ?? "",
+          City: p.city?.name ?? "",
+          Village: p.village?.name ?? "",
+          "Registered branch": p.registeredBranch?.name ?? "",
+          "Balance due": Number(p.accountBalance.toFixed(2)),
+        })),
+      },
+    ]);
   };
 
   if (!canView) {

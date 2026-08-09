@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
-import * as XLSX from "xlsx";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
@@ -17,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { downloadExcelWorkbook } from "@/lib/excel-export";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -289,117 +289,89 @@ export default function ClientRegistrationReportPage() {
   const exportExcel = useCallback(() => {
     if (!data) return;
     const safeName = data.branch.name.replace(/[^\w\-]+/g, "-").slice(0, 40);
-    const wb = XLSX.utils.book_new();
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet([
-        { Metric: "Branch", Value: data.branch.name },
-        { Metric: "Period from", Value: data.from },
-        { Metric: "Period to", Value: data.to },
-        {
-          Metric: "Age range filter",
-          Value:
-            data.ageFilter.min != null || data.ageFilter.max != null
-              ? `${data.ageFilter.min ?? "—"} to ${data.ageFilter.max ?? "—"} (years; unknown age excluded)`
-              : "All ages",
-        },
-        {
-          Metric: "City / village filter",
-          Value:
-            data.locationFilter.villageId != null
-              ? `${data.locationFilter.cityName ?? "—"} — ${data.locationFilter.villageName ?? "—"}`
-              : data.locationFilter.cityId != null
-                ? data.locationFilter.cityName ?? "—"
-                : "All",
-        },
-        { Metric: "Total new members", Value: data.totalNewMembers },
-        { Metric: "With phone", Value: `${data.summary.withPhone} (${data.summary.withPhonePercent}%)` },
-        { Metric: "With email", Value: `${data.summary.withEmail} (${data.summary.withEmailPercent}%)` },
-        {
-          Metric: "With city & village",
-          Value: `${data.summary.withCityAndVillage} (${data.summary.withCityAndVillagePercent}%)`,
-        },
-      ]),
-      "Summary"
-    );
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(
-        data.byCity.map((r) => ({
+    void downloadExcelWorkbook(`client-registration-report-${safeName}-${data.from}_${data.to}.xlsx`, [
+      {
+        name: "Summary",
+        rows: [
+          { Metric: "Branch", Value: data.branch.name },
+          { Metric: "Period from", Value: data.from },
+          { Metric: "Period to", Value: data.to },
+          {
+            Metric: "Age range filter",
+            Value:
+              data.ageFilter.min != null || data.ageFilter.max != null
+                ? `${data.ageFilter.min ?? "—"} to ${data.ageFilter.max ?? "—"} (years; unknown age excluded)`
+                : "All ages",
+          },
+          {
+            Metric: "City / village filter",
+            Value:
+              data.locationFilter.villageId != null
+                ? `${data.locationFilter.cityName ?? "—"} — ${data.locationFilter.villageName ?? "—"}`
+                : data.locationFilter.cityId != null
+                  ? data.locationFilter.cityName ?? "—"
+                  : "All",
+          },
+          { Metric: "Total new members", Value: data.totalNewMembers },
+          { Metric: "With phone", Value: `${data.summary.withPhone} (${data.summary.withPhonePercent}%)` },
+          { Metric: "With email", Value: `${data.summary.withEmail} (${data.summary.withEmailPercent}%)` },
+          {
+            Metric: "With city & village",
+            Value: `${data.summary.withCityAndVillage} (${data.summary.withCityAndVillagePercent}%)`,
+          },
+        ],
+      },
+      {
+        name: "By city",
+        rows: data.byCity.map((r) => ({
           City: r.cityName,
           Count: r.count,
           Percent: `${r.percent}%`,
-        }))
-      ),
-      "By city"
-    );
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(
-        data.byVillage.map((r) => ({
+        })),
+      },
+      {
+        name: "By village",
+        rows: data.byVillage.map((r) => ({
           City: r.cityName,
           Village: r.villageName,
           Count: r.count,
           Percent: `${r.percent}%`,
-        }))
-      ),
-      "By village"
-    );
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(
-        data.byGender.map((r) => ({
+        })),
+      },
+      {
+        name: "By gender",
+        rows: data.byGender.map((r) => ({
           Gender: r.label,
           Count: r.count,
           Percent: `${r.percent}%`,
-        }))
-      ),
-      "By gender"
-    );
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(
-        data.byReferralSource.map((r) => ({
+        })),
+      },
+      {
+        name: "By referral",
+        rows: data.byReferralSource.map((r) => ({
           Referral: r.name,
           Count: r.count,
           Percent: `${r.percent}%`,
-        }))
-      ),
-      "By referral"
-    );
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(
-        data.byAgeGroup.map((r) => ({
+        })),
+      },
+      {
+        name: "By age group",
+        rows: data.byAgeGroup.map((r) => ({
           "Age group": r.label,
           Count: r.count,
           Percent: `${r.percent}%`,
-        }))
-      ),
-      "By age group"
-    );
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(
-        data.byMonth.map((r) => ({
+        })),
+      },
+      {
+        name: "By month",
+        rows: data.byMonth.map((r) => ({
           Month: r.label,
           Count: r.count,
-        }))
-      ),
-      "By month"
-    );
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(
-        data.detail.map((r) => ({
+        })),
+      },
+      {
+        name: "Detail",
+        rows: data.detail.map((r) => ({
           Code: r.patientCode,
           "First name": r.firstName,
           "Last name": r.lastName,
@@ -414,12 +386,9 @@ export default function ClientRegistrationReportPage() {
           Age: r.ageYears ?? "",
           "Age group": r.ageGroup,
           "Registered at": r.registeredAt,
-        }))
-      ),
-      "Detail"
-    );
-
-    XLSX.writeFile(wb, `client-registration-report-${safeName}-${data.from}_${data.to}.xlsx`);
+        })),
+      },
+    ]);
   }, [data]);
 
   const genderChart = useMemo(() => {
