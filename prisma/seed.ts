@@ -41,6 +41,11 @@ const DEFAULT_PERMISSIONS = [
   { name: "expenses.edit", description: "Edit expenses", module: "expenses" },
   { name: "expenses.delete", description: "Delete expenses", module: "expenses" },
   { name: "financial.view", description: "View financial reports", module: "financial" },
+  {
+    name: "analytics.view",
+    description: "View every analytics report and its AI analysis",
+    module: "analytics",
+  },
   { name: "settings.view", description: "Access settings menu and overview", module: "settings" },
   { name: "settings.manage", description: "Manage branches and user branch access", module: "settings" },
   { name: "accounts.view", description: "View finance accounts and transactions", module: "accounts" },
@@ -194,8 +199,35 @@ async function main() {
     });
   }
 
+  const labRole = await prisma.role.upsert({
+    where: { name: "Lab" },
+    create: {
+      name: "Lab",
+      description: "Laboratory staff: orders, results, tests, and lab inventory",
+    },
+    update: {
+      description: "Laboratory staff: orders, results, tests, and lab inventory",
+    },
+  });
+  for (const perm of [
+    dashboardPerm,
+    allPermissions.find((p) => p.name === "lab.view"),
+    allPermissions.find((p) => p.name === "lab.create"),
+    allPermissions.find((p) => p.name === "lab.edit"),
+    allPermissions.find((p) => p.name === "lab.delete"),
+    allPermissions.find((p) => p.name === "patients.view"),
+    allPermissions.find((p) => p.name === "appointments.view"),
+    allPermissions.find((p) => p.name === "patient_history.view"),
+  ].filter(Boolean) as { id: number }[]) {
+    await prisma.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId: labRole.id, permissionId: perm.id } },
+      create: { roleId: labRole.id, permissionId: perm.id },
+      update: {},
+    });
+  }
+
   console.log("Seed completed. Admin: admin@clinic.local / admin123");
-  console.log("Roles: Admin, Staff, Doctor, Reception created/updated.");
+  console.log("Roles: Admin, Staff, Doctor, Reception, Lab created/updated.");
 }
 
 main()

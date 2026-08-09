@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "../context/AuthContext";
 import {
+  BoltIcon,
   BoxCubeIcon,
   CalenderIcon,
   ChevronDownIcon,
@@ -29,6 +30,7 @@ import {
   FINANCIAL_REPORTS_NAV,
   FINANCIAL_REPORTS_PARENT_PERMISSION_ANY,
 } from "@/lib/financial-hub-nav";
+import { ANALYTICS_PARENT_PERMISSION_ANY, ANALYTICS_SECTIONS } from "@/lib/analytics/sections";
 
 // --- Types ---
 
@@ -183,6 +185,29 @@ const pharmacyItems: NavItem[] = [
     name: "Clients",
     path: "/patients",
     permission: "pharmacy.view",
+  },
+];
+
+/** Reports → Analytics: chart-led reports with an AI written analysis. */
+const analyticsItems: NavItem[] = [
+  {
+    icon: <BoltIcon />,
+    name: "Analytics",
+    path: "/analytics",
+    permissionAny: [...ANALYTICS_PARENT_PERMISSION_ANY],
+    subItems: [
+      {
+        name: "Overview",
+        path: "/analytics",
+        exact: true,
+        permissionAny: [...ANALYTICS_PARENT_PERMISSION_ANY],
+      },
+      ...ANALYTICS_SECTIONS.map((section) => ({
+        name: section.name,
+        path: section.path,
+        permissionAny: section.permissionAny,
+      })),
+    ],
   },
 ];
 
@@ -342,7 +367,7 @@ const formsItems: NavItem[] = [
 const financeAndAccountingItems: NavItem[] = [...financialItems, ...accountingItems];
 
 /** Sidebar: all analytics/reporting entries (one scroll group). */
-const allReportsItems: NavItem[] = [...reportsItems, ...outreachReportsItems];
+const allReportsItems: NavItem[] = [...analyticsItems, ...reportsItems, ...outreachReportsItems];
 
 /** Sidebar: visit services + intake forms (one scroll group). */
 const clinicSetupItems: NavItem[] = [...servicesItems, ...formsItems];
@@ -619,8 +644,8 @@ const AppSidebar: React.FC = () => {
                     <ChevronDownIcon
                       className={`ml-auto w-5 h-5 transition-transform duration-200 ${
                         openSubmenu?.type === menuType && openSubmenu?.index === index
-                          ? "rotate-180 text-brand-500"
-                          : ""
+                          ? "rotate-180 text-white"
+                          : "text-brand-100"
                       }`}
                     />
                   </>
@@ -685,7 +710,7 @@ const AppSidebar: React.FC = () => {
 
   return (
     <aside
-      className={`no-print fixed mt-16 flex flex-col lg:mt-0 top-0 px-3 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
+      className={`no-print fixed mt-16 flex flex-col lg:mt-0 top-0 px-3 left-0 bg-brand-700 dark:bg-brand-800 text-white h-screen transition-all duration-300 ease-in-out z-50 border-r border-brand-800 dark:border-brand-900 
         ${isExpanded || isMobileOpen || isHovered ? "w-[260px]" : "w-[90px]"}
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
         lg:translate-x-0`}
@@ -707,11 +732,11 @@ const AppSidebar: React.FC = () => {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain duration-300 ease-linear custom-scrollbar pr-1">
         <nav className="mb-3">
-          <div className="flex flex-col [&>section+section]:mt-5 [&>section+section]:border-t [&>section+section]:border-gray-100 [&>section+section]:pt-5 dark:[&>section+section]:border-gray-800/60">
+          <div className="flex flex-col [&>section+section]:mt-5 [&>section+section]:border-t [&>section+section]:border-white/15 [&>section+section]:pt-5">
             {mainNav.length > 0 && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "Overview" : <HorizontaLDots />}
                 </h2>
@@ -722,7 +747,7 @@ const AppSidebar: React.FC = () => {
             {(appointmentsNav.length > 0 || visitCardsNav.length > 0) && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "Scheduling & reception" : <HorizontaLDots />}
                 </h2>
@@ -738,7 +763,7 @@ const AppSidebar: React.FC = () => {
             {(labNav.length > 0 || prescriptionsNav.length > 0) && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "Clinical" : <HorizontaLDots />}
                 </h2>
@@ -754,7 +779,7 @@ const AppSidebar: React.FC = () => {
             {pharmacyNav.length > 0 && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "Pharmacy & clients" : <HorizontaLDots />}
                 </h2>
@@ -765,7 +790,7 @@ const AppSidebar: React.FC = () => {
             {financeAccountingNav.length > 0 && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "Finance & accounting" : <HorizontaLDots />}
                 </h2>
@@ -776,7 +801,7 @@ const AppSidebar: React.FC = () => {
             {allReportsNav.length > 0 && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "Reports" : <HorizontaLDots />}
                 </h2>
@@ -787,7 +812,7 @@ const AppSidebar: React.FC = () => {
             {clinicSetupNav.length > 0 && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "Clinic setup" : <HorizontaLDots />}
                 </h2>
@@ -798,7 +823,7 @@ const AppSidebar: React.FC = () => {
             {hrNav.length > 0 && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "Human resources" : <HorizontaLDots />}
                 </h2>
@@ -809,7 +834,7 @@ const AppSidebar: React.FC = () => {
             {settingsNav.length > 0 && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "System" : <HorizontaLDots />}
                 </h2>
@@ -820,7 +845,7 @@ const AppSidebar: React.FC = () => {
             {activitiesNav.length > 0 && (
               <section>
                 <h2
-                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
+                  className={`mb-2 flex text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-100/90 ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"}`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? "Access control" : <HorizontaLDots />}
                 </h2>
