@@ -9,6 +9,7 @@ import Link from "next/link";
 import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { MAIN_LOGO_PATH } from "@/lib/brand-logos";
 import { useRouter } from "next/navigation";
 
 export default function SignUpForm() {
@@ -93,7 +94,7 @@ export default function SignUpForm() {
           <div className="mb-5 sm:mb-8">
             <Link href="/" className="inline-block mb-5">
               <Image
-                src="/logo/call-a-doctor.png"
+                src={MAIN_LOGO_PATH}
                 alt="Logo"
                 width={160}
                 height={44}

@@ -8,6 +8,7 @@ import Link from "next/link";
 import Image from "next/image";
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { MAIN_LOGO_PATH } from "@/lib/brand-logos";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function SignInForm() {
@@ -65,7 +66,7 @@ export default function SignInForm() {
         <div className="mb-8 text-center sm:mb-10">
           <Link href="/" className="inline-flex h-16 w-32 items-center justify-center">
             <Image
-              src="/logo/call-a-doctor.png"
+              src={MAIN_LOGO_PATH}
               alt=""
               width={220}
               height={60}

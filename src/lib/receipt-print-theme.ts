@@ -3,7 +3,9 @@
  * (sale receipt, purchase receipt, client invoice, care file statement).
  */
 
-export const RECEIPT_LOGO_PUBLIC_PATH = "/logo/call-a-doctor.png";
+import { MAIN_LOGO_PATH } from "@/lib/brand-logos";
+
+export const RECEIPT_LOGO_PUBLIC_PATH = MAIN_LOGO_PATH;
 
 /** Brand palette (matches globals.css brand-900 / brand-50). */
 export const RECEIPT_BRAND = "#2b5532";

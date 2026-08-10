@@ -1,6 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import { labUnitsToBaseQuantity, normalizeLabUnitKey } from "@/lib/lab-inventory-units";
 
+/** Set to true when lab inventory disposable deduction on result entry should run. */
+export const LAB_DISPOSABLE_DEDUCTION_ENABLED = false;
+
 function normalizeProductCode(code: string): string {
   return code.trim().toUpperCase();
 }
@@ -18,6 +21,10 @@ export async function deductDisposablesForLabOrderItem(
     userId: number;
   }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!LAB_DISPOSABLE_DEDUCTION_ENABLED) {
+    return { ok: true };
+  }
+
   const rows = await tx.labTestDisposable.findMany({
     where: { labTestId: args.labTestId },
   });

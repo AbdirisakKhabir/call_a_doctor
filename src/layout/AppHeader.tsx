@@ -3,6 +3,7 @@ import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
 import UserDropdown from "@/components/header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
+import { MAIN_LOGO_PATH } from "@/lib/brand-logos";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -107,14 +108,14 @@ const AppHeader: React.FC = () => {
               width={154}
               height={32}
               className="object-contain dark:hidden"
-              src="/logo/call-a-doctor.png"
+              src={MAIN_LOGO_PATH}
               alt="Call a Doctor"
             />
             <Image
               width={154}
               height={32}
               className="hidden object-contain dark:block"
-              src="/logo/call-a-doctor.png"
+              src={MAIN_LOGO_PATH}
               alt="Call a Doctor"
             />
           </Link>

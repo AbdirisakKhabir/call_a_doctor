@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
+import PatientPaymentEditModal from "@/components/finance/PatientPaymentEditModal";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { printPatientPaymentReceipt } from "@/lib/patient-payment-receipt-print";
@@ -36,8 +37,8 @@ export type PatientPaymentListRow = {
 };
 
 export default function PatientPaymentList() {
-  const { hasPermission, user } = useAuth();
-  const canCancelPayment =
+  const { hasPermission } = useAuth();
+  const canManagePayment =
     hasPermission("accounts.deposit") || hasPermission("pharmacy.pos");
   const canList =
     hasPermission("accounts.deposit") ||
@@ -52,7 +53,9 @@ export default function PatientPaymentList() {
   const [total, setTotal] = useState(0);
   const [rows, setRows] = useState<PatientPaymentListRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [editPaymentId, setEditPaymentId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const pageSize = 25;
 
@@ -99,41 +102,36 @@ export default function PatientPaymentList() {
     return () => {
       cancelled = true;
     };
-  }, [canList, page, q, from, to]);
+  }, [canList, page, q, from, to, reloadKey]);
 
-  async function cancelPayment(r: PatientPaymentListRow) {
-    if (!canCancelPayment || r.cancelledAt) return;
+  function refreshList() {
+    setReloadKey((k) => k + 1);
+  }
+
+  async function deletePayment(r: PatientPaymentListRow) {
+    if (!canManagePayment || r.cancelledAt) return;
+    const totalLine = (r.amount ?? 0) + (r.discount ?? 0);
     const ok = window.confirm(
-      `Cancel this payment? The client balance will be increased by the cash and discount that were applied (if you split one payment across several categories, every linked line is cancelled together). A matching withdrawal is posted to the finance account when cash was deposited.`
+      `Delete this payment ($${totalLine.toFixed(2)})? The amount will be returned to the client's balance${
+        r.amount > 0 ? " and the cash deposit will be reversed in accounting" : ""
+      }.`
     );
     if (!ok) return;
-    setCancellingId(r.id);
+    setDeletingId(r.id);
     try {
-      const res = await authFetch(`/api/finance/patient-payments/${r.id}/cancel`, {
-        method: "POST",
-      });
+      const res = await authFetch(`/api/finance/patient-payments/${r.id}`, { method: "DELETE" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        window.alert(typeof body.error === "string" ? body.error : "Could not cancel payment");
+        window.alert(typeof body.error === "string" ? body.error : "Could not delete payment");
         return;
       }
-      const cancelledIds: number[] = Array.isArray(body.cancelledIds)
-        ? body.cancelledIds.map((x: unknown) => Number(x)).filter((n: number) => Number.isInteger(n))
-        : [];
-      const byName = user?.name?.trim() || null;
-      setRows((prev) =>
-        prev.map((row) =>
-          cancelledIds.includes(row.id)
-            ? {
-                ...row,
-                cancelledAt: new Date().toISOString(),
-                cancelledBy: { id: 0, name: byName },
-              }
-            : row
-        )
-      );
+      const deletedIds: number[] = Array.isArray(body.deletedIds)
+        ? body.deletedIds.map((x: unknown) => Number(x)).filter((n: number) => Number.isInteger(n))
+        : [r.id];
+      setRows((prev) => prev.filter((row) => !deletedIds.includes(row.id)));
+      setTotal((t) => Math.max(0, t - deletedIds.length));
     } finally {
-      setCancellingId(null);
+      setDeletingId(null);
     }
   }
 
@@ -234,9 +232,9 @@ export default function PatientPaymentList() {
                 <TableCell isHeader className="text-right">
                   Receipt
                 </TableCell>
-                {canCancelPayment ? (
+                {canManagePayment ? (
                   <TableCell isHeader className="text-right">
-                    Cancel
+                    Actions
                   </TableCell>
                 ) : null}
               </TableRow>
@@ -278,19 +276,29 @@ export default function PatientPaymentList() {
                         Print
                       </Button>
                     </TableCell>
-                    {canCancelPayment ? (
+                    {canManagePayment ? (
                       <TableCell className="text-right">
                         {!isCancelled ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            type="button"
-                            className="border-error-200 text-error-700 hover:bg-error-50 dark:border-error-500/40 dark:text-error-400 dark:hover:bg-error-500/10"
-                            disabled={cancellingId === r.id}
-                            onClick={() => void cancelPayment(r)}
-                          >
-                            {cancellingId === r.id ? "…" : "Cancel payment"}
-                          </Button>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              onClick={() => setEditPaymentId(r.id)}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              className="border-error-200 text-error-700 hover:bg-error-50 dark:border-error-500/40 dark:text-error-400 dark:hover:bg-error-500/10"
+                              disabled={deletingId === r.id}
+                              onClick={() => void deletePayment(r)}
+                            >
+                              {deletingId === r.id ? "…" : "Delete"}
+                            </Button>
+                          </div>
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
                         )}
@@ -311,6 +319,12 @@ export default function PatientPaymentList() {
           onPageChange={setPage}
         />
       </div>
+
+      <PatientPaymentEditModal
+        paymentId={editPaymentId}
+        onClose={() => setEditPaymentId(null)}
+        onSuccess={refreshList}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import "flatpickr/dist/flatpickr.css";
 import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
+import { MAIN_LOGO_PATH } from '@/lib/brand-logos';
 
 const roboto = Roboto({
   subsets: ["latin"],
@@ -16,8 +17,8 @@ export const metadata: Metadata = {
   title: "Call a Doctor",
   description: "Clinic Management System",
   icons: {
-    icon: "/logo/call-a-doctor.png",
-    apple: "/logo/call-a-doctor.png",
+    icon: MAIN_LOGO_PATH,
+    apple: MAIN_LOGO_PATH,
   },
 };
 

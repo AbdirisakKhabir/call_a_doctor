@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Label from "@/components/form/Label";
-import PatientPaymentModal, { type PatientPaymentTarget } from "@/components/patients/PatientPaymentModal";
+import PatientPaymentForm, { type PatientPaymentTarget } from "@/components/patients/PatientPaymentForm";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
@@ -18,6 +19,8 @@ type SearchHit = {
 
 export default function NewPaymentPage() {
   const { hasPermission } = useAuth();
+  const searchParams = useSearchParams();
+  const patientIdParam = searchParams.get("patientId");
   const canRecordPayment = hasPermission("accounts.deposit") || hasPermission("pharmacy.pos");
 
   const [q, setQ] = useState("");
@@ -26,6 +29,39 @@ export default function NewPaymentPage() {
   const [selected, setSelected] = useState<PatientPaymentTarget | null>(null);
   const [loadingPatient, setLoadingPatient] = useState(false);
   const [loadError, setLoadError] = useState("");
+
+  const pickPatient = useCallback(async (id: number) => {
+    setLoadError("");
+    setLoadingPatient(true);
+    try {
+      const res = await authFetch(`/api/patients/${id}`);
+      if (!res.ok) {
+        setLoadError("Could not load this client. Try again.");
+        return;
+      }
+      const p = (await res.json()) as {
+        id: number;
+        name: string;
+        patientCode: string;
+        accountBalance?: number;
+      };
+      setSelected({
+        id: p.id,
+        name: p.name,
+        patientCode: p.patientCode,
+        accountBalance: typeof p.accountBalance === "number" ? p.accountBalance : 0,
+      });
+    } finally {
+      setLoadingPatient(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!patientIdParam) return;
+    const id = Number(patientIdParam);
+    if (!Number.isInteger(id) || id <= 0) return;
+    void pickPatient(id);
+  }, [patientIdParam, pickPatient]);
 
   useEffect(() => {
     const t = q.trim();
@@ -56,32 +92,6 @@ export default function NewPaymentPage() {
     };
   }, [q]);
 
-  async function pickPatient(id: number) {
-    setLoadError("");
-    setLoadingPatient(true);
-    try {
-      const res = await authFetch(`/api/patients/${id}`);
-      if (!res.ok) {
-        setLoadError("Could not load this client. Try again.");
-        return;
-      }
-      const p = (await res.json()) as {
-        id: number;
-        name: string;
-        patientCode: string;
-        accountBalance?: number;
-      };
-      setSelected({
-        id: p.id,
-        name: p.name,
-        patientCode: p.patientCode,
-        accountBalance: typeof p.accountBalance === "number" ? p.accountBalance : 0,
-      });
-    } finally {
-      setLoadingPatient(false);
-    }
-  }
-
   if (!canRecordPayment) {
     return (
       <div>
@@ -110,71 +120,97 @@ export default function NewPaymentPage() {
 
       {!selected ? (
         <div className="max-w-xl rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/3">
-          <Label>Find client</Label>
-          <input
-            type="search"
-            autoComplete="off"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Type at least 2 characters…"
-            className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-          />
-          {q.trim().length > 0 && q.trim().length < 2 && (
-            <p className="mt-2 text-xs text-gray-500">Enter at least 2 characters to search.</p>
-          )}
-          {searching && <p className="mt-2 text-xs text-gray-500">Searching…</p>}
-          {loadError && <p className="mt-2 text-sm text-error-600 dark:text-error-400">{loadError}</p>}
-          {loadingPatient && <p className="mt-2 text-sm text-gray-500">Loading client…</p>}
+          {loadingPatient && patientIdParam ? (
+            <p className="text-sm text-gray-500">Loading client…</p>
+          ) : (
+            <>
+              <Label>Find client</Label>
+              <input
+                type="search"
+                autoComplete="off"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Type at least 2 characters…"
+                className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              />
+              {q.trim().length > 0 && q.trim().length < 2 && (
+                <p className="mt-2 text-xs text-gray-500">Enter at least 2 characters to search.</p>
+              )}
+              {searching && <p className="mt-2 text-xs text-gray-500">Searching…</p>}
+              {loadError && <p className="mt-2 text-sm text-error-600 dark:text-error-400">{loadError}</p>}
+              {loadingPatient && !patientIdParam && (
+                <p className="mt-2 text-sm text-gray-500">Loading client…</p>
+              )}
 
-          <ul className="mt-3 max-h-80 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800">
-            {q.trim().length >= 2 && !searching && results.length === 0 && (
-              <li className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">No clients match.</li>
-            )}
-            {results.map((p) => (
-              <li key={p.id} className="border-b border-gray-100 last:border-0 dark:border-gray-800">
-                <button
-                  type="button"
-                  disabled={loadingPatient}
-                  onClick={() => void pickPatient(p.id)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-gray-800/50"
-                >
-                  <span>
-                    <span className="font-medium text-gray-900 dark:text-white">{p.name}</span>
-                    <span className="ml-2 font-mono text-xs text-gray-500">{p.patientCode}</span>
-                    {p.phone ? <span className="mt-0.5 block text-xs text-gray-500">{p.phone}</span> : null}
-                  </span>
-                  <span className="shrink-0 font-mono text-xs tabular-nums text-gray-700 dark:text-gray-300">
-                    ${(p.accountBalance ?? 0).toFixed(2)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+              <ul className="mt-3 max-h-80 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800">
+                {q.trim().length >= 2 && !searching && results.length === 0 && (
+                  <li className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">No clients match.</li>
+                )}
+                {results.map((p) => (
+                  <li key={p.id} className="border-b border-gray-100 last:border-0 dark:border-gray-800">
+                    <button
+                      type="button"
+                      disabled={loadingPatient}
+                      onClick={() => void pickPatient(p.id)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-gray-800/50"
+                    >
+                      <span>
+                        <span className="font-medium text-gray-900 dark:text-white">{p.name}</span>
+                        <span className="ml-2 font-mono text-xs text-gray-500">{p.patientCode}</span>
+                        {p.phone ? <span className="mt-0.5 block text-xs text-gray-500">{p.phone}</span> : null}
+                      </span>
+                      <span className="shrink-0 font-mono text-xs tabular-nums text-gray-700 dark:text-gray-300">
+                        ${(p.accountBalance ?? 0).toFixed(2)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       ) : (
-        <PatientPaymentModal
-          key={selected.id}
-          embedded
-          patient={selected}
-          onClose={() => setSelected(null)}
-          onSuccess={async () => {
-            const res = await authFetch(`/api/patients/${selected.id}`);
-            if (res.ok) {
-              const p = (await res.json()) as {
-                id: number;
-                name: string;
-                patientCode: string;
-                accountBalance?: number;
-              };
-              setSelected({
-                id: p.id,
-                name: p.name,
-                patientCode: p.patientCode,
-                accountBalance: typeof p.accountBalance === "number" ? p.accountBalance : 0,
-              });
-            }
-          }}
-        />
+        <div className="max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/3">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Record payment</h3>
+            {patientIdParam ? (
+              <Link href="/payments" className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">
+                Back to client balances
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+              >
+                Change client
+              </button>
+            )}
+          </div>
+          <PatientPaymentForm
+            key={selected.id}
+            patient={selected}
+            onCancel={() => setSelected(null)}
+            cancelLabel={patientIdParam ? "Back to client balances" : "Change client"}
+            onSuccess={async () => {
+              const res = await authFetch(`/api/patients/${selected.id}`);
+              if (res.ok) {
+                const p = (await res.json()) as {
+                  id: number;
+                  name: string;
+                  patientCode: string;
+                  accountBalance?: number;
+                };
+                setSelected({
+                  id: p.id,
+                  name: p.name,
+                  patientCode: p.patientCode,
+                  accountBalance: typeof p.accountBalance === "number" ? p.accountBalance : 0,
+                });
+              }
+            }}
+          />
+        </div>
       )}
     </div>
   );

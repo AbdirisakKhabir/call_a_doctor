@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
-import { deductDisposablesForLabOrderItem } from "@/lib/lab-disposable-deduction";
+import { deductDisposablesForLabOrderItem, LAB_DISPOSABLE_DEDUCTION_ENABLED } from "@/lib/lab-disposable-deduction";
 
 export async function PATCH(
   req: NextRequest,
@@ -98,7 +98,10 @@ export async function PATCH(
     }
 
     const shouldDeduct =
-      nextLineStatus === "completed" && hasResult && !item.disposablesDeductedAt;
+      LAB_DISPOSABLE_DEDUCTION_ENABLED &&
+      nextLineStatus === "completed" &&
+      hasResult &&
+      !item.disposablesDeductedAt;
 
     const updated = await prisma.$transaction(async (tx) => {
       const row = await tx.labOrderItem.update({

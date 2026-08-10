@@ -30,6 +30,7 @@ import {
   FINANCIAL_REPORTS_NAV,
   FINANCIAL_REPORTS_PARENT_PERMISSION_ANY,
 } from "@/lib/financial-hub-nav";
+import { SIDEBAR_LOGO_PATH } from "@/lib/brand-logos";
 import { ANALYTICS_PARENT_PERMISSION_ANY, ANALYTICS_SECTIONS } from "@/lib/analytics/sections";
 
 // --- Types ---
@@ -720,7 +721,7 @@ const AppSidebar: React.FC = () => {
       <div className={`shrink-0 py-4 flex ${!isExpanded && !isHovered && !isMobileOpen ? "lg:justify-center" : ""}`}>
         <Link href="/" className={`flex items-center justify-center overflow-hidden ${!isExpanded && !isHovered && !isMobileOpen ? "h-16 w-16" : "w-full min-w-0"}`}>
           <Image
-            src="/logo/call-a-doctor.png"
+            src={SIDEBAR_LOGO_PATH}
             alt="Call a Doctor"
             width={320}
             height={64}

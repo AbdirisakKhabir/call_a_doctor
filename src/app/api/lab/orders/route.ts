@@ -6,22 +6,15 @@ import { logAuditFromRequest } from "@/lib/audit-log";
 import { serializePatient } from "@/lib/patient-name";
 import { roundMoney } from "@/lib/lab-fee-settlement";
 import { expandLabTestIdsToOrderLines } from "@/lib/lab-order-expand-tests";
+import { buildLabOrderListWhere } from "@/lib/lab-order-list-filters";
 
 export async function GET(req: NextRequest) {
   try {
     const auth = await getAuthUser(req);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { searchParams } = new URL(req.url);
-    const patientId = searchParams.get("patientId");
-    const appointmentId = searchParams.get("appointmentId");
-    const status = searchParams.get("status");
     const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(searchParams);
-
-    const where = {
-      ...(patientId ? { patientId: Number(patientId) } : {}),
-      ...(appointmentId ? { appointmentId: Number(appointmentId) } : {}),
-      ...(status ? { status } : {}),
-    };
+    const where = buildLabOrderListWhere(searchParams);
     const labItemInclude = {
       include: {
         labTest: {
