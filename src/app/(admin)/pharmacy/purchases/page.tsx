@@ -22,6 +22,9 @@ type Purchase = {
   id: number;
   purchaseDate: string;
   totalAmount: number;
+  paymentStatus?: string;
+  amountPaid?: number;
+  balanceDue?: number;
   notes?: string | null;
   branch: { id: number; name: string } | null;
   supplier: { id: number; name: string } | null;
@@ -191,7 +194,25 @@ export default function PurchasesPage() {
                   <TableCell>{p.branch?.name ?? "—"}</TableCell>
                   <TableCell className="font-medium">{p.supplier?.name ?? "—"}</TableCell>
                   <TableCell>
-                    {p.paymentMethod ? (
+                    {p.paymentStatus === "credit" ? (
+                      <span className="text-sm">
+                        <span className="font-medium text-amber-800 dark:text-amber-300">Credit</span>
+                        {(p.balanceDue ?? 0) > 0 ? (
+                          <span className="block text-xs text-gray-500 dark:text-gray-400">
+                            Due ${(p.balanceDue ?? 0).toFixed(2)}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : p.paymentStatus === "unpaid" ? (
+                      <span className="text-sm">
+                        <span className="font-medium text-gray-800 dark:text-gray-200">Unpaid</span>
+                        {(p.balanceDue ?? 0) > 0 ? (
+                          <span className="block text-xs text-gray-500 dark:text-gray-400">
+                            Due ${(p.balanceDue ?? 0).toFixed(2)}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : p.paymentMethod ? (
                       <span className="text-sm">
                         <span className="font-medium">{p.paymentMethod.name}</span>
                         <span className="block text-xs text-gray-500 dark:text-gray-400">
@@ -199,7 +220,7 @@ export default function PurchasesPage() {
                         </span>
                       </span>
                     ) : (
-                      "—"
+                      <span className="text-sm text-gray-500">Paid</span>
                     )}
                   </TableCell>
                   <TableCell>${p.totalAmount.toFixed(2)}</TableCell>

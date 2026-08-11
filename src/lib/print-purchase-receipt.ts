@@ -22,6 +22,8 @@ export type PurchaseReceiptPrintPayload = {
   supplierLabel: string;
   branchName?: string | null;
   paymentMethodLabel?: string | null;
+  paymentStatus?: string | null;
+  balanceDue?: number | null;
   recordedBy?: string | null;
   lines: PurchaseReceiptPrintLine[];
   totalAmount: number;
@@ -33,6 +35,8 @@ export type PurchaseApiRowForReceipt = {
   id: number;
   purchaseDate: string;
   totalAmount: number;
+  paymentStatus?: string | null;
+  balanceDue?: number | null;
   notes?: string | null;
   branch: { id: number; name: string } | null;
   supplier: { id: number; name: string } | null;
@@ -61,13 +65,19 @@ export function purchaseApiRowToPrintPayload(p: PurchaseApiRowForReceipt): Purch
   }));
   const paymentLabel = p.paymentMethod
     ? `${p.paymentMethod.name} — ${p.paymentMethod.account.name}`
-    : null;
+    : p.paymentStatus === "credit"
+      ? "Supplier credit (accounts payable)"
+      : p.paymentStatus === "unpaid"
+        ? "Unpaid — balance due"
+        : null;
   return {
     id: p.id,
     purchaseDate: p.purchaseDate,
     supplierLabel: p.supplier?.name?.trim() ? p.supplier.name : "No supplier",
     branchName: p.branch?.name ?? null,
     paymentMethodLabel: paymentLabel,
+    paymentStatus: p.paymentStatus ?? null,
+    balanceDue: p.balanceDue ?? null,
     recordedBy: p.createdBy?.name ?? null,
     lines,
     totalAmount: p.totalAmount,
@@ -104,7 +114,11 @@ export async function printPurchaseReceipt(payload: PurchaseReceiptPrintPayload)
 
   const paymentBlock =
     payload.paymentMethodLabel && String(payload.paymentMethodLabel).trim()
-      ? `<p class="billed-extra">Payment: ${escapeHtml(String(payload.paymentMethodLabel).trim())}</p>`
+      ? `<p class="billed-extra">Payment: ${escapeHtml(String(payload.paymentMethodLabel).trim())}${
+          (payload.balanceDue ?? 0) > 0
+            ? ` — Due $${(payload.balanceDue ?? 0).toFixed(2)}`
+            : ""
+        }</p>`
       : "";
   const recordedBlock =
     payload.recordedBy && String(payload.recordedBy).trim()

@@ -10,7 +10,7 @@ export default function AnalyticsHubPage() {
   const { hasPermission } = useAuth();
 
   const visibleSections = useMemo(
-    () => ANALYTICS_SECTIONS.filter((section) => section.permissionAny.some((p) => hasPermission(p))),
+    () => ANALYTICS_SECTIONS.filter((section) => hasPermission(section.permission)),
     [hasPermission]
   );
 

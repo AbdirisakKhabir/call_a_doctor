@@ -14,6 +14,7 @@ const EXACT: Record<string, string> = {
   "/reports/outstanding-balances": "Outstanding balances report",
   "/reports/calendar-visits": "Calendar visits & services report",
   "/reports/form-submissions": "Form responses report",
+  "/reports/activity-log": "Activity log report",
   "/reports/work-schedule": "Work schedule report",
   "/reports/lab-activity": "Lab activity report",
   "/reports/lab-consume": "Lab consume report",

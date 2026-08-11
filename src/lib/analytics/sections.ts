@@ -1,6 +1,6 @@
 /** Analytics sections: one complete report each. Shared by the sidebar, hub page, and API. */
 
-export const ANALYTICS_VIEW_PERMISSION = "analytics.view";
+import { PP } from "@/lib/page-permissions";
 
 export type AnalyticsSectionKey =
   | "revenue"
@@ -18,13 +18,9 @@ export type AnalyticsSectionMeta = {
   /** Page heading. */
   title: string;
   description: string;
-  /** User needs at least one of these. */
-  permissionAny: string[];
+  /** Page permission key */
+  permission: string;
 };
-
-function withAnalyticsPermission(perms: string[]): string[] {
-  return [ANALYTICS_VIEW_PERMISSION, ...perms];
-}
 
 export const ANALYTICS_SECTIONS: AnalyticsSectionMeta[] = [
   {
@@ -34,7 +30,7 @@ export const ANALYTICS_SECTIONS: AnalyticsSectionMeta[] = [
     title: "Revenue & finance analytics",
     description:
       "Income by source, daily revenue trend, payment method mix, operating expenses, and net position.",
-    permissionAny: withAnalyticsPermission(["financial.view", "accounts.reports"]),
+    permission: PP.analytics_revenue,
   },
   {
     key: "appointments",
@@ -43,7 +39,7 @@ export const ANALYTICS_SECTIONS: AnalyticsSectionMeta[] = [
     title: "Appointment analytics",
     description:
       "Booking volume, status outcomes, no-show and cancellation rates, busiest weekdays and hours, and top services.",
-    permissionAny: withAnalyticsPermission(["appointments.view"]),
+    permission: PP.analytics_appointments,
   },
   {
     key: "clients",
@@ -52,7 +48,7 @@ export const ANALYTICS_SECTIONS: AnalyticsSectionMeta[] = [
     title: "Client analytics",
     description:
       "New registrations over time, gender and age profile, referral sources, locality spread, and returning-client rate.",
-    permissionAny: withAnalyticsPermission(["patients.view"]),
+    permission: PP.analytics_clients,
   },
   {
     key: "pharmacy",
@@ -61,7 +57,7 @@ export const ANALYTICS_SECTIONS: AnalyticsSectionMeta[] = [
     title: "Pharmacy analytics",
     description:
       "Point-of-sale revenue and margin, best-selling products, category mix, basket size, and stock risk.",
-    permissionAny: withAnalyticsPermission(["pharmacy.view", "pharmacy.pos"]),
+    permission: PP.analytics_pharmacy,
   },
   {
     key: "lab",
@@ -70,7 +66,7 @@ export const ANALYTICS_SECTIONS: AnalyticsSectionMeta[] = [
     title: "Laboratory analytics",
     description:
       "Order volume and completion, most requested tests, lab fee revenue and collection rate, and result turnaround.",
-    permissionAny: withAnalyticsPermission(["lab.view"]),
+    permission: PP.analytics_lab,
   },
   {
     key: "doctors",
@@ -79,12 +75,15 @@ export const ANALYTICS_SECTIONS: AnalyticsSectionMeta[] = [
     title: "Doctor performance analytics",
     description:
       "Bookings and revenue per doctor, completion and no-show rates, clients seen, and clinical ordering activity.",
-    permissionAny: withAnalyticsPermission(["appointments.view"]),
+    permission: PP.analytics_doctors,
   },
 ];
 
+export const ANALYTICS_OVERVIEW_PERMISSION = PP.analytics_overview;
+
 export const ANALYTICS_PARENT_PERMISSION_ANY: string[] = [
-  ...new Set(ANALYTICS_SECTIONS.flatMap((s) => s.permissionAny)),
+  ANALYTICS_OVERVIEW_PERMISSION,
+  ...ANALYTICS_SECTIONS.map((s) => s.permission),
 ];
 
 export function getAnalyticsSection(key: string): AnalyticsSectionMeta | null {

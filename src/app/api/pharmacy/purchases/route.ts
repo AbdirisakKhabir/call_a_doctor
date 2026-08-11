@@ -124,22 +124,34 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { supplierId, purchaseDate, notes, items, branchId, paymentMethodId } = body;
+    const { supplierId, purchaseDate, notes, items, branchId, paymentMethodId, paymentMode: paymentModeRaw } =
+      body;
 
-    const pmid = paymentMethodId != null && paymentMethodId !== "" ? Number(paymentMethodId) : NaN;
-    if (!Number.isInteger(pmid) || pmid <= 0) {
-      return NextResponse.json(
-        { error: "Payment method is required. Add payment methods under Settings → Payment methods." },
-        { status: 400 }
-      );
-    }
+    const paymentMode =
+      paymentModeRaw === "unpaid" || paymentModeRaw === "credit" ? paymentModeRaw : "pay_now";
 
-    const paymentMethod = await prisma.ledgerPaymentMethod.findFirst({
-      where: { id: pmid, isActive: true },
-      include: { account: true },
-    });
-    if (!paymentMethod || !paymentMethod.account.isActive) {
-      return NextResponse.json({ error: "Invalid or inactive payment method" }, { status: 400 });
+    const pmid =
+      paymentMethodId != null && paymentMethodId !== "" ? Number(paymentMethodId) : NaN;
+
+    let paymentMethod: Awaited<
+      ReturnType<typeof prisma.ledgerPaymentMethod.findFirst>
+    > & { account: { id: number; name: string; isActive: boolean } } | null = null;
+
+    if (paymentMode === "pay_now") {
+      if (!Number.isInteger(pmid) || pmid <= 0) {
+        return NextResponse.json(
+          { error: "Payment method is required. Add payment methods under Settings → Payment methods." },
+          { status: 400 }
+        );
+      }
+      const pm = await prisma.ledgerPaymentMethod.findFirst({
+        where: { id: pmid, isActive: true },
+        include: { account: true },
+      });
+      if (!pm || !pm.account.isActive) {
+        return NextResponse.json({ error: "Invalid or inactive payment method" }, { status: 400 });
+      }
+      paymentMethod = pm;
     }
 
     const bid = branchId != null && branchId !== "" ? Number(branchId) : NaN;
@@ -176,6 +188,14 @@ export async function POST(req: NextRequest) {
       }
       supplierIdVal = sid;
     }
+
+    if (paymentMode === "credit" && !supplierIdVal) {
+      return NextResponse.json(
+        { error: "A supplier is required for credit purchases." },
+        { status: 400 }
+      );
+    }
+
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "At least one item is required" }, { status: 400 });
     }
@@ -348,12 +368,21 @@ export async function POST(req: NextRequest) {
         throw new Error("BAD_REQUEST:No valid line items.");
       }
 
-      const accountId = paymentMethod.accountId;
-      const balance = await getFinanceAccountBalance(accountId);
-      if (totalAmount > balance) {
-        throw new Error(
-          `BAD_REQUEST:Insufficient balance in ${paymentMethod.account.name}. Available: $${balance.toFixed(2)}; purchase total: $${totalAmount.toFixed(2)}`
-        );
+      const accountId = paymentMethod?.accountId ?? null;
+      const amountPaid =
+        paymentMode === "pay_now" ? roundMoney(totalAmount) : 0;
+      const balanceDue =
+        paymentMode === "pay_now" ? 0 : roundMoney(totalAmount);
+      const paymentStatus =
+        paymentMode === "credit" ? "credit" : paymentMode === "unpaid" ? "unpaid" : "paid";
+
+      if (paymentMode === "pay_now" && accountId != null) {
+        const balance = await getFinanceAccountBalance(accountId);
+        if (totalAmount > balance) {
+          throw new Error(
+            `BAD_REQUEST:Insufficient balance in ${paymentMethod!.account.name}. Available: $${balance.toFixed(2)}; purchase total: $${totalAmount.toFixed(2)}`
+          );
+        }
       }
 
       const purchase = await tx.purchase.create({
@@ -362,8 +391,11 @@ export async function POST(req: NextRequest) {
           supplierId: supplierIdVal,
           purchaseDate: purchaseDateVal,
           totalAmount,
+          paymentStatus,
+          amountPaid,
+          balanceDue,
           notes: notes ? String(notes).trim() : null,
-          paymentMethodId: pmid,
+          paymentMethodId: paymentMode === "pay_now" ? pmid : null,
           createdById: auth.userId,
           items: {
             create: purchaseItems.map((row) => ({
@@ -377,23 +409,32 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      const ledgerNote =
-        supplierIdVal != null
-          ? `Pharmacy purchase #${purchase.id} (supplier)`
-          : `Pharmacy purchase #${purchase.id} (no supplier)`;
+      if (paymentMode === "pay_now" && accountId != null) {
+        const ledgerNote =
+          supplierIdVal != null
+            ? `Pharmacy purchase #${purchase.id} (supplier)`
+            : `Pharmacy purchase #${purchase.id} (no supplier)`;
 
-      await tx.accountTransaction.create({
-        data: {
-          accountId,
-          kind: "withdrawal",
-          amount: totalAmount,
-          description: ledgerNote,
-          purchaseId: purchase.id,
-          paymentMethodId: pmid,
-          transactionDate: purchaseDateVal,
-          createdById: auth.userId,
-        },
-      });
+        await tx.accountTransaction.create({
+          data: {
+            accountId,
+            kind: "withdrawal",
+            amount: totalAmount,
+            description: ledgerNote,
+            purchaseId: purchase.id,
+            paymentMethodId: pmid,
+            transactionDate: purchaseDateVal,
+            createdById: auth.userId,
+          },
+        });
+      }
+
+      if (paymentMode === "credit" && supplierIdVal != null && balanceDue > 0) {
+        await tx.supplier.update({
+          where: { id: supplierIdVal },
+          data: { creditBalance: { increment: balanceDue } },
+        });
+      }
 
       for (const it of purchaseItems) {
         const prod = await tx.product.findUnique({
@@ -473,7 +514,7 @@ export async function POST(req: NextRequest) {
       module: "pharmacy",
       resourceType: "Purchase",
       resourceId: result.id,
-      metadata: { branchId: result.branchId },
+      metadata: { branchId: result.branchId, paymentMode, paymentStatus: result.paymentStatus },
     });
     return NextResponse.json(result);
   } catch (e) {

@@ -2,21 +2,17 @@
  * Finance sidebar (forms & lists) vs Reports → Financial reports (analytics only).
  */
 
+import { PP } from "@/lib/page-permissions";
+
 export type FinancialHubNavEntry = {
   name: string;
   path: string;
   description: string;
+  /** Page permission key — user needs this to see the page in sidebar */
   permission?: string;
-  permissionAny?: string[];
   /** When true, submenu highlight only on exact path match. */
   exact?: boolean;
 };
-
-function entryPermissions(e: FinancialHubNavEntry): string[] {
-  if (e.permissionAny?.length) return [...e.permissionAny];
-  if (e.permission) return [e.permission];
-  return [];
-}
 
 /** Finance section: day-to-day screens (not report summaries). */
 export const FINANCE_FORMS_AND_LISTS_NAV: FinancialHubNavEntry[] = [
@@ -24,44 +20,44 @@ export const FINANCE_FORMS_AND_LISTS_NAV: FinancialHubNavEntry[] = [
     name: "Expenses",
     path: "/expenses",
     description: "Record and review clinic operating expenses.",
-    permission: "expenses.view",
+    permission: PP.finance_expenses,
   },
   {
     name: "Client invoice",
     path: "/finance/client-invoice",
     description: "Create and print client invoices.",
-    permissionAny: ["prescriptions.view", "pharmacy.view"],
+    permission: PP.finance_client_invoice,
   },
   {
     name: "Client balances",
     path: "/payments",
     description: "Clients with outstanding balances and payment history.",
-    permissionAny: ["accounts.deposit", "pharmacy.pos"],
+    permission: PP.finance_client_balances,
     exact: true,
   },
   {
     name: "Record payment",
     path: "/payments/new",
     description: "Post a payment against a client balance.",
-    permissionAny: ["accounts.deposit", "pharmacy.pos"],
+    permission: PP.finance_record_payment,
   },
   {
     name: "Payment list",
     path: "/finance/payments",
     description: "All recorded payments with filters.",
-    permissionAny: ["accounts.deposit", "pharmacy.pos", "accounts.view"],
+    permission: PP.finance_payment_list,
   },
   {
     name: "Appointment sales",
     path: "/finance/appointment-sales",
     description: "Visit billing sales linked to completed bookings.",
-    permissionAny: ["pharmacy.view", "pharmacy.pos", "accounts.view", "accounts.reports", "appointments.view"],
+    permission: PP.finance_appointment_sales,
   },
   {
     name: "Lab sales",
     path: "/finance/lab-sales",
     description: "Lab test fees and orders.",
-    permissionAny: ["financial.view", "accounts.reports", "lab.view"],
+    permission: PP.finance_lab_sales,
   },
 ];
 
@@ -71,54 +67,53 @@ export const FINANCIAL_REPORTS_NAV: FinancialHubNavEntry[] = [
     name: "Income statement",
     path: "/financial-reports",
     description: "Revenue, expenses, and net income for a selected period.",
-    permissionAny: ["financial.view", "accounts.reports"],
+    permission: PP.reports_income_statement,
     exact: true,
   },
   {
     name: "Account statement",
     path: "/finance/financial-statements",
     description: "Ledger account balances: opening, activity in range, and closing.",
-    permissionAny: ["financial.view", "accounts.reports"],
+    permission: PP.reports_financial_statement,
   },
   {
     name: "Appointment sales report",
     path: "/reports/appointment-sales",
     description: "Spreadsheet-style summary of visit billing by period.",
-    permissionAny: ["pharmacy.view", "pharmacy.pos", "accounts.view", "accounts.reports", "appointments.view"],
+    permission: PP.reports_appointment_sales,
   },
   {
     name: "Lab sales report",
     path: "/finance/lab-sales-report",
     description: "Lab requests and fees for the selected period.",
-    permissionAny: ["financial.view", "accounts.reports", "lab.view"],
+    permission: PP.reports_lab_sales,
   },
   {
     name: "Lab consume report",
     path: "/reports/lab-consume",
     description: "Completed lab tests and lab disposables used in a period.",
-    permissionAny: ["financial.view", "accounts.reports", "lab.view"],
+    permission: PP.reports_lab_consume,
   },
   {
     name: "Service consume report",
     path: "/reports/service-consume",
     description: "Services provided and visit disposables consumed in a period.",
-    permissionAny: ["financial.view", "accounts.reports", "appointments.view"],
+    permission: PP.reports_service_consume_financial,
   },
 ];
 
 export const FINANCE_FORMS_PARENT_PERMISSION_ANY: string[] = [
-  ...new Set(FINANCE_FORMS_AND_LISTS_NAV.flatMap(entryPermissions)),
+  ...new Set(FINANCE_FORMS_AND_LISTS_NAV.map((e) => e.permission).filter(Boolean) as string[]),
 ];
 
 export const FINANCIAL_REPORTS_PARENT_PERMISSION_ANY: string[] = [
-  ...new Set(FINANCIAL_REPORTS_NAV.flatMap(entryPermissions)),
+  ...new Set(FINANCIAL_REPORTS_NAV.map((e) => e.permission).filter(Boolean) as string[]),
 ];
 
 export function hubEntryVisible(
   hasPermission: (p: string) => boolean,
   e: FinancialHubNavEntry
 ): boolean {
-  if (e.permissionAny?.length) return e.permissionAny.some((p) => hasPermission(p));
   if (e.permission) return hasPermission(e.permission);
   return false;
 }

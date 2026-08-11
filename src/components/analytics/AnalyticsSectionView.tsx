@@ -82,7 +82,7 @@ export default function AnalyticsSectionView({ sectionKey }: { sectionKey: Analy
   const [error, setError] = useState("");
 
   const canView = useMemo(
-    () => Boolean(section && section.permissionAny.some((p) => hasPermission(p))),
+    () => Boolean(section && hasPermission(section.permission)),
     [hasPermission, section]
   );
 

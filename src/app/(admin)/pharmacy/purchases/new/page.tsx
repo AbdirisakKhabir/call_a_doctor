@@ -112,6 +112,7 @@ export default function NewPurchasePage() {
   const [form, setForm] = useState({
     branchId: "",
     supplierId: "",
+    paymentMode: "pay_now" as "pay_now" | "unpaid" | "credit",
     paymentMethodId: "",
     purchaseDate: new Date().toISOString().slice(0, 10),
     notes: "",
@@ -161,12 +162,12 @@ export default function NewPurchasePage() {
   }, [form.branchId, loadPharmacyForBranch]);
 
   useEffect(() => {
-    if (paymentMethods.length === 0) return;
+    if (paymentMethods.length === 0 || form.paymentMode !== "pay_now") return;
     setForm((f) => {
       if (f.paymentMethodId) return f;
       return { ...f, paymentMethodId: String(paymentMethods[0].id) };
     });
-  }, [paymentMethods]);
+  }, [paymentMethods, form.paymentMode]);
 
   useEffect(() => {
     if (suppliers.length === 0) return;
@@ -354,6 +355,16 @@ export default function NewPurchasePage() {
         return;
       }
 
+      if (form.paymentMode === "credit" && !form.supplierId.trim()) {
+        setError("Select a supplier for credit purchases.");
+        return;
+      }
+
+      if (form.paymentMode === "pay_now" && !form.paymentMethodId.trim()) {
+        setError("Select a payment method, or choose Receive without payment / Credit purchase.");
+        return;
+      }
+
       const res = await authFetch("/api/pharmacy/purchases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -361,7 +372,11 @@ export default function NewPurchasePage() {
           branchId: Number(form.branchId),
           supplierId:
             form.supplierId && String(form.supplierId).trim() !== "" ? Number(form.supplierId) : null,
-          paymentMethodId: Number(form.paymentMethodId),
+          paymentMode: form.paymentMode,
+          paymentMethodId:
+            form.paymentMode === "pay_now" && form.paymentMethodId
+              ? Number(form.paymentMethodId)
+              : null,
           purchaseDate: form.purchaseDate,
           notes: form.notes || null,
           items: validItems,
@@ -414,7 +429,7 @@ export default function NewPurchasePage() {
         </Link>
         <h1 className="mt-2 text-xl font-semibold text-gray-800 dark:text-white/90">New purchase</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Record stock received from a supplier and pay from a linked account.
+          Record stock received from a supplier. Pay now, receive without payment, or buy on supplier credit.
         </p>
       </div>
 
@@ -429,9 +444,10 @@ export default function NewPurchasePage() {
               No branch is assigned. Add branches under Settings before recording purchases.
             </div>
           )}
-          {!loadingMeta && paymentMethods.length === 0 && (
+          {!loadingMeta && paymentMethods.length === 0 && form.paymentMode === "pay_now" && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-              No payment methods found. Create accounts and payment methods under Settings first.
+              No payment methods found. Create accounts and payment methods under Settings, or choose Receive without
+              payment / Credit purchase.
             </div>
           )}
 
@@ -446,24 +462,74 @@ export default function NewPurchasePage() {
               <h2 className="mb-4 text-sm font-semibold text-gray-800 dark:text-white">Header</h2>
               <div className="space-y-4">
                 <div>
-                  <Label>Payment method *</Label>
-                  <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-                    Money is withdrawn from the linked finance account (Settings → Payment methods).
+                  <Label>Payment</Label>
+                  <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                    Choose how this purchase is settled. Stock is always received; payment can be deferred or recorded
+                    as supplier credit.
                   </p>
-                  <select
-                    required
-                    value={form.paymentMethodId}
-                    onChange={(e) => setForm((f) => ({ ...f, paymentMethodId: e.target.value }))}
-                    className="h-11 w-full max-w-xl rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
-                  >
-                    <option value="">Select account payment method</option>
-                    {paymentMethods.map((pm) => (
-                      <option key={pm.id} value={String(pm.id)}>
-                        {pm.name} — {pm.account.name}
-                      </option>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    {(
+                      [
+                        ["pay_now", "Pay now"],
+                        ["unpaid", "Receive without payment"],
+                        ["credit", "Credit purchase (supplier)"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <label
+                        key={value}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                          form.paymentMode === value
+                            ? "border-brand-500 bg-brand-50 dark:border-brand-500 dark:bg-brand-500/15"
+                            : "border-gray-200 dark:border-gray-700"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentMode"
+                          checked={form.paymentMode === value}
+                          onChange={() =>
+                            setForm((f) => ({
+                              ...f,
+                              paymentMode: value,
+                            }))
+                          }
+                          className="border-gray-300 text-brand-600"
+                        />
+                        {label}
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 </div>
+                {form.paymentMode === "pay_now" ? (
+                  <div>
+                    <Label>Payment method *</Label>
+                    <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+                      Money is withdrawn from the linked finance account (Settings → Payment methods).
+                    </p>
+                    <select
+                      required
+                      value={form.paymentMethodId}
+                      onChange={(e) => setForm((f) => ({ ...f, paymentMethodId: e.target.value }))}
+                      className="h-11 w-full max-w-xl rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+                    >
+                      <option value="">Select account payment method</option>
+                      {paymentMethods.map((pm) => (
+                        <option key={pm.id} value={String(pm.id)}>
+                          {pm.name} — {pm.account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : form.paymentMode === "unpaid" ? (
+                  <p className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
+                    No payment is recorded now. The full purchase total is saved as balance due on this purchase.
+                  </p>
+                ) : (
+                  <p className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300">
+                    The purchase is recorded on the supplier&apos;s credit balance (accounts payable). A supplier is
+                    required below.
+                  </p>
+                )}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div>
                     <Label>Branch *</Label>
@@ -489,9 +555,12 @@ export default function NewPurchasePage() {
                     </select>
                   </div>
                   <div>
-                    <Label>Supplier</Label>
+                    <Label>
+                      Supplier{form.paymentMode === "credit" ? " *" : ""}
+                    </Label>
                     <select
                       value={form.supplierId}
+                      required={form.paymentMode === "credit"}
                       onChange={(e) => setForm((f) => ({ ...f, supplierId: e.target.value }))}
                       className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
                     >

@@ -477,6 +477,8 @@ model Supplier {
   phone         String?
   address       String?
   isActive      Boolean    @default(true)
+  /// Amount owed to this supplier from credit purchases (accounts payable).
+  creditBalance Float      @default(0)
   purchases     Purchase[]
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -598,6 +600,10 @@ model Purchase {
   supplier          Supplier?            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   purchaseDate      DateTime             @default(now())
   totalAmount       Float                @default(0)
+  /// paid | unpaid | credit
+  paymentStatus     String               @default("paid")
+  amountPaid        Float                @default(0)
+  balanceDue        Float                @default(0)
   status            String               @default("completed")
   notes             String?
   /// Ledger payment method used to pay the supplier (links to finance account).

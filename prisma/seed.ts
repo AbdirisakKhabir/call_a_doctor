@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
+import { PAGE_PERMISSIONS, pagePermissionsForSeed } from "../src/lib/page-permissions";
 import bcrypt from "bcryptjs";
 
 const DEFAULT_PERMISSIONS = [
@@ -71,6 +72,7 @@ const DEFAULT_PERMISSIONS = [
   { name: "hr.create", description: "Register HR staff", module: "hr" },
   { name: "hr.edit", description: "Edit HR staff records", module: "hr" },
   { name: "hr.delete", description: "Delete HR staff records", module: "hr" },
+  ...pagePermissionsForSeed(),
 ];
 
 async function main() {
@@ -228,6 +230,35 @@ async function main() {
 
   console.log("Seed completed. Admin: admin@clinic.local / admin123");
   console.log("Roles: Admin, Staff, Doctor, Reception, Lab created/updated.");
+
+  // Sync page permissions from legacy module permissions (existing deployments)
+  const roles = await prisma.role.findMany({
+    include: { permissions: { include: { permission: true } } },
+  });
+  const allPerms = await prisma.permission.findMany();
+  const permByName = new Map(allPerms.map((p) => [p.name, p.id]));
+
+  for (const role of roles) {
+    if (isAdminRoleName(role.name)) continue;
+    const held = new Set(role.permissions.map((rp) => rp.permission.name));
+    for (const page of PAGE_PERMISSIONS) {
+      if (held.has(page.permission)) continue;
+      if (page.legacyAny?.some((l) => held.has(l))) {
+        const pid = permByName.get(page.permission);
+        if (pid) {
+          await prisma.rolePermission.upsert({
+            where: { roleId_permissionId: { roleId: role.id, permissionId: pid } },
+            create: { roleId: role.id, permissionId: pid },
+            update: {},
+          });
+        }
+      }
+    }
+  }
+}
+
+function isAdminRoleName(name: string): boolean {
+  return name.trim().toLowerCase() === "admin";
 }
 
 main()

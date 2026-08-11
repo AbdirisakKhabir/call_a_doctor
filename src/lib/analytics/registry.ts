@@ -21,6 +21,5 @@ export const ANALYTICS_BUILDERS: Record<AnalyticsSectionKey, AnalyticsReportBuil
 };
 
 export async function userCanViewSection(userId: number, section: AnalyticsSectionMeta): Promise<boolean> {
-  const results = await Promise.all(section.permissionAny.map((p) => userHasPermission(userId, p)));
-  return results.some(Boolean);
+  return userHasPermission(userId, section.permission);
 }

@@ -18,6 +18,7 @@ import {
   touchSessionActivity,
 } from "@/types/auth";
 import { isAdminRoleName } from "@/lib/admin-role";
+import { permissionGranted } from "@/lib/page-permissions";
 
 type AuthContextType = {
   user: AuthUser | null;
@@ -165,9 +166,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!user?.permissions) return false;
       if (user.permissions.includes("admin") || user.permissions.includes("*"))
         return true;
-      // Admin role: match server-side userHasPermission (menus, audit pages, settings)
       if (isAdminRoleName(user.roleName)) return true;
-      return user.permissions.includes(permission);
+      return permissionGranted(user.permissions, permission);
     },
     [user]
   );
