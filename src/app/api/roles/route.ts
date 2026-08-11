@@ -26,6 +26,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(req.nextUrl.searchParams);
+    const all = req.nextUrl.searchParams.get("all") === "true";
+
+    if (all) {
+      const roles = await prisma.role.findMany({
+        select: { id: true, name: true, description: true },
+        orderBy: { name: "asc" },
+      });
+      return NextResponse.json(roles);
+    }
 
     const include = {
       _count: { select: { users: true } },

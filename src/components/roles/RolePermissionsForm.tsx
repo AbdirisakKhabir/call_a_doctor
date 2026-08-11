@@ -37,14 +37,22 @@ export default function RolePermissionsForm({
   submitError,
   onSubmit,
 }: RolePermissionsFormProps) {
-  const [form, setForm] = useState<RoleFormValues>(initialValues);
+  // Initialise once; never re-sync from props so checkbox changes don't get reset.
+  const [form, setForm] = useState<RoleFormValues>(() => initialValues);
   const [allPermissions, setAllPermissions] = useState<PermissionOption[]>([]);
   const [loadingPermissions, setLoadingPermissions] = useState(true);
   const [showActions, setShowActions] = useState(false);
 
+  // When the parent loads real data (e.g. edit page fetches the role), apply it once.
+  const initializedRef = React.useRef(false);
   useEffect(() => {
-    setForm(initialValues);
-  }, [initialValues]);
+    // Only apply if the form still has the empty default values (i.e. hasn't been edited).
+    if (!initializedRef.current && (initialValues.name || initialValues.permissionIds.length > 0)) {
+      initializedRef.current = true;
+      setForm(initialValues);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialValues.name, initialValues.permissionIds.length]);
 
   useEffect(() => {
     authFetch("/api/permissions")
