@@ -182,6 +182,8 @@ export default function LabOrderResultsPage() {
   const { hasPermission, user } = useAuth();
   const canEdit = hasPermission("lab.edit");
   const canView = hasPermission("lab.view");
+  const canDelete = hasPermission("lab.delete");
+  const [deleting, setDeleting] = useState(false);
 
   const [order, setOrder] = useState<LabOrderDetail | null>(null);
   const [lines, setLines] = useState<Record<number, LineForm>>({});
@@ -309,6 +311,34 @@ export default function LabOrderResultsPage() {
     if (res.isConfirmed) router.push("/lab/orders");
   }, [order, lines, canEdit, router]);
 
+  const handleDeleteOrder = useCallback(async () => {
+    if (!order || !canDelete) return;
+    const res = await Swal.fire({
+      icon: "warning",
+      title: `Delete lab request #${order.id}?`,
+      text: "This permanently removes the request and all recorded results. Linked lab payments will be reversed and the client charge removed.",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#dc2626",
+      reverseButtons: true,
+    });
+    if (!res.isConfirmed) return;
+    setDeleting(true);
+    setError("");
+    try {
+      const del = await authFetch(`/api/lab/orders/${order.id}`, { method: "DELETE" });
+      const data = await del.json().catch(() => ({}));
+      if (!del.ok) {
+        setError(typeof data.error === "string" ? data.error : "Failed to delete lab request");
+        return;
+      }
+      router.push("/lab/orders");
+    } finally {
+      setDeleting(false);
+    }
+  }, [order, canDelete, router]);
+
   function updateLine(itemId: number, patch: Partial<LineForm>) {
     setLines((prev) => ({
       ...prev,
@@ -428,11 +458,20 @@ export default function LabOrderResultsPage() {
   }
 
   const cancelledOrder = order.status === "cancelled";
+  const editingExisting = formProgress.serverRecorded > 0;
 
   return (
     <div>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <PageBreadCrumb pageTitle={`Lab results · Order #${order.id}`} />
+        <PageBreadCrumb
+          pageTitle={
+            canEdit && !cancelledOrder
+              ? editingExisting
+                ? `Edit results · Order #${order.id}`
+                : `Enter results · Order #${order.id}`
+              : `Lab results · Order #${order.id}`
+          }
+        />
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={handlePrintRequest}>
             Print lab request
@@ -451,6 +490,18 @@ export default function LabOrderResultsPage() {
               </Button>
             </Link>
           )}
+          {canDelete ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={deleting}
+              onClick={() => void handleDeleteOrder()}
+              className="border-error-200 text-error-600 hover:bg-error-50 dark:border-error-500/40 dark:text-error-400 dark:hover:bg-error-500/10"
+            >
+              {deleting ? "Deleting…" : "Delete request"}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -630,7 +681,11 @@ export default function LabOrderResultsPage() {
                 Cancel
               </Button>
               <Button type="submit" size="sm" disabled={saving}>
-                {saving ? "Saving…" : "Save and return"}
+                {saving
+                  ? "Saving…"
+                  : editingExisting
+                    ? "Save changes"
+                    : "Save and return"}
               </Button>
             </div>
           ) : (

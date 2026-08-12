@@ -206,29 +206,27 @@ export default function RolePermissionsForm({
                     {group.pages.map(({ def, perm }) => {
                       const checked = form.permissionIds.includes(perm.id);
                       return (
-                        <label
+                        <button
                           key={perm.id}
-                          className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                          type="button"
+                          aria-pressed={checked}
+                          title={def.path}
+                          onClick={() => togglePermission(perm.id)}
+                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
                             checked
                               ? "border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-400"
                               : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:bg-gray-800"
                           }`}
-                          title={def.path}
                         >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => togglePermission(perm.id)}
-                            className="sr-only"
-                          />
                           <span
+                            aria-hidden
                             className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
                               checked
                                 ? "border-brand-500 bg-brand-500 text-white"
                                 : "border-gray-300 dark:border-gray-600"
                             }`}
                           >
-                            {checked && (
+                            {checked ? (
                               <svg
                                 className="h-3 w-3"
                                 fill="none"
@@ -238,10 +236,10 @@ export default function RolePermissionsForm({
                               >
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
-                            )}
+                            ) : null}
                           </span>
                           {def.label}
-                        </label>
+                        </button>
                       );
                     })}
                   </div>
@@ -281,22 +279,19 @@ export default function RolePermissionsForm({
                   {perms.map((p) => {
                     const checked = form.permissionIds.includes(p.id);
                     return (
-                      <label
+                      <button
                         key={p.id}
-                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
+                        type="button"
+                        aria-pressed={checked}
+                        onClick={() => togglePermission(p.id)}
+                        className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors ${
                           checked
                             ? "border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-400"
-                            : "border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400"
+                            : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:bg-gray-800"
                         }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => togglePermission(p.id)}
-                          className="sr-only"
-                        />
                         {p.name}
-                      </label>
+                      </button>
                     );
                   })}
                 </div>

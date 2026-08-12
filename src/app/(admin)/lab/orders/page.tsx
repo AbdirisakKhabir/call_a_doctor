@@ -10,7 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 import { Dropdown } from "@/components/ui/dropdown/Dropdown";
 import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
-import { ClipboardList, EllipsisVertical, Eye, FileText, Pencil } from "lucide-react";
+import { ClipboardList, EllipsisVertical, Eye, FileText, Pencil, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -38,6 +38,10 @@ type LabOrder = {
   appointment: { id: number; appointmentDate: string; startTime: string };
   items: LabOrderListItem[];
 };
+
+function hasRecordedResults(items: LabOrderListItem[]): boolean {
+  return items.some((i) => i.status === "completed");
+}
 
 function itemProgressSummary(items: LabOrderListItem[]): string {
   const total = items.length;
@@ -89,6 +93,8 @@ export default function LabOrdersPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
 
   const canRecord = hasPermission("lab.edit");
+  const canDelete = hasPermission("lab.delete");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim()), 300);
@@ -172,6 +178,26 @@ export default function LabOrdersPage() {
     if (!hasPermission("lab.view")) return;
     loadOrders();
   }, [hasPermission, loadOrders]);
+
+  async function handleDelete(order: LabOrder) {
+    const ok = window.confirm(
+      `Delete lab request #${order.id} for ${order.patient.name}?\n\nThis permanently removes the request and all recorded results. Linked lab payments will be reversed and the client charge removed.`
+    );
+    if (!ok) return;
+    setActionsMenuId(null);
+    setDeletingId(order.id);
+    try {
+      const res = await authFetch(`/api/lab/orders/${order.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(typeof data.error === "string" ? data.error : "Failed to delete lab request");
+        return;
+      }
+      await loadOrders();
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   if (!hasPermission("lab.view")) {
     return (
@@ -399,9 +425,26 @@ export default function LabOrdersPage() {
                               ) : (
                                 <Eye className="h-4 w-4" aria-hidden />
                               )}
-                              {canRecord ? "Enter results" : "View results"}
+                              {canRecord
+                                ? hasRecordedResults(order.items)
+                                  ? "Edit results"
+                                  : "Enter results"
+                                : "View results"}
                             </span>
                           </DropdownItem>
+                          {canDelete ? (
+                            <DropdownItem
+                              tag="button"
+                              onClick={() => void handleDelete(order)}
+                              onItemClick={() => setActionsMenuId(null)}
+                              className="text-error-600 hover:bg-error-50 hover:text-error-700 dark:text-error-400 dark:hover:bg-error-500/10"
+                            >
+                              <span className="inline-flex items-center gap-2">
+                                <Trash2 className="h-4 w-4" aria-hidden />
+                                {deletingId === order.id ? "Deleting…" : "Delete request"}
+                              </span>
+                            </DropdownItem>
+                          ) : null}
                         </Dropdown>
                       </div>
                     </TableCell>

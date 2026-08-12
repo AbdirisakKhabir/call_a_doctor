@@ -179,7 +179,7 @@ export default function UserForm({
               return (
                 <label
                   key={role.id}
-                  className={`flex cursor-pointer flex-col rounded-xl border p-4 transition-colors ${
+                  className={`relative flex cursor-pointer flex-col rounded-xl border p-4 transition-colors ${
                     selected
                       ? "border-brand-400 bg-brand-50 ring-1 ring-brand-400 dark:border-brand-500 dark:bg-brand-500/10 dark:ring-brand-500"
                       : "border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:hover:bg-gray-800/50"
@@ -191,11 +191,11 @@ export default function UserForm({
                     value={String(role.id)}
                     checked={selected}
                     onChange={() => setForm((f) => ({ ...f, roleId: String(role.id) }))}
-                    className="sr-only"
+                    className="absolute left-4 top-4 h-4 w-4 accent-brand-600"
                     required
                   />
-                  <span className="font-semibold text-gray-800 dark:text-white/90">{role.name}</span>
-                  <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="pl-7 font-semibold text-gray-800 dark:text-white/90">{role.name}</span>
+                  <span className="mt-1 pl-7 text-xs text-gray-500 dark:text-gray-400">
                     {role.description?.trim() || "No description"}
                   </span>
                 </label>
