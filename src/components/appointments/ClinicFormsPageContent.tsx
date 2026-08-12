@@ -14,6 +14,7 @@ import {
 } from "@/lib/custom-form-field-types";
 import { decodeOptionsList } from "@/lib/custom-form-answer-encode";
 import { useUnsavedChangesPrompt } from "@/hooks/useUnsavedChangesPrompt";
+import { confirmAction } from "@/lib/swal-dialogs";
 
 type PublishedForm = {
   id: number;
@@ -137,9 +138,9 @@ export default function ClinicFormsPageContent({
     };
   }, [selectedId]);
 
-  function trySelectForm(id: number) {
+  async function trySelectForm(id: number) {
     if (id === selectedId) return;
-    if (hasUnsavedChanges && !window.confirm(SWITCH_FORM_MESSAGE)) return;
+    if (hasUnsavedChanges && !(await confirmAction({ title: "Unsaved changes", text: SWITCH_FORM_MESSAGE }))) return;
     setSelectedId(id);
   }
 
@@ -167,8 +168,8 @@ export default function ClinicFormsPageContent({
     else router.push(`/patients/${patientId}/history`);
   }
 
-  function handleCancelClick() {
-    if (hasUnsavedChanges && !window.confirm(CANCEL_MESSAGE)) return;
+  async function handleCancelClick() {
+    if (hasUnsavedChanges && !(await confirmAction({ title: "Unsaved changes", text: CANCEL_MESSAGE }))) return;
     goBackToOrigin();
   }
 

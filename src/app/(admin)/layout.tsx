@@ -1,5 +1,6 @@
 "use client";
 
+import "sweetalert2/dist/sweetalert2.min.css";
 import { useSidebar } from "@/context/SidebarContext";
 import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";

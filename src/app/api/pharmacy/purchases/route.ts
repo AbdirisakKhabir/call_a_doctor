@@ -7,6 +7,7 @@ import {
 } from "@/lib/branch-access";
 import { getFinanceAccountBalance } from "@/lib/finance-balance";
 import { lineQuantityToBaseUnits } from "@/lib/product-packaging";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 import {
   getSaleUnitForProduct,
   normalizeSaleUnitKey,
@@ -235,7 +236,7 @@ export async function POST(req: NextRequest) {
         let productId: number;
 
         if (useNew) {
-          const name = String(np.name).trim();
+          const name = capitalizeNamePart(String(np.name));
           const code = String(np.code).trim().toUpperCase();
           const dup = await tx.product.findUnique({
             where: { branchId_code: { branchId: bid, code } },

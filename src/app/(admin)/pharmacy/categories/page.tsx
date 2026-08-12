@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
@@ -136,10 +137,10 @@ export default function CategoriesPage() {
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this category?")) return;
+    if (!(await confirmDelete({ text: "Delete this category?" }))) return;
     const res = await authFetch(`/api/pharmacy/categories/${id}`, { method: "DELETE" });
     if (res.ok) await loadCategories();
-    else alert((await res.json()).error || "Failed to delete");
+    else await showErrorAlert((await res.json()).error || "Failed to delete");
   }
 
   if (!hasPermission("pharmacy.view")) {

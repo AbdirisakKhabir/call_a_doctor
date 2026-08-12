@@ -6,6 +6,7 @@ import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { logAuditFromRequest } from "@/lib/audit-log";
 import { replaceProductSaleUnits, validateSaleUnitsPayload, type SaleUnitInput } from "@/lib/product-sale-units";
 import { computeBaseQuantityFromPackagingLines } from "@/lib/product-quantity-lines";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 export async function GET(req: NextRequest) {
   try {
@@ -187,7 +188,7 @@ export async function POST(req: NextRequest) {
       const p = await tx.product.create({
         data: {
           branchId,
-          name: String(name).trim(),
+          name: capitalizeNamePart(String(name)),
           code: codeNorm,
           description: description ? String(description).trim() : null,
           imageUrl: imageUrl || null,

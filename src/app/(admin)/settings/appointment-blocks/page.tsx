@@ -5,6 +5,7 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { authFetch } from "@/lib/api";
+import { confirmDelete } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PlusIcon, TrashBinIcon } from "@/icons";
 import Label from "@/components/form/Label";
@@ -176,7 +177,7 @@ export default function AppointmentBlocksSettingsPage() {
   }
 
   async function handleDelete(id: number) {
-    if (!canManage || !confirm("Delete this holiday / blocked time?")) return;
+    if (!canManage || !(await confirmDelete({ text: "Delete this holiday / blocked time?" }))) return;
     const res = await authFetch(`/api/settings/appointment-blocks/${id}`, { method: "DELETE" });
     if (res.ok) await load();
   }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
@@ -47,10 +48,10 @@ export default function ServicesPage() {
   }, [page]);
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this service?")) return;
+    if (!(await confirmDelete({ text: "Delete this service?" }))) return;
     const res = await authFetch(`/api/services/${id}`, { method: "DELETE" });
     if (res.ok) await loadServices();
-    else alert((await res.json()).error || "Failed");
+    else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   return (

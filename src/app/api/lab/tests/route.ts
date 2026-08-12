@@ -5,6 +5,7 @@ import { userHasPermission } from "@/lib/permissions";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { ensureLabPackagingUnitsFromPharmacyProduct, normalizeLabUnitKey } from "@/lib/lab-inventory-units";
 import { assertLabTestParentAssignment } from "@/lib/lab-test-parent";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 function normalizeProductCode(code: string): string {
   return code.trim().toUpperCase();
@@ -157,7 +158,7 @@ export async function POST(req: NextRequest) {
       const created = await tx.labTest.create({
         data: {
           categoryId: Number(categoryId),
-          name: name.trim(),
+          name: capitalizeNamePart(name),
           code: code ? String(code).trim() : null,
           unit: unit ? String(unit).trim() : null,
           normalRange: normalRange ? String(normalRange).trim() : null,

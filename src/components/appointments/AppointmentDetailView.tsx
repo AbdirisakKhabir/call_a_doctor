@@ -7,6 +7,7 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import DateField from "@/components/form/DateField";
 import { authFetch } from "@/lib/api";
 import { confirmCancelAppointment, showSwalForAppointmentError } from "@/lib/swal-appointment-error";
+import { confirmAction, showErrorAlert, showWarningAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { ArrowRightIcon, ChevronLeftIcon } from "@/icons";
 import {
@@ -340,9 +341,11 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
   async function completeVisit() {
     if (!appointment || !canEditAppointments) return;
     if (
-      !window.confirm(
-        "Mark this visit as completed? Service consumables will be deducted and, if the visit has a total, a sale and till deposit will be recorded."
-      )
+      !(await confirmAction({
+        title: "Complete this visit?",
+        text: "Service consumables will be deducted and, if the visit has a total, a sale and till deposit will be recorded.",
+        confirmButtonText: "Yes, complete",
+      }))
     ) {
       return;
     }
@@ -354,7 +357,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
     if (disc > 0) body.billingDiscount = disc;
     const r = await patchAppointment(body);
     if (!r.ok) {
-      window.alert(r.error || "Could not complete visit.");
+      await showErrorAlert(r.error || "Could not complete visit.", "Could not complete visit");
       return;
     }
     goToCalendar();
@@ -375,25 +378,25 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
   async function applyReschedule() {
     if (!appointment || !canEditAppointments) return;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(rescheduleDate)) {
-      window.alert("Choose a valid date.");
+      await showWarningAlert("Choose a valid date.");
       return;
     }
     const sm = parseTimeToMinutes(rescheduleStart);
     const em = parseTimeToMinutes(rescheduleEnd);
     if (sm == null || em == null) {
-      window.alert("Invalid start or end time.");
+      await showWarningAlert("Invalid start or end time.");
       return;
     }
     if (em <= sm) {
-      window.alert("End time must be after start time.");
+      await showWarningAlert("End time must be after start time.");
       return;
     }
     if (!editBranchId || !editDoctorId) {
-      window.alert("Branch and doctor are required.");
+      await showWarningAlert("Branch and doctor are required.");
       return;
     }
     if (editServices.length === 0) {
-      window.alert("Select at least one service.");
+      await showWarningAlert("Select at least one service.");
       return;
     }
     const r = await patchAppointment({

@@ -19,6 +19,7 @@ import {
 } from "@/lib/phone-country";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
+import { capitalizeClientNamePart } from "@/lib/patient-name";
 import {
   encodeAllergiesInfectionsNotes,
   type AllergiesInfectionsSelection,
@@ -280,6 +281,9 @@ export default function NewPatientPage() {
                 required
                 value={form.firstName}
                 onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                onBlur={(e) =>
+                  setForm((f) => ({ ...f, firstName: capitalizeClientNamePart(e.target.value) }))
+                }
                 className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
                 placeholder="First name"
                 autoComplete="given-name"
@@ -291,6 +295,9 @@ export default function NewPatientPage() {
                 required
                 value={form.lastName}
                 onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                onBlur={(e) =>
+                  setForm((f) => ({ ...f, lastName: capitalizeClientNamePart(e.target.value) }))
+                }
                 className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
                 placeholder="Last name"
                 autoComplete="family-name"

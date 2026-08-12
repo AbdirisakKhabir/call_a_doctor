@@ -6,6 +6,7 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 
@@ -47,12 +48,12 @@ export default function FormsListPage() {
 
   async function handleDelete(id: number, title: string) {
     if (!canDelete) return;
-    if (!confirm(`Delete form “${title}”? This cannot be undone.`)) return;
+    if (!(await confirmDelete({ text: `Delete form “${title}”? This cannot be undone.` }))) return;
     const res = await authFetch(`/api/forms/${id}`, { method: "DELETE" });
     if (res.ok) await load();
     else {
       const j = await res.json();
-      alert(typeof j.error === "string" ? j.error : "Delete failed");
+      await showErrorAlert(typeof j.error === "string" ? j.error : "Delete failed");
     }
   }
 

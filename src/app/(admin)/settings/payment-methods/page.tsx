@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
@@ -133,10 +134,10 @@ export default function PaymentMethodsPage() {
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this payment method?")) return;
+    if (!(await confirmDelete({ text: "Delete this payment method?" }))) return;
     const res = await authFetch(`/api/finance/payment-methods/${id}`, { method: "DELETE" });
     if (res.ok) await loadMethods();
-    else alert((await res.json()).error || "Failed");
+    else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   if (!canView) {

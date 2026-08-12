@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizeServiceColor } from "@/lib/service-color";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -32,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     const body = await req.json();
     const data: Record<string, unknown> = {};
-    if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim();
+    if (typeof body.name === "string" && body.name.trim()) data.name = capitalizeNamePart(body.name);
     if (typeof body.description !== "undefined") data.description = body.description ? String(body.description).trim() : null;
     if (typeof body.price === "number" || (typeof body.price === "string" && body.price !== "")) data.price = Math.max(0, Number(body.price) || 0);
     if (typeof body.durationMinutes !== "undefined") data.durationMinutes = body.durationMinutes ? Number(body.durationMinutes) : null;

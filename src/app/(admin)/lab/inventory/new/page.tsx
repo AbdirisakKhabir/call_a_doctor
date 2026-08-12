@@ -159,7 +159,7 @@ export default function NewLabInventoryItemPage() {
                   <li key={p.id}>
                     <button
                       type="button"
-                      className="w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800"
+                      className="dropdown-list-item px-3 py-2 text-left"
                       onClick={() => {
                         setNewCode(String(p.code || "").trim().toUpperCase());
                         setNewName(p.name);
@@ -173,7 +173,8 @@ export default function NewLabInventoryItemPage() {
                         setCreateError("");
                       }}
                     >
-                      <span className="font-mono text-xs text-gray-600 dark:text-gray-400">{p.code}</span> · {p.name}
+                      <span className="font-mono text-xs text-gray-600 dark:text-gray-400">{p.code}</span>
+                      <span className="text-gray-900 dark:text-gray-100"> · {p.name}</span>
                     </button>
                   </li>
                 ))}

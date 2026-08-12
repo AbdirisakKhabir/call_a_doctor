@@ -1,7 +1,6 @@
 "use client";
 
-import Swal from "sweetalert2";
-import "sweetalert2/dist/sweetalert2.min.css";
+import { confirmAction, showErrorAlert, showWarningAlert } from "@/lib/swal-dialogs";
 
 /** Server copy from `getAppointmentBlockMessage` — used to pick dialog styling */
 export function isAppointmentScheduleBlockedMessage(message: string): boolean {
@@ -21,25 +20,20 @@ export async function showSwalForAppointmentError(
   genericTitle = "Could not save booking"
 ): Promise<void> {
   const blocked = isAppointmentScheduleBlockedMessage(message);
-  await Swal.fire({
-    icon: blocked ? "warning" : "error",
-    title: blocked ? "Time not available" : genericTitle,
-    text: message,
-    confirmButtonText: "OK",
-  });
+  if (blocked) {
+    await showWarningAlert(message, "Time not available");
+  } else {
+    await showErrorAlert(message, genericTitle);
+  }
 }
 
 /** SweetAlert2 confirm before cancelling a booking (replaces window.confirm). */
 export async function confirmCancelAppointment(): Promise<boolean> {
-  const res = await Swal.fire({
+  return confirmAction({
     icon: "warning",
     title: "Cancel this booking?",
     html: "Its time will be <strong>free</strong> for a new booking. Cancelled visits are listed on the <strong>Cancelled bookings</strong> page (Calendar menu). The booking record stays for your records.",
-    showCancelButton: true,
     confirmButtonText: "Yes, cancel",
     cancelButtonText: "Keep booking",
-    focusCancel: true,
-    reverseButtons: true,
   });
-  return res.isConfirmed;
 }

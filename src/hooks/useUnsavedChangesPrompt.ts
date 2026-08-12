@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { confirmAction } from "@/lib/swal-dialogs";
 
 const DEFAULT_MESSAGE = "You have unsaved clinic note data. Leave without saving?";
 
@@ -42,10 +43,12 @@ export function useUnsavedChangesPrompt(isDirty: boolean, message: string = DEFA
       } catch {
         return;
       }
-      if (!window.confirm(message)) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      e.preventDefault();
+      e.stopPropagation();
+      const destination = href;
+      void confirmAction({ title: "Unsaved changes", text: message }).then((ok) => {
+        if (ok) window.location.assign(destination);
+      });
     };
     document.addEventListener("click", onClickCapture, true);
     return () => document.removeEventListener("click", onClickCapture, true);

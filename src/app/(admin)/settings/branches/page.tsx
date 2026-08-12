@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
+import { confirmAction, confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
@@ -172,7 +173,7 @@ export default function SettingsBranchesPage() {
   }
 
   async function handleDeactivateBranch(id: number) {
-    if (!confirm("Deactivate this branch? It will be hidden from new transactions.")) return;
+    if (!(await confirmAction({ title: "Deactivate branch?", text: "Deactivate this branch? It will be hidden from new transactions." }))) return;
     const res = await authFetch(`/api/branches/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -181,17 +182,17 @@ export default function SettingsBranchesPage() {
     if (res.ok) {
       await loadAllBranchesList();
       await loadBranchTable();
-    } else alert((await res.json()).error || "Failed");
+    } else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   async function handleDeleteBranch(id: number) {
-    if (!confirm("Permanently delete this branch? This only works if nothing references it.")) return;
+    if (!(await confirmDelete({ text: "Permanently delete this branch? This only works if nothing references it." }))) return;
     const res = await authFetch(`/api/branches/${id}`, { method: "DELETE" });
     if (res.ok) {
       await loadAllBranchesList();
       await loadBranchTable();
     }
-    else alert((await res.json()).error || "Failed to delete");
+    else await showErrorAlert((await res.json()).error || "Failed to delete");
   }
 
   function openUserBranches(u: UserRow) {
@@ -223,7 +224,7 @@ export default function SettingsBranchesPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Failed to update");
+        await showErrorAlert(data.error || "Failed to update");
         return;
       }
       await loadUsers();

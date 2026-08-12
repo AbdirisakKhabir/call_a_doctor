@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import Badge from "@/components/ui/badge/Badge";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import Label from "@/components/form/Label";
 import { ArrowDownIcon, ArrowUpIcon, MoreDotIcon, PlusIcon, PosIcon } from "@/icons";
@@ -247,10 +248,10 @@ export default function InventoryPage() {
   }, [branchId, search, categoryFilter, stockType, productPage]);
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this product?")) return;
+    if (!(await confirmDelete({ text: "Delete this product?" }))) return;
     const res = await authFetch(`/api/pharmacy/products/${id}`, { method: "DELETE" });
     if (res.ok) await loadProducts();
-    else alert((await res.json()).error || "Failed to delete");
+    else await showErrorAlert((await res.json()).error || "Failed to delete");
   }
 
   function openUnsellable(p: Product) {

@@ -13,6 +13,7 @@ import { suggestBarcodeValue } from "@/lib/barcode";
 import { PHARMACY_BASE_UNIT_PRESET_OPTIONS } from "@/lib/pharmacy-base-unit-presets";
 import { getBaseUnitLabel } from "@/lib/product-unit-conversion";
 import { computeBaseQuantityFromPackagingLines } from "@/lib/product-quantity-lines";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 import { formatQuantityAsBundledBase } from "@/lib/product-stock-display";
 import ProductUnitConversionPanel from "@/components/pharmacy/ProductUnitConversionPanel";
 import {
@@ -321,6 +322,7 @@ export default function EditInventoryProductPage() {
               required
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              onBlur={(e) => setForm((f) => ({ ...f, name: capitalizeNamePart(e.target.value) }))}
               className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
             />
           </div>

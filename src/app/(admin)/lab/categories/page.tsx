@@ -9,6 +9,8 @@ import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 
 type Category = { id: number; name: string; description: string | null; isActive: boolean; _count?: { tests: number } };
 
@@ -82,10 +84,10 @@ export default function LabCategoriesPage() {
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this category?")) return;
+    if (!(await confirmDelete({ text: "Delete this category?" }))) return;
     const res = await authFetch(`/api/lab/categories/${id}`, { method: "DELETE" });
     if (res.ok) await load();
-    else alert((await res.json()).error || "Failed");
+    else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   if (!hasPermission("lab.view")) {
@@ -159,7 +161,7 @@ export default function LabCategoriesPage() {
               {error && <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600">{error}</div>}
               <div>
                 <Label htmlFor="name">Name *</Label>
-                <input id="name" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+                <input id="name" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} onBlur={(e) => setForm((f) => ({ ...f, name: capitalizeNamePart(e.target.value) }))} className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
               </div>
               <div>
                 <Label htmlFor="desc">Description</Label>

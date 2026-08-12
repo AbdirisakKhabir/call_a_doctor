@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
+import { showErrorAlert } from "@/lib/swal-dialogs";
 import { TrashBinIcon } from "@/icons";
 import { roundMoney } from "@/lib/lab-fee-settlement";
 import {
@@ -138,7 +139,7 @@ export default function LabOrderCreateForm({ appointmentId, patientId, doctorId 
         router.refresh();
       } else {
         const j = await res.json();
-        alert(typeof j.error === "string" ? j.error : "Failed");
+        await showErrorAlert(typeof j.error === "string" ? j.error : "Failed");
       }
     } finally {
       setCreateSubmitting(false);

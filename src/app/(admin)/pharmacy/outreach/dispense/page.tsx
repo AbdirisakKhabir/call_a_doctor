@@ -268,7 +268,7 @@ export default function OutreachDispensePage() {
                     <li key={p.id}>
                       <button
                         type="button"
-                        className="flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className="dropdown-list-item flex justify-between px-3 py-2"
                         onClick={() => {
                           setPatientId(p.id);
                           setPatientLabel(`${p.name} (${p.patientCode})`);
@@ -277,7 +277,7 @@ export default function OutreachDispensePage() {
                         }}
                       >
                         <span>{p.name}</span>
-                        <span className="text-xs text-gray-500">{p.patientCode}</span>
+                        <span className="dropdown-list-item-muted">{p.patientCode}</span>
                       </button>
                     </li>
                   ))}

@@ -8,6 +8,7 @@ import Label from "@/components/form/Label";
 import ServiceDisposablesFields, {
   type ServiceDisposableDraft,
 } from "@/components/settings/ServiceDisposablesFields";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 export type ServiceFormValues = {
   name: string;
@@ -116,6 +117,7 @@ export default function ServiceForm({
               required
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              onBlur={(e) => setForm((f) => ({ ...f, name: capitalizeNamePart(e.target.value) }))}
               placeholder="e.g. Consultation"
               className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
             />

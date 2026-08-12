@@ -22,6 +22,7 @@ import {
 } from "@/components/pharmacy/ProductSaleUnitsEditor";
 import { getBaseUnitLabel } from "@/lib/product-unit-conversion";
 import { formatQuantityAsBundledBase } from "@/lib/product-stock-display";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 type Category = { id: number; name: string };
 type Branch = { id: number; name: string };
@@ -242,6 +243,7 @@ export default function OpeningInventoryPage() {
                 required
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onBlur={(e) => setForm((f) => ({ ...f, name: capitalizeNamePart(e.target.value) }))}
                 placeholder="e.g. Paracetamol 500mg"
                 className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-brand-300 focus:ring-2 focus:ring-brand-500/20 dark:border-gray-700 dark:text-white dark:placeholder:text-gray-500"
               />

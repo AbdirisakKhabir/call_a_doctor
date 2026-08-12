@@ -16,6 +16,7 @@ import {
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 import PatientPaymentEditModal from "@/components/finance/PatientPaymentEditModal";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { printPatientPaymentReceipt } from "@/lib/patient-payment-receipt-print";
 import { patientPaymentCategoryLabel } from "@/lib/patient-payment-utils";
@@ -111,18 +112,18 @@ export default function PatientPaymentList() {
   async function deletePayment(r: PatientPaymentListRow) {
     if (!canManagePayment || r.cancelledAt) return;
     const totalLine = (r.amount ?? 0) + (r.discount ?? 0);
-    const ok = window.confirm(
-      `Delete this payment ($${totalLine.toFixed(2)})? The amount will be returned to the client's balance${
+    const ok = await confirmDelete({
+      text: `Delete this payment ($${totalLine.toFixed(2)})? The amount will be returned to the client's balance${
         r.amount > 0 ? " and the cash deposit will be reversed in accounting" : ""
-      }.`
-    );
+      }.`,
+    });
     if (!ok) return;
     setDeletingId(r.id);
     try {
       const res = await authFetch(`/api/finance/patient-payments/${r.id}`, { method: "DELETE" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        window.alert(typeof body.error === "string" ? body.error : "Could not delete payment");
+        await showErrorAlert(typeof body.error === "string" ? body.error : "Could not delete payment");
         return;
       }
       const deletedIds: number[] = Array.isArray(body.deletedIds)

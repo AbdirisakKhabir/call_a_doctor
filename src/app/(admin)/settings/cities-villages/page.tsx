@@ -6,6 +6,7 @@ import Button from "@/components/ui/button/Button";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 
@@ -130,16 +131,16 @@ export default function CitiesVillagesSettingsPage() {
       body: JSON.stringify({ isActive: !c.isActive }),
     });
     if (res.ok) await loadCities();
-    else alert((await res.json()).error || "Failed");
+    else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   async function deleteCity(id: number) {
-    if (!confirm("Delete this city? Villages must be removed first.")) return;
+    if (!(await confirmDelete({ text: "Delete this city? Villages must be removed first." }))) return;
     const res = await authFetch(`/api/cities/${id}`, { method: "DELETE" });
     if (res.ok) {
       await loadCities();
       if (selectedCityId === id) setSelectedCityId(null);
-    } else alert((await res.json()).error || "Failed");
+    } else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   function openAddVillage() {
@@ -202,14 +203,14 @@ export default function CitiesVillagesSettingsPage() {
       body: JSON.stringify({ isActive: !v.isActive }),
     });
     if (res.ok && selectedCityId) await loadVillages(selectedCityId);
-    else alert((await res.json()).error || "Failed");
+    else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   async function deleteVillage(id: number) {
-    if (!confirm("Delete this village?")) return;
+    if (!(await confirmDelete({ text: "Delete this village?" }))) return;
     const res = await authFetch(`/api/villages/${id}`, { method: "DELETE" });
     if (res.ok && selectedCityId) await loadVillages(selectedCityId);
-    else alert((await res.json()).error || "Failed");
+    else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   if (!canManage) {

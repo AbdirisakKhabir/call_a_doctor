@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
     const cat = await prisma.labCategory.create({
-      data: { name: name.trim(), description: description ? String(description).trim() : null },
+      data: { name: capitalizeNamePart(name), description: description ? String(description).trim() : null },
     });
     return NextResponse.json(cat);
   } catch (e) {

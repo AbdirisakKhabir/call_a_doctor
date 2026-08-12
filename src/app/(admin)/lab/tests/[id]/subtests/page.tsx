@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { TrashBinIcon } from "@/icons";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 type PanelDetail = {
   id: number;
@@ -381,6 +382,7 @@ export default function LabPanelSubtestsPage() {
                           aria-label={`Row ${idx + 1} name`}
                           value={row.name}
                           onChange={(e) => updateRow(row.key, { name: e.target.value })}
+                          onBlur={(e) => updateRow(row.key, { name: capitalizeNamePart(e.target.value) })}
                           className={fieldInput}
                           placeholder="e.g. WBC"
                         />

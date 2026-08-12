@@ -13,6 +13,7 @@ import Link from "next/link";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 import ExpiryDateBadge from "@/components/pharmacy/ExpiryDateBadge";
 import { unsellableReasonLabel } from "@/lib/unsellable-stock";
+import { confirmAction } from "@/lib/swal-dialogs";
 
 type Branch = { id: number; name: string };
 
@@ -132,9 +133,11 @@ export default function UnsellableStockPage() {
   async function handleMoveExpired() {
     if (!branchId || !canEdit) return;
     if (
-      !confirm(
-        "Move all sellable stock for products whose expiry date is before today into unsellable stock? This cannot be undone from this screen."
-      )
+      !(await confirmAction({
+        title: "Move expired stock?",
+        text: "Move all sellable stock for products whose expiry date is before today into unsellable stock? This cannot be undone from this screen.",
+        icon: "warning",
+      }))
     ) {
       return;
     }

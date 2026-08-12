@@ -3,7 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAuditFromRequest } from "@/lib/audit-log";
 import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
-import { formatClientFullName, serializePatient } from "@/lib/patient-name";
+import { formatClientFullName, capitalizeClientNamePart, serializePatient } from "@/lib/patient-name";
 import { resolveReferralSourceIdForWrite } from "@/lib/referral-source";
 import { calculateAgeFromDate } from "@/lib/age-from-dob";
 import { assertActiveBranch, assertVillageInCity } from "@/lib/patient-location";
@@ -100,8 +100,8 @@ export async function PATCH(
 
     const data: Record<string, unknown> = {};
     if (typeof firstName === "string" && typeof lastName === "string") {
-      const fn = firstName.trim();
-      const ln = lastName.trim();
+      const fn = capitalizeClientNamePart(firstName);
+      const ln = capitalizeClientNamePart(lastName);
       if (!fn || !ln) {
         return NextResponse.json({ error: "First name and last name are required" }, { status: 400 });
       }

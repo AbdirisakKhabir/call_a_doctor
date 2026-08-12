@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { normalizeServiceColor } from "@/lib/service-color";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 import { userHasPermission } from "@/lib/permissions";
 import { normalizeSaleUnitKey } from "@/lib/product-sale-units";
 
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
     const service = await prisma.$transaction(async (tx) => {
       const created = await tx.service.create({
         data: {
-          name: String(name).trim(),
+          name: capitalizeNamePart(String(name)),
           color: normalizedColor,
           description: description ? String(description).trim() : null,
           price: Math.max(0, Number(price) || 0),

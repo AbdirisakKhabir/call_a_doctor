@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import { authFetch } from "@/lib/api";
+import { confirmAction, confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 
 type TrashRow = {
@@ -54,13 +55,13 @@ export default function TrashPage() {
   }, [load]);
 
   async function restore(id: number) {
-    if (!confirm("Restore this record? It will be inserted again with a new id if successful.")) return;
+    if (!(await confirmAction({ title: "Restore record?", text: "Restore this record? It will be inserted again with a new id if successful." }))) return;
     setBusyId(id);
     try {
       const res = await authFetch(`/api/trash/${id}`, { method: "POST" });
       const j = await res.json();
       if (!res.ok) {
-        alert(j.error || "Restore failed");
+        await showErrorAlert(j.error || "Restore failed");
         return;
       }
       await load();
@@ -70,13 +71,13 @@ export default function TrashPage() {
   }
 
   async function permanentRemove(id: number) {
-    if (!confirm("Remove this trash entry now? The snapshot cannot be recovered from the bin.")) return;
+    if (!(await confirmDelete({ text: "Remove this trash entry now? The snapshot cannot be recovered from the bin." }))) return;
     setBusyId(id);
     try {
       const res = await authFetch(`/api/trash/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const j = await res.json();
-        alert(j.error || "Failed");
+        await showErrorAlert(j.error || "Failed");
         return;
       }
       await load();

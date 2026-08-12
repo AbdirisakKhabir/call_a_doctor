@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 import { authFetch } from "@/lib/api";
+import { showErrorAlert, showWarningAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { downloadExcelWorkbook } from "@/lib/excel-export";
 
@@ -144,13 +145,13 @@ export default function ActivityLogReportPage() {
       params.set("export", "1");
       const res = await authFetch(`/api/reports/activity-log?${params}`);
       if (!res.ok) {
-        alert("Export failed");
+        await showErrorAlert("Export failed");
         return;
       }
       const body = await res.json();
       const data = (body.data ?? []) as AuditRow[];
       if (data.length === 0) {
-        alert("No rows to export for the current filters.");
+        await showWarningAlert("No rows to export for the current filters.");
         return;
       }
       const stamp = new Date().toISOString().slice(0, 10);

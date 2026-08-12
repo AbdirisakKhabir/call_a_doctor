@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { assertLabTestParentAssignment } from "@/lib/lab-test-parent";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 type ItemIn = {
   name?: unknown;
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     for (const row of rawItems) {
       if (!row || typeof row !== "object") continue;
       const r = row as ItemIn;
-      const name = typeof r.name === "string" ? r.name.trim() : "";
+      const name = typeof r.name === "string" ? capitalizeNamePart(r.name) : "";
       if (!name) continue;
       const code = typeof r.code === "string" && r.code.trim() ? String(r.code).trim() : null;
       const unit = typeof r.unit === "string" && r.unit.trim() ? String(r.unit).trim() : null;

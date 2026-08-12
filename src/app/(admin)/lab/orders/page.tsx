@@ -6,6 +6,7 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import DateRangeFilter from "@/components/form/DateRangeFilter";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
 import { Dropdown } from "@/components/ui/dropdown/Dropdown";
@@ -138,6 +139,13 @@ export default function LabOrdersPage() {
   }, [from, to, branchId, doctorId, status, searchDebounced]);
 
   useEffect(() => {
+    const s = searchParams.get("status");
+    if (s === "pending" || s === "completed" || s === "cancelled") {
+      setStatus(s);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (searchParams.get("create") !== "1") return;
     const appointmentId = searchParams.get("appointmentId");
     const patientId = searchParams.get("patientId");
@@ -180,17 +188,19 @@ export default function LabOrdersPage() {
   }, [hasPermission, loadOrders]);
 
   async function handleDelete(order: LabOrder) {
-    const ok = window.confirm(
-      `Delete lab request #${order.id} for ${order.patient.name}?\n\nThis permanently removes the request and all recorded results. Linked lab payments will be reversed and the client charge removed.`
-    );
-    if (!ok) return;
+    if (
+      !(await confirmDelete({
+        text: `Delete lab request #${order.id} for ${order.patient.name}? This permanently removes the request and all recorded results. Linked lab payments will be reversed and the client charge removed.`,
+      }))
+    )
+      return;
     setActionsMenuId(null);
     setDeletingId(order.id);
     try {
       const res = await authFetch(`/api/lab/orders/${order.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(typeof data.error === "string" ? data.error : "Failed to delete lab request");
+        await showErrorAlert(typeof data.error === "string" ? data.error : "Failed to delete lab request");
         return;
       }
       await loadOrders();

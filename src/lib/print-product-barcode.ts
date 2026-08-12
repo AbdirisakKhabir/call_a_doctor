@@ -1,5 +1,6 @@
 import JsBarcode from "jsbarcode";
 import { escapeHtml } from "@/lib/patient-invoice-print";
+import { showWarningAlert } from "@/lib/swal-dialogs";
 
 /**
  * Opens a print-friendly window with a CODE128 barcode for shelf labels / POS.
@@ -28,7 +29,7 @@ export function printProductBarcodeLabel(payload: {
     });
   } catch {
     w.close();
-    window.alert("This barcode value cannot be encoded for printing.");
+    void showWarningAlert("This barcode value cannot be encoded for printing.");
     return;
   }
 

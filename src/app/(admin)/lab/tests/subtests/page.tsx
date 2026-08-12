@@ -5,6 +5,7 @@ import Link from "next/link";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
@@ -52,10 +53,10 @@ export default function LabSubtestsListPage() {
   }, [page]);
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this sub-test?")) return;
+    if (!(await confirmDelete({ text: "Delete this sub-test?" }))) return;
     const res = await authFetch(`/api/lab/tests/${id}`, { method: "DELETE" });
     if (res.ok) await load();
-    else alert((await res.json()).error || "Failed");
+    else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   if (!hasPermission("lab.view")) {

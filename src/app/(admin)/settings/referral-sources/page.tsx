@@ -8,6 +8,7 @@ import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 
 type ReferralSource = {
   id: number;
@@ -100,14 +101,14 @@ export default function ReferralSourcesSettingsPage() {
       body: JSON.stringify({ isActive: !r.isActive }),
     });
     if (res.ok) await load();
-    else alert((await res.json()).error || "Failed");
+    else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this referral source? Clients using it will have the field cleared.")) return;
+    if (!(await confirmDelete({ text: "Delete this referral source? Clients using it will have the field cleared." }))) return;
     const res = await authFetch(`/api/referral-sources/${id}`, { method: "DELETE" });
     if (res.ok) await load();
-    else alert((await res.json()).error || "Failed");
+    else await showErrorAlert((await res.json()).error || "Failed");
   }
 
   if (!canManage) {

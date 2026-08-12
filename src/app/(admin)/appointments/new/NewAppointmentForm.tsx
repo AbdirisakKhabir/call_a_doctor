@@ -582,7 +582,7 @@ export default function NewAppointmentForm() {
     return (
       <div>
         <PageBreadCrumb pageTitle="New booking" />
-        <p className="mt-4 text-sm text-gray-500">You do not have permission to add calendar bookings.</p>
+        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">You do not have permission to add calendar bookings.</p>
       </div>
     );
   }
@@ -620,10 +620,14 @@ export default function NewAppointmentForm() {
 
       <div className="max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-white/3">
         <form onSubmit={handleCreate} className="space-y-4">
-          {error && <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600">{error}</div>}
+          {error && (
+            <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+              {error}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Location (branch) *</label>
+              <label className="form-field-label">Location (branch) *</label>
               <select
                 required
                 value={form.branchId}
@@ -639,7 +643,7 @@ export default function NewAppointmentForm() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Practitioner (doctor) *</label>
+              <label className="form-field-label">Practitioner (doctor) *</label>
               <select
                 required
                 value={form.doctorId}
@@ -658,7 +662,7 @@ export default function NewAppointmentForm() {
 
           <div>
             <div className="mb-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <label className="block text-sm font-medium">Client *</label>
+              <label className="form-field-label mb-0">Client *</label>
               {canCreatePatient && (
                 <Button
                   type="button"
@@ -682,13 +686,13 @@ export default function NewAppointmentForm() {
               }}
               className="h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
             />
-            <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="dropdown-list mt-1 max-h-40">
               {patientSearch.trim().length < 2 ? (
-                <p className="px-4 py-3 text-sm text-gray-500">Type at least 2 characters to search.</p>
+                <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">Type at least 2 characters to search.</p>
               ) : searchingPatients ? (
-                <p className="px-4 py-3 text-sm text-gray-500">Searching…</p>
+                <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">Searching…</p>
               ) : patientSearchResults.length === 0 && !form.patientId ? (
-                <p className="px-4 py-3 text-sm text-gray-500">No clients found.</p>
+                <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">No clients found.</p>
               ) : (
                 patientSearchResults.slice(0, 15).map((p) => (
                   <button
@@ -698,12 +702,12 @@ export default function NewAppointmentForm() {
                       setForm((f) => ({ ...f, patientId: String(p.id) }));
                       setPatientSearch(`${p.name} (${p.patientCode})`);
                     }}
-                    className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
+                    className={`dropdown-list-item flex items-center justify-between px-4 py-2 ${
                       form.patientId === String(p.id) ? "bg-brand-50 dark:bg-brand-500/10" : ""
                     }`}
                   >
                     <span>{p.name}</span>
-                    <span className="text-xs text-gray-500">{p.patientCode}</span>
+                    <span className="dropdown-list-item-muted">{p.patientCode}</span>
                   </button>
                 ))
               )}
@@ -733,7 +737,7 @@ export default function NewAppointmentForm() {
               appendToBody
             />
             <div>
-              <label className="mb-1 block text-sm font-medium">Start time *</label>
+              <label className="form-field-label">Start time *</label>
               <select
                 value={form.startTime}
                 onChange={(e) => {
@@ -760,7 +764,7 @@ export default function NewAppointmentForm() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">End time</label>
+              <label className="form-field-label">End time</label>
               <select
                 value={form.endTime}
                 onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
@@ -794,7 +798,7 @@ export default function NewAppointmentForm() {
           )}
 
           <div className="max-w-md">
-            <label className="mb-1 block text-sm font-medium">Reminder</label>
+            <label className="form-field-label">Reminder</label>
             <select
               value={form.reminderMinutesBefore}
               onChange={(e) => setForm((f) => ({ ...f, reminderMinutesBefore: e.target.value }))}
@@ -809,7 +813,7 @@ export default function NewAppointmentForm() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Services / treatments (charge) *</label>
+            <label className="form-field-label">Services / treatments (charge) *</label>
             <select
               className="h-11 w-full max-w-md rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
               value={servicePick}
@@ -848,7 +852,7 @@ export default function NewAppointmentForm() {
                       aria-hidden
                       title={s.color ? `${s.name} color` : "No service color"}
                     />
-                    <span className="min-w-0 flex-1 text-sm font-medium">{s.name}</span>
+                    <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-gray-100">{s.name}</span>
                     <button
                       type="button"
                       onClick={() => removeService(s.serviceId)}
@@ -869,7 +873,7 @@ export default function NewAppointmentForm() {
               <p className="mb-3 text-sm font-medium text-gray-800 dark:text-gray-100">Billing</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <label className="mb-1 block text-sm font-medium">Payment method</label>
+                  <label className="form-field-label">Payment method</label>
                   <select
                     value={form.paymentMethodId}
                     onChange={(e) =>
@@ -896,7 +900,7 @@ export default function NewAppointmentForm() {
                   ) : null}
                 </div>
                 <div>
-                  <label htmlFor="new-appt-billing-discount" className="mb-1 block text-sm font-medium">
+                  <label htmlFor="new-appt-billing-discount" className="form-field-label">
                     Discount
                   </label>
                   <div className="relative">
@@ -915,7 +919,7 @@ export default function NewAppointmentForm() {
                   </div>
                 </div>
                 <div>
-                  <label htmlFor="new-appt-paid-now" className="mb-1 block text-sm font-medium">
+                  <label htmlFor="new-appt-paid-now" className="form-field-label">
                     Paid now
                   </label>
                   <div className="relative">
@@ -939,15 +943,15 @@ export default function NewAppointmentForm() {
               <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-gray-200 pt-4 text-sm dark:border-gray-600 sm:grid-cols-4">
                 <div>
                   <dt className="text-gray-500 dark:text-gray-400">Subtotal</dt>
-                  <dd className="mt-0.5 font-semibold tabular-nums">${totalCharge.toFixed(2)}</dd>
+                  <dd className="mt-0.5 font-semibold tabular-nums text-gray-900 dark:text-gray-100">${totalCharge.toFixed(2)}</dd>
                 </div>
                 <div>
                   <dt className="text-gray-500 dark:text-gray-400">After discount</dt>
-                  <dd className="mt-0.5 font-semibold tabular-nums">${amountToCollect.toFixed(2)}</dd>
+                  <dd className="mt-0.5 font-semibold tabular-nums text-gray-900 dark:text-gray-100">${amountToCollect.toFixed(2)}</dd>
                 </div>
                 <div>
                   <dt className="text-gray-500 dark:text-gray-400">Paid</dt>
-                  <dd className="mt-0.5 font-semibold tabular-nums">
+                  <dd className="mt-0.5 font-semibold tabular-nums text-gray-900 dark:text-gray-100">
                     {form.paymentMethodId ? `$${paidNowClamped.toFixed(2)}` : "—"}
                   </dd>
                 </div>
@@ -962,7 +966,7 @@ export default function NewAppointmentForm() {
           ) : null}
 
           <div>
-            <label className="mb-1 block text-sm font-medium">Booking notes</label>
+            <label className="form-field-label">Booking notes</label>
             <textarea
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}

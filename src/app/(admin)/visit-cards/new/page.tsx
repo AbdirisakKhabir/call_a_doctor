@@ -457,19 +457,20 @@ function NewVisitCardPage() {
                 Selected: {selectedPatient.name} ({selectedPatient.patientCode})
               </p>
             )}
-            <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800">
+            <div className="dropdown-list mt-2 max-h-52">
               {patientHits.map((p) => (
                 <button
                   key={p.id}
                   type="button"
-                  className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                  className="dropdown-list-item block px-3 py-2"
                   onClick={() => {
                     setSelectedPatient(p);
                     setPatientSearch("");
                     setPatientHits([]);
                   }}
                 >
-                  {p.name} · {p.patientCode}
+                  <span className="text-gray-900 dark:text-gray-100">{p.name}</span>
+                  <span className="text-gray-500 dark:text-gray-400"> · {p.patientCode}</span>
                 </button>
               ))}
             </div>

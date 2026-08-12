@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { deleteLabCategoryIfUnused, LabTestDeleteError } from "@/lib/lab-test-delete";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,7 +15,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = await req.json();
     const { name, description, isActive } = body;
     const data: { name?: string; description?: string | null; isActive?: boolean } = {};
-    if (typeof name === "string" && name.trim()) data.name = name.trim();
+    if (typeof name === "string" && name.trim()) data.name = capitalizeNamePart(name);
     if (typeof description !== "undefined") data.description = description ? String(description).trim() : null;
     if (typeof isActive === "boolean") data.isActive = isActive;
     const cat = await prisma.labCategory.update({ where: { id: parsedId }, data });

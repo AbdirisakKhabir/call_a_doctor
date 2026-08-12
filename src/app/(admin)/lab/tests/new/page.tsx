@@ -13,6 +13,7 @@ import LabTestDisposablesFields, {
   type BranchOpt,
   type PendingDisposableRow,
 } from "@/components/lab/LabTestDisposablesFields";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 type LabCategory = { id: number; name: string };
 
@@ -192,6 +193,7 @@ export default function NewLabTestPage() {
                   required
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  onBlur={(e) => setForm((f) => ({ ...f, name: capitalizeNamePart(e.target.value) }))}
                   className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 />
               </div>

@@ -6,6 +6,7 @@ import { logAuditFromRequest } from "@/lib/audit-log";
 import { replaceProductSaleUnits, validateSaleUnitsPayload, type SaleUnitInput } from "@/lib/product-sale-units";
 import { computeBaseQuantityFromPackagingLines } from "@/lib/product-quantity-lines";
 import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 export async function GET(
   req: NextRequest,
@@ -89,7 +90,7 @@ export async function PATCH(
     } = body;
 
     const data: Record<string, unknown> = {};
-    if (typeof name === "string" && name.trim()) data.name = name.trim();
+    if (typeof name === "string" && name.trim()) data.name = capitalizeNamePart(name);
     if (typeof code === "string" && code.trim()) {
       const codeNorm = code.trim().toUpperCase();
       const dup = await prisma.product.findFirst({

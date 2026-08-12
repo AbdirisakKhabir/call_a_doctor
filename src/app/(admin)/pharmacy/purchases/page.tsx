@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
+import { showWarningAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
 import { PlusIcon } from "@/icons";
@@ -115,7 +116,9 @@ export default function PurchasesPage() {
             onClick={(e) => {
               if (branches.length === 0) {
                 e.preventDefault();
-                alert("No branch is available. Create a branch in Settings and assign your user to it.");
+                void showWarningAlert(
+                  "No branch is available. Create a branch in Settings and assign your user to it."
+                );
               }
             }}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"

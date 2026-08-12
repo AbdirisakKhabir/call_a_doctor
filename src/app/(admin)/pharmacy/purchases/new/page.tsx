@@ -17,6 +17,7 @@ import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { TrashBinIcon } from "@/icons";
 import ProductPurchaseSearch from "@/components/pharmacy/ProductPurchaseSearch";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 import ProductBarcodeLabel from "@/components/pharmacy/ProductBarcodeLabel";
 import { suggestBarcodeValue } from "@/lib/barcode";
 import ProductUnitConversionPanel from "@/components/pharmacy/ProductUnitConversionPanel";
@@ -671,6 +672,7 @@ export default function NewPurchasePage() {
                                 <input
                                   value={it.newName}
                                   onChange={(e) => updateItem(idx, "newName", e.target.value)}
+                                  onBlur={(e) => updateItem(idx, "newName", capitalizeNamePart(e.target.value))}
                                   placeholder="Name *"
                                   className="h-9 w-full rounded-lg border border-gray-200 bg-transparent px-2 text-sm dark:border-gray-700 dark:text-white"
                                 />

@@ -11,7 +11,7 @@ import {
 import { userHasPermission } from "@/lib/permissions";
 import { logAuditFromRequest } from "@/lib/audit-log";
 import { getFinanceAccountBalance } from "@/lib/finance-balance";
-import { serializePatient } from "@/lib/patient-name";
+import { capitalizeClientNamePart, serializePatient } from "@/lib/patient-name";
 import { resolveReferralSourceIdForWrite } from "@/lib/referral-source";
 import { calculateAgeFromDate } from "@/lib/age-from-dob";
 import { assertActiveBranch, assertVillageInCity } from "@/lib/patient-location";
@@ -231,8 +231,8 @@ export async function POST(req: NextRequest) {
       const created = await prisma.patient.create({
         data: {
           patientCode,
-          firstName: String(newPatient.firstName).trim(),
-          lastName: String(newPatient.lastName).trim(),
+          firstName: capitalizeClientNamePart(String(newPatient.firstName)),
+          lastName: capitalizeClientNamePart(String(newPatient.lastName)),
           phone: newPatient.phone ? String(newPatient.phone).trim() : null,
           mobile:
             newPatient.mobile != null && String(newPatient.mobile).trim()

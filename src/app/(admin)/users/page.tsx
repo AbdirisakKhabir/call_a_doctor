@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import Badge from "@/components/ui/badge/Badge";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
@@ -63,12 +64,12 @@ export default function UsersPage() {
   }, [page, search]);
 
   async function handleDelete(id: number) {
-    if (!confirm("Are you sure you want to delete this user?")) return;
+    if (!(await confirmDelete({ text: "Are you sure you want to delete this user?" }))) return;
     const res = await authFetch(`/api/users/${id}`, { method: "DELETE" });
     if (res.ok) await loadUsers();
     else {
       const data = await res.json();
-      alert(data.error || "Failed to delete");
+      await showErrorAlert(data.error || "Failed to delete");
     }
   }
 

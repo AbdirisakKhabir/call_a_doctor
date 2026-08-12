@@ -8,6 +8,7 @@ import { Dropdown } from "@/components/ui/dropdown/Dropdown";
 import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { formatWorkingDaysLabel } from "@/lib/hr-staff";
 import { MoreDotIcon, PlusIcon } from "@/icons";
@@ -53,12 +54,12 @@ export default function HrStaffListPage() {
 
   async function handleDelete(id: number, name: string) {
     if (!canDelete) return;
-    if (!confirm(`Remove staff record for “${name}”?`)) return;
+    if (!(await confirmDelete({ text: `Remove staff record for “${name}”?` }))) return;
     const res = await authFetch(`/api/hr/staff/${id}`, { method: "DELETE" });
     if (res.ok) await load();
     else {
       const j = await res.json();
-      alert(typeof j.error === "string" ? j.error : "Delete failed");
+      await showErrorAlert(typeof j.error === "string" ? j.error : "Delete failed");
     }
   }
 

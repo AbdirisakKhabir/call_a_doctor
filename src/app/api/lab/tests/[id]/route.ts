@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { assertLabTestParentAssignment } from "@/lib/lab-test-parent";
 import { deleteLabTestIfUnused, LabTestDeleteError } from "@/lib/lab-test-delete";
+import { capitalizeNamePart } from "@/lib/capitalize-name";
 
 const testDetailInclude = {
   category: { select: { id: true, name: true } },
@@ -90,7 +91,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       const data: Record<string, unknown> = {};
       if (categoryId != null) data.categoryId = Number(categoryId);
-      if (typeof name === "string" && name.trim()) data.name = name.trim();
+      if (typeof name === "string" && name.trim()) data.name = capitalizeNamePart(name);
       if (typeof code !== "undefined") data.code = code ? String(code).trim() : null;
       if (typeof unit !== "undefined") data.unit = unit ? String(unit).trim() : null;
       if (typeof normalRange !== "undefined") data.normalRange = normalRange ? String(normalRange).trim() : null;

@@ -7,6 +7,7 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
+import { showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { CalenderIcon, UserCircleIcon, BoxCubeIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
@@ -203,7 +204,7 @@ export default function PrescriptionsPage() {
         await fetchPrescriptionsPage(1);
         if (typeof window !== "undefined") window.history.replaceState({}, "", "/prescriptions");
       } else {
-        alert((await res.json()).error || "Failed");
+        await showErrorAlert((await res.json()).error || "Failed");
       }
     } finally {
       setCreateSubmitting(false);

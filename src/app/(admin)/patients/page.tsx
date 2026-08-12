@@ -18,6 +18,7 @@ import AgeReadonlyInput from "@/components/form/AgeReadonlyInput";
 import ClientFormCard from "@/components/patients/ClientFormCard";
 import ClientPhoneFields from "@/components/patients/ClientPhoneFields";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import {
   DEFAULT_PHONE_COUNTRY_ISO2,
   formatInternationalPhoneForStorage,
@@ -329,7 +330,7 @@ export default function PatientsPage() {
   async function handleRecordHistory() {
     if (!historyParams?.patientId || !historyForm.notes.trim()) return;
     if (!historyDoctorId) {
-      alert("Select a practitioner");
+      await showErrorAlert("Select a practitioner");
       return;
     }
     setHistorySubmitting(true);
@@ -348,7 +349,7 @@ export default function PatientsPage() {
       if (res.ok) {
         closeHistoryModal();
       } else {
-        alert((await res.json()).error || "Failed");
+        await showErrorAlert((await res.json()).error || "Failed");
       }
     } finally {
       setHistorySubmitting(false);
@@ -448,10 +449,10 @@ export default function PatientsPage() {
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this client?")) return;
+    if (!(await confirmDelete({ text: "Delete this client?" }))) return;
     const res = await authFetch(`/api/patients/${id}`, { method: "DELETE" });
     if (res.ok) await loadPatients();
-    else alert((await res.json()).error || "Failed to delete");
+    else await showErrorAlert((await res.json()).error || "Failed to delete");
   }
 
   return (

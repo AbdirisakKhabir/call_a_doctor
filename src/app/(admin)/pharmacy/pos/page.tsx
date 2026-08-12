@@ -1519,8 +1519,8 @@ function POSPageInner() {
               <div className="mt-2 relative">
                 {selectedPatient ? (
                   <div className="flex items-center justify-between rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 dark:border-brand-800 dark:bg-brand-500/10">
-                    <span className="text-sm font-medium">{selectedPatient.name}</span>
-                    <span className="text-xs text-gray-500">{selectedPatient.patientCode}</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{selectedPatient.name}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{selectedPatient.patientCode}</span>
                     <button
                       type="button"
                       onClick={() => { setSelectedPatient(null); setPatientSearch(""); setPatientSearchOpen(true); }}
@@ -1556,7 +1556,7 @@ function POSPageInner() {
                     {patientSearchOpen && (
                       <div className="absolute top-full left-0 right-0 z-10 mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800">
                         {patientSearchResults.length === 0 ? (
-                          <div className="px-3 py-3 text-center text-sm text-gray-500">
+                          <div className="px-3 py-3 text-center text-sm text-gray-500 dark:text-gray-400">
                             <p>No clients found</p>
                             {hasPermission("patients.create") && (
                               <button
@@ -1581,10 +1581,10 @@ function POSPageInner() {
                                 setPatientSearch("");
                                 setPatientSearchOpen(false);
                               }}
-                              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                              className="dropdown-list-item flex items-center justify-between px-3 py-2"
                             >
                               <span>{p.name}</span>
-                              <span className="text-xs text-gray-500">{p.patientCode}</span>
+                              <span className="dropdown-list-item-muted">{p.patientCode}</span>
                             </button>
                           ))
                         )}
@@ -1925,7 +1925,7 @@ function POSPageInner() {
               </div>
               {checkoutNeedsTillPayment ? (
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Payment method</label>
+                  <label className="form-field-label">Payment method</label>
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
@@ -2399,7 +2399,7 @@ function POSPageInner() {
                                     setEditPatientSearch(e.target.value);
                                     setEditPatientOpen(true);
                                   }}
-                                  className="h-8 min-w-0 flex-1 rounded border border-gray-200 px-2 text-xs dark:border-gray-700 dark:bg-gray-800"
+                                  className="h-8 min-w-0 flex-1 rounded border border-gray-200 px-2 text-xs dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                                 />
                                 {hasPermission("patients.create") && (
                                   <button
@@ -2415,7 +2415,7 @@ function POSPageInner() {
                               {editPatientOpen && (
                                 <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-32 overflow-y-auto rounded border border-gray-200 bg-white shadow dark:border-gray-700 dark:bg-gray-800">
                                   {editPatientResults.length === 0 ? (
-                                    <div className="px-2 py-2 text-center text-xs text-gray-500">
+                                    <div className="px-2 py-2 text-center text-xs text-gray-500 dark:text-gray-400">
                                       <p>No results</p>
                                       {hasPermission("patients.create") && (
                                         <button
@@ -2440,10 +2440,10 @@ function POSPageInner() {
                                           setEditPatientSearch("");
                                           setEditPatientOpen(false);
                                         }}
-                                        className="flex w-full justify-between px-2 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700"
+                                        className="dropdown-list-item flex justify-between px-2 py-1.5 text-xs"
                                       >
                                         <span>{p.name}</span>
-                                        <span className="text-gray-500">{p.patientCode}</span>
+                                        <span className="dropdown-list-item-muted">{p.patientCode}</span>
                                       </button>
                                     ))
                                   )}
@@ -2456,9 +2456,9 @@ function POSPageInner() {
                     </div>
 
                     <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-                      <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Items</p>
+                      <p className="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Items</p>
                       {editCart.length === 0 ? (
-                        <p className="text-sm text-gray-500">Add products from the left.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Add products from the left.</p>
                       ) : (
                         <div className="space-y-2">
                           {editCart.map((c) => {

@@ -358,7 +358,7 @@ export default function PatientInvoicePage() {
                   <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">Choose a branch first.</p>
                 ) : null}
                 {patientSearch.trim().length >= 2 && patientResults.length === 0 ? (
-                  <p className="mt-1 text-[11px] text-gray-500">No matches.</p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">No matches.</p>
                 ) : null}
                 {patientResults.length > 0 ? (
                   <ul className="absolute left-0 top-full z-30 mt-1 max-h-48 w-full max-w-xl overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
@@ -366,7 +366,7 @@ export default function PatientInvoicePage() {
                       <li key={p.id}>
                         <button
                           type="button"
-                          className="flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                          className="dropdown-list-item flex justify-between px-3 py-2"
                           onClick={() => {
                             setPatient(p);
                             setPatientSearch("");
@@ -374,7 +374,7 @@ export default function PatientInvoicePage() {
                           }}
                         >
                           <span>{p.name}</span>
-                          <span className="font-mono text-xs text-gray-500">{p.patientCode}</span>
+                          <span className="dropdown-list-item-muted font-mono">{p.patientCode}</span>
                         </button>
                       </li>
                     ))}

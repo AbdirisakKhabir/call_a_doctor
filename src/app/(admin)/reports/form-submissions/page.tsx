@@ -7,6 +7,7 @@ import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import DateField from "@/components/form/DateField";
 import { authFetch } from "@/lib/api";
+import { showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 
 type FormOption = { id: number; title: string };
@@ -89,7 +90,7 @@ export default function FormSubmissionsReportPage() {
       const res = await authFetch(`/api/forms/submissions?${sp.toString()}`);
       const json = (await res.json()) as { data?: SubmissionRow[]; total?: number; error?: string };
       if (!res.ok) {
-        alert(json.error || "Failed");
+        await showErrorAlert(json.error || "Failed");
         return;
       }
       setRows(json.data ?? []);

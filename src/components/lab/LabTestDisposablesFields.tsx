@@ -6,6 +6,7 @@ import Label from "@/components/form/Label";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { TrashBinIcon } from "@/icons";
 import { authFetch } from "@/lib/api";
+import { confirmDelete } from "@/lib/swal-dialogs";
 
 export type BranchOpt = { id: number; name: string };
 
@@ -246,7 +247,7 @@ export default function LabTestDisposablesFields(props: Props) {
   }
 
   async function removeSaved(did: number) {
-    if (props.mode !== "saved" || !props.canEdit || !confirm("Remove this disposable?")) return;
+    if (props.mode !== "saved" || !props.canEdit || !(await confirmDelete({ text: "Remove this disposable?" }))) return;
     const res = await authFetch(`/api/lab/tests/${props.testId}/disposables/${did}`, { method: "DELETE" });
     if (res.ok) await loadSaved(props.testId, disposableBranchId);
     else setDispError((await res.json()).error || "Failed");
@@ -337,19 +338,22 @@ export default function LabTestDisposablesFields(props: Props) {
               autoComplete="off"
             />
             {productHints.length > 0 && (
-              <ul className="mt-1 max-h-28 overflow-y-auto rounded border border-gray-100 text-xs dark:border-gray-700">
+              <ul className="dropdown-list mt-1 max-h-28 text-xs">
                 {productHints.map((h) => (
                   <li key={h.code}>
                     <button
                       type="button"
-                      className="w-full px-2 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800"
+                      className="dropdown-list-item px-2 py-1.5"
                       onClick={() => {
                         setNewDispCode(h.code);
                         setProductHints([]);
                       }}
                     >
-                      <span className="font-mono">{h.code}</span> — {h.name}
-                      {h.unit ? ` (${h.unit})` : ""}
+                      <span className="font-mono text-gray-700 dark:text-gray-300">{h.code}</span>
+                      <span className="text-gray-900 dark:text-gray-100"> — {h.name}</span>
+                      {h.unit ? (
+                        <span className="text-gray-500 dark:text-gray-400">{` (${h.unit})`}</span>
+                      ) : null}
                     </button>
                   </li>
                 ))}

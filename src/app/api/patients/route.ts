@@ -3,7 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { logAuditFromRequest } from "@/lib/audit-log";
-import { formatClientFullName, serializePatient } from "@/lib/patient-name";
+import { formatClientFullName, capitalizeClientNamePart, serializePatient } from "@/lib/patient-name";
 import { resolveReferralSourceIdForWrite } from "@/lib/referral-source";
 import { calculateAgeFromDate } from "@/lib/age-from-dob";
 import { assertActiveBranch, assertVillageInCity } from "@/lib/patient-location";
@@ -111,8 +111,8 @@ export async function POST(req: NextRequest) {
       registeredBranchId,
     } = body;
 
-    const fn = typeof firstName === "string" ? firstName.trim() : "";
-    const ln = typeof lastName === "string" ? lastName.trim() : "";
+    const fn = capitalizeClientNamePart(typeof firstName === "string" ? firstName : "");
+    const ln = capitalizeClientNamePart(typeof lastName === "string" ? lastName : "");
     if (!fn || !ln) {
       return NextResponse.json({ error: "First name and last name are required" }, { status: 400 });
     }

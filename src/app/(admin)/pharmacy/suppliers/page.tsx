@@ -13,6 +13,7 @@ import {
 import Badge from "@/components/ui/badge/Badge";
 import Label from "@/components/form/Label";
 import { authFetch } from "@/lib/api";
+import { confirmDelete, showErrorAlert } from "@/lib/swal-dialogs";
 import { useAuth } from "@/context/AuthContext";
 import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import ListPaginationFooter from "@/components/tables/ListPaginationFooter";
@@ -157,10 +158,10 @@ export default function SuppliersPage() {
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Delete this supplier?")) return;
+    if (!(await confirmDelete({ text: "Delete this supplier?" }))) return;
     const res = await authFetch(`/api/pharmacy/suppliers/${id}`, { method: "DELETE" });
     if (res.ok) await loadSuppliers();
-    else alert((await res.json()).error || "Failed to delete");
+    else await showErrorAlert((await res.json()).error || "Failed to delete");
   }
 
   if (!hasPermission("pharmacy.view")) {
