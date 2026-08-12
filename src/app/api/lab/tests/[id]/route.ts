@@ -3,7 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { userHasPermission } from "@/lib/permissions";
 import { assertLabTestParentAssignment } from "@/lib/lab-test-parent";
-import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
+import { deleteLabTestIfUnused, LabTestDeleteError } from "@/lib/lab-test-delete";
 
 const testDetailInclude = {
   category: { select: { id: true, name: true } },
@@ -137,31 +137,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params;
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    const childCount = await prisma.labTest.count({ where: { parentTestId: parsedId } });
-    if (childCount > 0) {
-      return NextResponse.json(
-        { error: "Remove or reassign sub-tests before deleting this panel test." },
-        { status: 400 }
-      );
-    }
-    const row = await prisma.labTest.findUnique({
-      where: { id: parsedId },
-      include: { disposables: true },
-    });
-    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
     await prisma.$transaction(async (tx) => {
-      await recordTrashEntry(tx, {
-        entityType: "LabTest",
-        recordId: parsedId,
-        title: row.name,
-        detail: row.code,
-        snapshot: toTrashSnapshot(row),
-        deletedById: auth.userId,
-      });
-      await tx.labTest.delete({ where: { id: parsedId } });
+      await deleteLabTestIfUnused(tx, parsedId, auth.userId);
     });
     return NextResponse.json({ success: true });
   } catch (e) {
+    if (e instanceof LabTestDeleteError) {
+      const status = e.message === "Not found" ? 404 : 400;
+      return NextResponse.json({ error: e.message }, { status });
+    }
     console.error("Delete lab test error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }

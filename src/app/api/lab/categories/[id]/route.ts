@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
+import { userHasPermission } from "@/lib/permissions";
+import { deleteLabCategoryIfUnused, LabTestDeleteError } from "@/lib/lab-test-delete";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -28,23 +29,21 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   try {
     const auth = await getAuthUser(req);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await userHasPermission(auth.userId, "lab.delete"))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     const { id } = await params;
     const parsedId = Number(id);
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    const row = await prisma.labCategory.findUnique({ where: { id: parsedId } });
-    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
     await prisma.$transaction(async (tx) => {
-      await recordTrashEntry(tx, {
-        entityType: "LabCategory",
-        recordId: parsedId,
-        title: row.name,
-        snapshot: toTrashSnapshot(row),
-        deletedById: auth.userId,
-      });
-      await tx.labCategory.delete({ where: { id: parsedId } });
+      await deleteLabCategoryIfUnused(tx, parsedId, auth.userId);
     });
     return NextResponse.json({ success: true });
   } catch (e) {
+    if (e instanceof LabTestDeleteError) {
+      const status = e.message === "Not found" ? 404 : 400;
+      return NextResponse.json({ error: e.message }, { status });
+    }
     console.error("Delete lab category error:", e);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
