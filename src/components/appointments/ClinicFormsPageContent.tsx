@@ -199,7 +199,7 @@ export default function ClinicFormsPageContent({
       }
       setHasUnsavedChanges(false);
       if (appointmentId != null) {
-        router.push(`/appointments/${appointmentId}`);
+        router.push("/appointments");
       } else {
         router.push(`/patients/${patientId}/history`);
       }

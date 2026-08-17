@@ -35,7 +35,7 @@ export default function FormPickerQuickActionButtons({
     ? `/lab/orders/new?appointmentId=${appointmentId}&patientId=${patientId}&doctorId=${doctorId}`
     : `/appointments/new?patientId=${patientId}`;
   const rxHref = hasBooking
-    ? `/prescriptions?create=1&appointmentId=${appointmentId}&patientId=${patientId}&doctorId=${doctorId}&branchId=${branchId}`
+    ? `/prescriptions/new?appointmentId=${appointmentId}&patientId=${patientId}&doctorId=${doctorId}&branchId=${branchId}`
     : `/appointments/new?patientId=${patientId}`;
 
   if (!showLab && !showPrescription) return null;

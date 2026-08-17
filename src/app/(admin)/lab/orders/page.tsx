@@ -402,8 +402,18 @@ export default function LabOrdersPage() {
                         <Dropdown
                           isOpen={actionsMenuId === order.id}
                           onClose={() => setActionsMenuId(null)}
-                          className="min-w-48 py-1"
+                          className="min-w-52 py-1"
                         >
+                          <DropdownItem
+                            tag="a"
+                            href={`/lab/orders/${order.id}/view`}
+                            onItemClick={() => setActionsMenuId(null)}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <Eye className="h-4 w-4" aria-hidden />
+                              Show result
+                            </span>
+                          </DropdownItem>
                           <DropdownItem
                             tag="a"
                             href={`/lab/orders/${order.id}/results?action=result`}
@@ -430,16 +440,12 @@ export default function LabOrdersPage() {
                             onItemClick={() => setActionsMenuId(null)}
                           >
                             <span className="inline-flex items-center gap-2">
-                              {canRecord ? (
-                                <Pencil className="h-4 w-4" aria-hidden />
-                              ) : (
-                                <Eye className="h-4 w-4" aria-hidden />
-                              )}
+                              <Pencil className="h-4 w-4" aria-hidden />
                               {canRecord
                                 ? hasRecordedResults(order.items)
                                   ? "Edit results"
                                   : "Enter results"
-                                : "View results"}
+                                : "Open results"}
                             </span>
                           </DropdownItem>
                           {canDelete ? (

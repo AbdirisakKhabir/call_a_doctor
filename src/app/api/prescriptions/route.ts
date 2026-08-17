@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
     const to = searchParams.get("to");
     /** all | yes | no — filter emergency vs clinic (scheduled visit) prescriptions */
     const emergency = searchParams.get("emergency");
+    const search = (searchParams.get("search") ?? "").trim();
     const { paginate, page, pageSize, skip } = listPaginationFromSearchParams(searchParams);
 
     const dateFilter: { gte?: Date; lte?: Date } = {};
@@ -42,11 +44,31 @@ export async function GET(req: NextRequest) {
     const emergencyWhere =
       emergency === "yes" ? { isEmergency: true } : emergency === "no" ? { isEmergency: false } : {};
 
-    const where = {
+    const rxId = Number(search);
+    const searchOr: Prisma.PrescriptionWhereInput[] | undefined = search
+      ? [
+          ...(Number.isInteger(rxId) && rxId > 0 ? [{ id: rxId }] : []),
+          { notes: { contains: search } },
+          {
+            patient: {
+              OR: [
+                { patientCode: { contains: search } },
+                { firstName: { contains: search } },
+                { lastName: { contains: search } },
+              ],
+            },
+          },
+          { doctor: { name: { contains: search } } },
+          { items: { some: { product: { OR: [{ name: { contains: search } }, { code: { contains: search } }] } } } },
+        ]
+      : undefined;
+
+    const where: Prisma.PrescriptionWhereInput = {
       ...(patientId ? { patientId: Number(patientId) } : {}),
       ...(appointmentId ? { appointmentId: Number(appointmentId) } : {}),
       ...(hasAppointmentWhere ? { appointment: appointmentWhere } : {}),
       ...emergencyWhere,
+      ...(searchOr ? { OR: searchOr } : {}),
     };
 
     const include = {

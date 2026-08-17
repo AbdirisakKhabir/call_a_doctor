@@ -891,7 +891,7 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
             )}
             {(hasPermission("prescriptions.create") || hasPermission("prescriptions.view")) && (
               <Link
-                href={`/prescriptions?create=1&appointmentId=${a.id}&patientId=${a.patient.id}&doctorId=${a.doctor.id}&branchId=${a.branch.id}`}
+                href={`/prescriptions/new?appointmentId=${a.id}&patientId=${a.patient.id}&doctorId=${a.doctor.id}&branchId=${a.branch.id}`}
                 className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm text-white hover:bg-brand-600"
               >
                 Create Prescription
