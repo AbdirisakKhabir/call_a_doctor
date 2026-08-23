@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizeServiceColor } from "@/lib/service-color";
 import { capitalizeNamePart } from "@/lib/capitalize-name";
 import { recordTrashEntry, toTrashSnapshot } from "@/lib/trash";
+import { resolveServiceCategoryId } from "@/lib/service-category";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,7 +15,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!Number.isInteger(parsedId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     const service = await prisma.service.findUnique({
       where: { id: parsedId },
-      include: { branch: { select: { id: true, name: true } } },
+      include: {
+        branch: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+      },
     });
     if (!service) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(service);
@@ -38,6 +42,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (typeof body.price === "number" || (typeof body.price === "string" && body.price !== "")) data.price = Math.max(0, Number(body.price) || 0);
     if (typeof body.durationMinutes !== "undefined") data.durationMinutes = body.durationMinutes ? Number(body.durationMinutes) : null;
     if (typeof body.branchId !== "undefined") data.branchId = body.branchId ? Number(body.branchId) : null;
+    if (typeof body.categoryId !== "undefined") {
+      const category = await resolveServiceCategoryId(prisma, body.categoryId === "" ? null : body.categoryId);
+      if ("error" in category) {
+        return NextResponse.json({ error: category.error }, { status: 400 });
+      }
+      data.categoryId = category.id;
+    }
     if (typeof body.isActive === "boolean") data.isActive = body.isActive;
     if (typeof body.color !== "undefined") {
       if (body.color === null || body.color === "") {
@@ -53,7 +64,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const service = await prisma.service.update({
       where: { id: parsedId },
       data,
-      include: { branch: { select: { id: true, name: true } } },
+      include: {
+        branch: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+      },
     });
     return NextResponse.json(service);
   } catch (e) {

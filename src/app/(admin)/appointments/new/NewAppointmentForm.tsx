@@ -23,10 +23,11 @@ import {
   normalizeClientScheduleBlock,
 } from "@/lib/appointment-schedule-block-overlap";
 import SaleReceiptModal from "@/components/pharmacy/SaleReceiptModal";
+import { groupServicesByCategory } from "@/lib/group-services-by-category";
 
 type Branch = { id: number; name: string };
 type Doctor = { id: number; name: string; specialty: string | null; branch: { id: number } | null };
-type Service = { id: number; name: string; price: number; durationMinutes: number | null; color: string | null };
+type Service = { id: number; name: string; price: number; durationMinutes: number | null; color: string | null; category?: { id: number; name: string } | null };
 type Patient = { id: number; patientCode: string; name: string };
 type LedgerPaymentMethodRow = { id: number; name: string };
 
@@ -830,13 +831,17 @@ export default function NewAppointmentForm() {
               }}
             >
               <option value="">Add a service…</option>
-              {services
-                .filter((s) => !form.services.some((x) => x.serviceId === s.id))
-                .map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.name} (${s.price.toFixed(2)})
-                  </option>
-                ))}
+              {groupServicesByCategory(
+                services.filter((s) => !form.services.some((x) => x.serviceId === s.id))
+              ).map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.items.map((s) => (
+                    <option key={s.id} value={String(s.id)}>
+                      {s.name} (${s.price.toFixed(2)})
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
 
             {form.services.length > 0 ? (

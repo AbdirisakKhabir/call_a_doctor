@@ -18,6 +18,7 @@ type Service = {
   price: number;
   durationMinutes: number | null;
   branch: { id: number; name: string } | null;
+  category: { id: number; name: string } | null;
 };
 
 export default function ServicesPage() {
@@ -58,17 +59,25 @@ export default function ServicesPage() {
     <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="Services" />
-        {canCreate && (
+        <div className="flex flex-wrap items-center gap-3">
           <Link
-            href="/settings/services/new"
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-medium text-white shadow-theme-xs transition hover:bg-brand-600"
+            href="/settings/services/categories"
+            className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
           >
-            <span className="flex items-center">
-              <PlusIcon />
-            </span>
-            Add Service
+            Category list
           </Link>
-        )}
+          {canCreate && (
+            <Link
+              href="/settings/services/new"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-3 text-sm font-medium text-white shadow-theme-xs transition hover:bg-brand-600"
+            >
+              <span className="flex items-center">
+                <PlusIcon />
+              </span>
+              Add Service
+            </Link>
+          )}
+        </div>
       </div>
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/3">
         {loading ? (
@@ -92,6 +101,7 @@ export default function ServicesPage() {
             <TableHeader>
               <TableRow className="bg-transparent! hover:bg-transparent!">
                 <TableCell isHeader>Name</TableCell>
+                <TableCell isHeader>Category</TableCell>
                 <TableCell isHeader>Color</TableCell>
                 <TableCell isHeader>Price</TableCell>
                 <TableCell isHeader>Duration</TableCell>
@@ -105,6 +115,7 @@ export default function ServicesPage() {
               {services.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableCell>{s.category?.name || "—"}</TableCell>
                   <TableCell>
                     {s.color ? (
                       <span

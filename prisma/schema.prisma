@@ -284,6 +284,18 @@ model Doctor {
 
 // --- Services ---
 
+model ServiceCategory {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  services    Service[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("service_categories")
+}
+
 model Service {
   id                  Int                  @id @default(autoincrement())
   name                String
@@ -292,6 +304,8 @@ model Service {
   description         String?
   price               Float                @default(0)
   durationMinutes     Int? // e.g. 30, 60
+  categoryId          Int?
+  category            ServiceCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   branchId            Int?
   branch              Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
   isActive            Boolean              @default(true)
@@ -302,6 +316,7 @@ model Service {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
+  @@index([categoryId])
   @@map("services")
 }
 

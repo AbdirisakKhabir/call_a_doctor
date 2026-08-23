@@ -15,6 +15,7 @@ const emptyForm = (branchId: string): ServiceFormValues => ({
   durationMinutes: "",
   branchId,
   color: "",
+  categoryId: "",
 });
 
 export default function NewServicePage() {
@@ -78,6 +79,7 @@ export default function NewServicePage() {
           durationMinutes: form.durationMinutes,
           branchId: form.branchId,
           color: form.color,
+          categoryId: form.categoryId ? Number(form.categoryId) : null,
         };
         const list = meta?.initialDisposables;
         if (list && list.length > 0) {

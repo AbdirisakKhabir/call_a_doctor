@@ -20,6 +20,7 @@ export const RESTORABLE_ENTITY_TYPES = new Set([
   "ReferralSource",
   "Doctor",
   "Service",
+  "ServiceCategory",
   "Product",
   "Supplier",
   "Category",
@@ -176,6 +177,14 @@ export async function restoreFromTrashSnapshot(
       const disposables = Array.isArray(s.disposables)
         ? (s.disposables as Record<string, unknown>[])
         : [];
+      let categoryId = typeof s.categoryId === "number" ? s.categoryId : null;
+      if (categoryId != null) {
+        const exists = await tx.serviceCategory.findUnique({
+          where: { id: categoryId },
+          select: { id: true },
+        });
+        if (!exists) categoryId = null;
+      }
       const row = await tx.service.create({
         data: {
           name: String(s.name),
@@ -184,6 +193,7 @@ export async function restoreFromTrashSnapshot(
           price: typeof s.price === "number" ? s.price : 0,
           durationMinutes: typeof s.durationMinutes === "number" ? s.durationMinutes : null,
           branchId: typeof s.branchId === "number" ? s.branchId : null,
+          categoryId,
           isActive: Boolean(s.isActive ?? true),
         },
       });
@@ -330,6 +340,17 @@ export async function restoreFromTrashSnapshot(
 
     case "LabCategory": {
       const row = await tx.labCategory.create({
+        data: {
+          name: String(s.name),
+          description: s.description != null ? String(s.description) : null,
+          isActive: Boolean(s.isActive ?? true),
+        },
+      });
+      return { id: row.id };
+    }
+
+    case "ServiceCategory": {
+      const row = await tx.serviceCategory.create({
         data: {
           name: String(s.name),
           description: s.description != null ? String(s.description) : null,

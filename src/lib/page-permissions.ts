@@ -324,6 +324,10 @@ export const PAGE_PERMISSIONS: PagePermissionDef[] = [
     menuGroup: "Services",
     legacyAny: ["appointments.view"],
   }),
+  p("pages.services.categories", "Category list", "clinic_setup", "/settings/services/categories", {
+    menuGroup: "Services",
+    legacyAny: ["appointments.view"],
+  }),
   p("pages.services.new", "New service", "clinic_setup", "/settings/services/new", {
     menuGroup: "Services",
     legacyAny: ["appointments.view"],

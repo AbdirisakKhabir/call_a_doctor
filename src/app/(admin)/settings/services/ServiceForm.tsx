@@ -9,6 +9,7 @@ import ServiceDisposablesFields, {
   type ServiceDisposableDraft,
 } from "@/components/settings/ServiceDisposablesFields";
 import { capitalizeNamePart } from "@/lib/capitalize-name";
+import { authFetch } from "@/lib/api";
 
 export type ServiceFormValues = {
   name: string;
@@ -16,6 +17,7 @@ export type ServiceFormValues = {
   price: string;
   durationMinutes: string;
   branchId: string;
+  categoryId: string;
   color: string;
 };
 
@@ -55,6 +57,7 @@ export default function ServiceForm({
   onSubmit,
 }: Props) {
   const [form, setForm] = useState<ServiceFormValues>(initialValues);
+  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
   const [disposableBranchId, setDisposableBranchId] = useState(initialDisposableBranchId);
   const [draftDisposables, setDraftDisposables] = useState<ServiceDisposableDraft[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -63,6 +66,23 @@ export default function ServiceForm({
   useEffect(() => {
     setForm(initialValues);
   }, [initialValues]);
+
+  useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/service-categories")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const data = await r.json();
+        const list = Array.isArray(data) ? data : data.data;
+        if (!cancelled && Array.isArray(list)) {
+          setCategories(list.map((c: { id: number; name: string }) => ({ id: c.id, name: c.name })));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setDisposableBranchId(initialDisposableBranchId);
@@ -121,6 +141,27 @@ export default function ServiceForm({
               placeholder="e.g. Consultation"
               className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
             />
+          </div>
+          <div>
+            <Label>Category</Label>
+            <select
+              value={form.categoryId}
+              onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
+              className="mt-1 h-11 w-full rounded-lg border border-gray-200 bg-transparent px-4 py-2.5 text-sm dark:border-gray-700 dark:text-white"
+            >
+              <option value="">Uncategorized</option>
+              {categories.map((c) => (
+                <option key={c.id} value={String(c.id)}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Group related services under one category.{" "}
+              <Link href="/settings/services/categories" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+                Category list
+              </Link>
+            </p>
           </div>
           <div>
             <Label>Price ($) *</Label>

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { listPaginationFromSearchParams } from "@/lib/list-pagination";
 import { normalizeServiceColor } from "@/lib/service-color";
 import { capitalizeNamePart } from "@/lib/capitalize-name";
+import { resolveServiceCategoryId } from "@/lib/service-category";
 import { userHasPermission } from "@/lib/permissions";
 import { normalizeSaleUnitKey } from "@/lib/product-sale-units";
 
@@ -24,14 +25,17 @@ export async function GET(req: NextRequest) {
       Number.isInteger(bid) && bid > 0
         ? { isActive: true as const, OR: [{ branchId: bid }, { branchId: null }] }
         : { isActive: true as const };
-    const include = { branch: { select: { id: true, name: true } } };
+    const include = {
+      branch: { select: { id: true, name: true } },
+      category: { select: { id: true, name: true } },
+    };
 
     if (paginate) {
       const [services, total] = await Promise.all([
         prisma.service.findMany({
           where,
           include,
-          orderBy: { name: "asc" },
+          orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
           skip,
           take: pageSize,
         }),
@@ -43,7 +47,7 @@ export async function GET(req: NextRequest) {
     const services = await prisma.service.findMany({
       where,
       include,
-      orderBy: { name: "asc" },
+      orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
     });
     return NextResponse.json(services);
   } catch (e) {
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest) {
     const auth = await getAuthUser(req);
     if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
-    const { name, description, price, durationMinutes, branchId, color, initialDisposable, initialDisposables } = body;
+    const { name, description, price, durationMinutes, branchId, color, categoryId, initialDisposable, initialDisposables } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
@@ -121,6 +125,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const category = await resolveServiceCategoryId(prisma, categoryId);
+    if ("error" in category) {
+      return NextResponse.json({ error: category.error }, { status: 400 });
+    }
+
     const service = await prisma.$transaction(async (tx) => {
       const created = await tx.service.create({
         data: {
@@ -130,8 +139,12 @@ export async function POST(req: NextRequest) {
           price: Math.max(0, Number(price) || 0),
           durationMinutes: durationMinutes ? Number(durationMinutes) : null,
           branchId: branchId ? Number(branchId) : null,
+          categoryId: category.id,
         },
-        include: { branch: { select: { id: true, name: true } } },
+        include: {
+          branch: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true } },
+        },
       });
       for (const d of disposableRows) {
         await tx.serviceDisposable.create({

@@ -381,9 +381,10 @@ const servicesItems: NavItem[] = [
     icon: <TaskIcon />,
     name: "Services",
     path: "/settings/services",
-    permissionAny: [PP.services_list, PP.services_new],
+    permissionAny: [PP.services_list, PP.services_new, PP.services_categories],
     subItems: [
       { name: "All services", path: "/settings/services", permission: PP.services_list },
+      { name: "Category list", path: "/settings/services/categories", permission: PP.services_categories },
       { name: "New service", path: "/settings/services/new", permission: PP.services_new },
     ],
   },

@@ -16,6 +16,7 @@ type ServiceApi = {
   price: number;
   durationMinutes: number | null;
   branch: { id: number; name: string } | null;
+  category: { id: number; name: string } | null;
 };
 
 function toFormValues(s: ServiceApi): ServiceFormValues {
@@ -25,6 +26,7 @@ function toFormValues(s: ServiceApi): ServiceFormValues {
     price: String(s.price),
     durationMinutes: s.durationMinutes != null ? String(s.durationMinutes) : "",
     branchId: s.branch ? String(s.branch.id) : "",
+    categoryId: s.category ? String(s.category.id) : "",
     color: s.color ?? "",
   };
 }

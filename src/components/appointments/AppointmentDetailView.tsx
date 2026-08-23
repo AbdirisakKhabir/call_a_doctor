@@ -26,6 +26,7 @@ import {
   isIntervalBlocked,
   normalizeClientScheduleBlock,
 } from "@/lib/appointment-schedule-block-overlap";
+import { groupServicesByCategory } from "@/lib/group-services-by-category";
 
 const REMINDER_SELECT_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "No reminder" },
@@ -69,7 +70,7 @@ export type AppointmentDetail = {
 type Props = { appointmentId: number };
 type BranchOption = { id: number; name: string };
 type DoctorOption = { id: number; name: string; specialty: string | null };
-type ServiceOption = { id: number; name: string; price: number; color: string | null };
+type ServiceOption = { id: number; name: string; price: number; color: string | null; category?: { id: number; name: string } | null };
 type EditableServiceLine = { serviceId: number; name: string; quantity: number; unitPrice: number; color: string | null };
 
 export default function AppointmentDetailView({ appointmentId }: Props) {
@@ -755,13 +756,17 @@ export default function AppointmentDetailView({ appointmentId }: Props) {
                       className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     >
                       <option value="">Add service…</option>
-                      {serviceCatalog
-                        .filter((s) => !editServices.some((x) => x.serviceId === s.id))
-                        .map((s) => (
-                          <option key={s.id} value={String(s.id)}>
-                            {s.name}
-                          </option>
-                        ))}
+                      {groupServicesByCategory(
+                        serviceCatalog.filter((s) => !editServices.some((x) => x.serviceId === s.id))
+                      ).map((group) => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.items.map((s) => (
+                            <option key={s.id} value={String(s.id)}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
                     </select>
                     {editServices.length > 0 ? (
                       <div className="mt-2 space-y-1">
