@@ -11,14 +11,17 @@ import {
   ListChecks,
   Pill,
   Plus,
+  Printer,
   User,
 } from "lucide-react";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import FormPickerQuickActionButtons from "@/components/forms/FormPickerQuickActionButtons";
 import { Modal } from "@/components/ui/modal";
+import Button from "@/components/ui/button/Button";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { groupLabOrderRowsByCategoryAndPanel } from "@/lib/lab-order-group";
+import { printClientHistory } from "@/lib/patient-history-print";
 
 type ChartPatient = {
   id: number;
@@ -332,6 +335,7 @@ export default function PatientHistoryViewPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [printing, setPrinting] = useState(false);
   const [data, setData] = useState<{
     patient: ChartPatient;
     labOrders: LabOrderRow[];
@@ -425,6 +429,35 @@ export default function PatientHistoryViewPage() {
     };
   }, [data]);
 
+
+  async function handlePrintHistory() {
+    if (!data) return;
+    setPrinting(true);
+    try {
+      await printClientHistory({
+        patient: {
+          name: data.patient.name,
+          patientCode: data.patient.patientCode,
+          phone: data.patient.phone,
+          mobile: data.patient.mobile,
+          email: data.patient.email,
+          gender: data.patient.gender,
+          dateOfBirth: data.patient.dateOfBirth,
+          notes: data.patient.notes,
+          accountBalance: data.patient.accountBalance,
+        },
+        formResponses: data.formResponses,
+        labOrders: data.labOrders,
+        prescriptions: data.prescriptions,
+        includeForms: data.canViewFormResponses,
+        includeLabs: data.canViewLabs,
+        includePrescriptions: data.canViewPrescriptions,
+      });
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   if (!canView) {
     return (
       <div>
@@ -448,6 +481,15 @@ export default function PatientHistoryViewPage() {
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="Client history" />
         <div className="flex flex-wrap gap-4">
+          <Button
+            size="sm"
+            variant="outline"
+            startIcon={<Printer className="h-4 w-4" />}
+            disabled={!data || printing}
+            onClick={() => void handlePrintHistory()}
+          >
+            {printing ? "Preparing…" : "Print"}
+          </Button>
           <Link
             href={`/patients/${patientId}/work-progress`}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"

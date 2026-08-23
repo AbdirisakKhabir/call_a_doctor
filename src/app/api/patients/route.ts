@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     const finalWhere = buildPatientListWhere(searchParams, branchFilter);
     const orderBy = balanceOnly
-      ? [{ accountBalance: "desc" as const }, { lastName: "asc" as const }, { firstName: "asc" as const }]
+      ? [{ updatedAt: "desc" as const }, { accountBalance: "desc" as const }, { lastName: "asc" as const }]
       : [{ lastName: "asc" as const }, { firstName: "asc" as const }];
 
     if (paginate) {

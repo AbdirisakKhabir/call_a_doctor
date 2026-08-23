@@ -38,6 +38,7 @@ import {
   pharmacyA5PosReceiptStyles,
   receiptHeaderPaymentContactBarsHtml,
 } from "@/lib/receipt-print-theme";
+import { printHtmlDocument } from "@/lib/print-html-document";
 
 export { getReceiptLogoAbsoluteUrl, RECEIPT_LOGO_PUBLIC_PATH, formatReceiptDateOnly };
 
@@ -75,9 +76,7 @@ export async function printSaleReceipt(payload: SaleReceiptPrintPayload): Promis
       ? `<p class="billed-extra">Payment: ${escapeHtml(String(payload.paymentMethod).trim())}</p>`
       : "";
 
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) return;
-  printWindow.document.write(`
+  printHtmlDocument(`
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -151,34 +150,7 @@ export async function printSaleReceipt(payload: SaleReceiptPrintPayload): Promis
   </div>
 </body>
 </html>
-    `);
-  printWindow.document.close();
-
-  const schedulePrint = () => {
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
-  };
-
-  if (logoDataUrl) {
-    requestAnimationFrame(() => setTimeout(schedulePrint, 150));
-    return;
-  }
-
-  const img = printWindow.document.querySelector(".masthead img");
-  if (img instanceof HTMLImageElement) {
-    const done = () => schedulePrint();
-    if (img.complete && img.naturalHeight > 0) {
-      setTimeout(schedulePrint, 150);
-      return;
-    }
-    img.onload = () => setTimeout(done, 50);
-    img.onerror = done;
-    setTimeout(done, 3000);
-    return;
-  }
-
-  schedulePrint();
+  `);
 }
 
 /** Shape returned by GET /api/pharmacy/sales/[id] (subset). */

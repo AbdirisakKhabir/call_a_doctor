@@ -7,6 +7,7 @@ import {
   receiptHeaderPaymentContactBarsHtml,
 } from "@/lib/receipt-print-theme";
 import { patientPaymentCategoryLabel } from "@/lib/patient-payment-utils";
+import { printHtmlDocument } from "@/lib/print-html-document";
 
 export type PatientPaymentReceiptPayload = {
   id: number;
@@ -108,10 +109,7 @@ export async function printPatientPaymentReceipt(payload: PatientPaymentReceiptP
       ? `<p class="billed-extra">${escapeHtml(String(payload.notes).trim())}</p>`
       : "";
 
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) return;
-
-  printWindow.document.write(`<!DOCTYPE html>
+  printHtmlDocument(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -183,31 +181,4 @@ export async function printPatientPaymentReceipt(payload: PatientPaymentReceiptP
   </div>
 </body>
 </html>`);
-  printWindow.document.close();
-
-  const schedulePrint = () => {
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
-  };
-
-  if (logoDataUrl) {
-    requestAnimationFrame(() => setTimeout(schedulePrint, 150));
-    return;
-  }
-
-  const img = printWindow.document.querySelector(".logo-box img");
-  if (img instanceof HTMLImageElement) {
-    const done = () => schedulePrint();
-    if (img.complete && img.naturalHeight > 0) {
-      setTimeout(schedulePrint, 150);
-      return;
-    }
-    img.onload = () => setTimeout(done, 50);
-    img.onerror = done;
-    setTimeout(done, 3000);
-    return;
-  }
-
-  schedulePrint();
 }

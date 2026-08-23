@@ -2,30 +2,20 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
-import Label from "@/components/form/Label";
 import PatientPaymentForm, { type PatientPaymentTarget } from "@/components/patients/PatientPaymentForm";
+import ClientsWithBalanceTable from "@/components/finance/ClientsWithBalanceTable";
 import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
-type SearchHit = {
-  id: number;
-  patientCode: string;
-  name: string;
-  phone: string | null;
-  accountBalance?: number;
-};
-
 export default function NewPaymentPage() {
   const { hasPermission } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const patientIdParam = searchParams.get("patientId");
   const canRecordPayment = hasPermission("accounts.deposit") || hasPermission("pharmacy.pos");
 
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState<SearchHit[]>([]);
-  const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<PatientPaymentTarget | null>(null);
   const [loadingPatient, setLoadingPatient] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -37,6 +27,7 @@ export default function NewPaymentPage() {
       const res = await authFetch(`/api/patients/${id}`);
       if (!res.ok) {
         setLoadError("Could not load this client. Try again.");
+        setSelected(null);
         return;
       }
       const p = (await res.json()) as {
@@ -57,40 +48,14 @@ export default function NewPaymentPage() {
   }, []);
 
   useEffect(() => {
-    if (!patientIdParam) return;
+    if (!patientIdParam) {
+      setSelected(null);
+      return;
+    }
     const id = Number(patientIdParam);
     if (!Number.isInteger(id) || id <= 0) return;
     void pickPatient(id);
   }, [patientIdParam, pickPatient]);
-
-  useEffect(() => {
-    const t = q.trim();
-    if (t.length < 2) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
-    let cancelled = false;
-    setSearching(true);
-    const timer = setTimeout(() => {
-      authFetch(`/api/patients?search=${encodeURIComponent(t)}&page=1&pageSize=20`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((body: { data?: SearchHit[] } | null) => {
-          if (cancelled) return;
-          setResults(Array.isArray(body?.data) ? body.data : []);
-        })
-        .catch(() => {
-          if (!cancelled) setResults([]);
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [q]);
 
   if (!canRecordPayment) {
     return (
@@ -118,80 +83,31 @@ export default function NewPaymentPage() {
         </div>
       </div>
 
-      {!selected ? (
-        <div className="max-w-xl rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/3">
-          {loadingPatient && patientIdParam ? (
-            <p className="text-sm text-gray-500">Loading client…</p>
-          ) : (
-            <>
-              <Label>Find client</Label>
-              <input
-                type="search"
-                autoComplete="off"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Type at least 2 characters…"
-                className="mt-1 h-11 w-full rounded-lg border border-gray-200 px-4 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              />
-              {q.trim().length > 0 && q.trim().length < 2 && (
-                <p className="mt-2 text-xs text-gray-500">Enter at least 2 characters to search.</p>
-              )}
-              {searching && <p className="mt-2 text-xs text-gray-500">Searching…</p>}
-              {loadError && <p className="mt-2 text-sm text-error-600 dark:text-error-400">{loadError}</p>}
-              {loadingPatient && !patientIdParam && (
-                <p className="mt-2 text-sm text-gray-500">Loading client…</p>
-              )}
-
-              <ul className="mt-3 max-h-80 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800">
-                {q.trim().length >= 2 && !searching && results.length === 0 && (
-                  <li className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">No clients match.</li>
-                )}
-                {results.map((p) => (
-                  <li key={p.id} className="border-b border-gray-100 last:border-0 dark:border-gray-800">
-                    <button
-                      type="button"
-                      disabled={loadingPatient}
-                      onClick={() => void pickPatient(p.id)}
-                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-gray-800/50"
-                    >
-                      <span>
-                        <span className="font-medium text-gray-900 dark:text-white">{p.name}</span>
-                        <span className="ml-2 font-mono text-xs text-gray-500">{p.patientCode}</span>
-                        {p.phone ? <span className="mt-0.5 block text-xs text-gray-500">{p.phone}</span> : null}
-                      </span>
-                      <span className="shrink-0 font-mono text-xs tabular-nums text-gray-700 dark:text-gray-300">
-                        ${(p.accountBalance ?? 0).toFixed(2)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      ) : (
+      {!patientIdParam ? (
+        <>
+          <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+            Choose a client with a balance, then Make payment to enter lab, calendar, prescription, and credit
+            amounts separately.
+          </p>
+          <ClientsWithBalanceTable />
+        </>
+      ) : loadingPatient && !selected ? (
+        <p className="text-sm text-gray-500">Loading client…</p>
+      ) : loadError ? (
+        <p className="text-sm text-error-600 dark:text-error-400">{loadError}</p>
+      ) : selected ? (
         <div className="max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/3">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Record payment</h3>
-            {patientIdParam ? (
-              <Link href="/payments" className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">
-                Back to client balances
-              </Link>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setSelected(null)}
-                className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-              >
-                Change client
-              </button>
-            )}
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Payment form</h3>
+            <Link href="/payments/new" className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">
+              Back to clients
+            </Link>
           </div>
           <PatientPaymentForm
             key={selected.id}
             patient={selected}
-            onCancel={() => setSelected(null)}
-            cancelLabel={patientIdParam ? "Back to client balances" : "Change client"}
+            onCancel={() => router.push("/payments/new")}
+            cancelLabel="Back to clients"
             onSuccess={async () => {
               const res = await authFetch(`/api/patients/${selected.id}`);
               if (res.ok) {
@@ -201,17 +117,22 @@ export default function NewPaymentPage() {
                   patientCode: string;
                   accountBalance?: number;
                 };
+                const balance = typeof p.accountBalance === "number" ? p.accountBalance : 0;
+                if (balance <= 0.009) {
+                  router.push("/payments/new");
+                  return;
+                }
                 setSelected({
                   id: p.id,
                   name: p.name,
                   patientCode: p.patientCode,
-                  accountBalance: typeof p.accountBalance === "number" ? p.accountBalance : 0,
+                  accountBalance: balance,
                 });
               }
             }}
           />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import JsBarcode from "jsbarcode";
 import { escapeHtml } from "@/lib/patient-invoice-print";
 import { showWarningAlert } from "@/lib/swal-dialogs";
+import { printHtmlDocument } from "@/lib/print-html-document";
 
 /**
  * Opens a print-friendly window with a CODE128 barcode for shelf labels / POS.
@@ -12,9 +13,6 @@ export function printProductBarcodeLabel(payload: {
 }): void {
   const code = payload.code.trim();
   if (!code) return;
-
-  const w = window.open("", "_blank");
-  if (!w) return;
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   try {
@@ -28,7 +26,6 @@ export function printProductBarcodeLabel(payload: {
       background: "#ffffff",
     });
   } catch {
-    w.close();
     void showWarningAlert("This barcode value cannot be encoded for printing.");
     return;
   }
@@ -40,7 +37,7 @@ export function printProductBarcodeLabel(payload: {
     ? `<p class="branch">${escapeHtml(payload.branchName)}</p>`
     : "";
 
-  w.document.write(`<!DOCTYPE html>
+  printHtmlDocument(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>Barcode ${codeEsc}</title>
 <style>
   @page { margin: 12mm; }
@@ -58,17 +55,4 @@ export function printProductBarcodeLabel(payload: {
   <p class="code">${codeEsc}</p>
   <p class="hint">CODE128 — scan at POS</p>
 </body></html>`);
-  w.document.close();
-  w.focus();
-
-  const runPrint = () => {
-    w.print();
-    w.addEventListener("afterprint", () => w.close(), { once: true });
-  };
-
-  if (w.document.readyState === "complete") {
-    setTimeout(runPrint, 100);
-  } else {
-    w.addEventListener("load", () => setTimeout(runPrint, 100), { once: true });
-  }
 }

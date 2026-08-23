@@ -7,6 +7,7 @@ import {
   receiptPrintMastheadExtraLinesHtml,
   receiptHeaderPaymentContactBarsHtml,
 } from "@/lib/receipt-print-theme";
+import { printHtmlDocument } from "@/lib/print-html-document";
 
 export type PurchaseReceiptPrintLine = {
   name: string;
@@ -130,9 +131,7 @@ export async function printPurchaseReceipt(payload: PurchaseReceiptPrintPayload)
       ? `<p class="notes-body">${escapeHtml(String(payload.notes).trim())}</p>`
       : `<p class="notes-body">Stock purchase receipt — retain for inventory and accounting records. For questions, use the clinic contact below.</p>`;
 
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) return;
-  printWindow.document.write(`
+  printHtmlDocument(`
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -209,31 +208,4 @@ export async function printPurchaseReceipt(payload: PurchaseReceiptPrintPayload)
 </body>
 </html>
     `);
-  printWindow.document.close();
-
-  const schedulePrint = () => {
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
-  };
-
-  if (logoDataUrl) {
-    requestAnimationFrame(() => setTimeout(schedulePrint, 150));
-    return;
-  }
-
-  const img = printWindow.document.querySelector(".logo-box img");
-  if (img instanceof HTMLImageElement) {
-    const done = () => schedulePrint();
-    if (img.complete && img.naturalHeight > 0) {
-      setTimeout(schedulePrint, 150);
-      return;
-    }
-    img.onload = () => setTimeout(done, 50);
-    img.onerror = done;
-    setTimeout(done, 3000);
-    return;
-  }
-
-  schedulePrint();
 }

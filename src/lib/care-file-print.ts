@@ -9,6 +9,7 @@ import {
   CLINIC_CALL_CENTER,
   receiptHeaderPaymentContactBarsHtml,
 } from "@/lib/receipt-print-theme";
+import { printHtmlDocument } from "@/lib/print-html-document";
 
 function patientDisplayName(p: CareFileInvoicePayload["patient"]): string {
   const a = [p.firstName, p.lastName].filter(Boolean).join(" ").trim();
@@ -21,8 +22,6 @@ export async function printCareFileInvoice(payload: CareFileInvoicePayload): Pro
   const ref = escapeHtml(payload.file.fileCode);
   const logoDataUrl = await fetchReceiptLogoAsDataUrl();
   const logoInner = receiptLogoImgHtml(logoDataUrl);
-  const w = window.open("", "_blank");
-  if (!w) return;
 
   const branchLine =
     payload.sections.appointments[0]?.branch ??
@@ -128,7 +127,7 @@ export async function printCareFileInvoice(payload: CareFileInvoicePayload): Pro
 
   const generatedDate = formatReceiptDateOnly(new Date().toISOString());
 
-  w.document.write(`<!DOCTYPE html>
+  printHtmlDocument(`<!DOCTYPE html>
 <html lang="en"><head>
   <meta charset="utf-8" />
   <title>Client invoice ${ref}</title>
@@ -226,16 +225,4 @@ export async function printCareFileInvoice(payload: CareFileInvoicePayload): Pro
     </div>
   </div>
 </body></html>`);
-
-  w.document.close();
-  w.focus();
-  const schedule = () => {
-    w.focus();
-    w.print();
-  };
-  if (logoDataUrl) {
-    requestAnimationFrame(() => setTimeout(schedule, 150));
-    return;
-  }
-  setTimeout(schedule, 200);
 }

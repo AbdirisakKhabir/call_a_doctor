@@ -3,6 +3,7 @@ import {
   RECEIPT_LOGO_PUBLIC_PATH,
 } from "@/lib/receipt-print-theme";
 import { groupLabOrderRowsByCategoryAndPanel } from "@/lib/lab-order-group";
+import { printHtmlDocument } from "@/lib/print-html-document";
 
 function escapeHtml(text: string): string {
   return text
@@ -327,9 +328,6 @@ function openLabClinicalReportWindow(
   payload: LabOrderPrintPayload,
   bodyInnerHtml: string
 ): void {
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) return;
-
   const dateStr = formatReceiptDateOnly(payload.documentDate);
   const reported =
     payload.reportedByName && payload.reportedByName.trim()
@@ -341,8 +339,7 @@ function openLabClinicalReportWindow(
       : "";
   const logoSrc = `${window.location.origin}${RECEIPT_LOGO_PUBLIC_PATH}`;
 
-  printWindow.document.open();
-  printWindow.document.write(`<!DOCTYPE html>
+  printHtmlDocument(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -389,43 +386,6 @@ function openLabClinicalReportWindow(
   </div>
 </body>
 </html>`);
-  printWindow.document.close();
-
-  const headerLogo = printWindow.document.getElementById("lab-header-logo-img") as HTMLImageElement | null;
-  const startPrint = () => {
-    printWindow.focus();
-    printWindow.addEventListener(
-      "afterprint",
-      () => {
-        printWindow.close();
-      },
-      { once: true }
-    );
-    printWindow.print();
-  };
-
-  if (headerLogo && !headerLogo.complete) {
-    const timeoutId = window.setTimeout(startPrint, 600);
-    headerLogo.addEventListener(
-      "load",
-      () => {
-        window.clearTimeout(timeoutId);
-        startPrint();
-      },
-      { once: true }
-    );
-    headerLogo.addEventListener(
-      "error",
-      () => {
-        window.clearTimeout(timeoutId);
-        startPrint();
-      },
-      { once: true }
-    );
-    return;
-  }
-
-  startPrint();
 }
 
 function openLabAnswerClinicalReportWindow(payload: LabOrderPrintPayload): void {

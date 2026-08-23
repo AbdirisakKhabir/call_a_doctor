@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
@@ -10,6 +11,7 @@ import { authFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useBranchScope } from "@/hooks/useBranchScope";
 import { printConsolidatedInvoice } from "@/lib/patient-invoice-print";
+import ClientsWithBalanceTable from "@/components/finance/ClientsWithBalanceTable";
 
 type Branch = { id: number; name: string };
 type CandidatePermissions = { prescriptions: boolean; labs: boolean; appointments: boolean };
@@ -82,6 +84,10 @@ function parseSelection(keys: Set<string>) {
 export default function PatientInvoicePage() {
   const { hasPermission } = useAuth();
   const { seesAllBranches } = useBranchScope();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const patientIdParam = searchParams.get("patientId");
+  const branchIdParam = searchParams.get("branchId");
 
   const canPatients = hasPermission("patients.view");
   const canPrescriptions = hasPermission("pharmacy.view") && hasPermission("prescriptions.view");
@@ -91,8 +97,6 @@ export default function PatientInvoicePage() {
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState("");
-  const [patientSearch, setPatientSearch] = useState("");
-  const [patientResults, setPatientResults] = useState<{ id: number; patientCode: string; name: string }[]>([]);
   const [patient, setPatient] = useState<{ id: number; patientCode: string; name: string } | null>(null);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -107,6 +111,7 @@ export default function PatientInvoicePage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const autoSelectedForRef = useRef<number | null>(null);
 
   const tabCount = Number(canPrescriptions) + Number(canLabs) + Number(canAppointments);
 
@@ -123,6 +128,7 @@ export default function PatientInvoicePage() {
     const data: Branch[] = await res.json();
     setBranches(data);
     setBranchId((prev) => {
+      if (branchIdParam && data.some((b) => String(b.id) === branchIdParam)) return branchIdParam;
       if (prev && data.some((b) => String(b.id) === prev)) return prev;
       return data[0] ? String(data[0].id) : "";
     });
@@ -132,6 +138,31 @@ export default function PatientInvoicePage() {
     if (!canUseInvoice) return;
     void loadBranches();
   }, [canUseInvoice]);
+
+  useEffect(() => {
+    const id = Number(patientIdParam);
+    if (!Number.isInteger(id) || id <= 0) {
+      setPatient(null);
+      autoSelectedForRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    authFetch(`/api/patients/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { id: number; name: string; patientCode: string; registeredBranch?: { id: number } | null } | null) => {
+        if (cancelled || !p) return;
+        setPatient({ id: p.id, name: p.name, patientCode: p.patientCode });
+        if (p.registeredBranch?.id) {
+          setBranchId((prev) => prev || String(p.registeredBranch!.id));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPatient(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [patientIdParam]);
 
   const loadCandidates = useCallback(async () => {
     if (!patient || !branchId) {
@@ -164,7 +195,15 @@ export default function PatientInvoicePage() {
       setRxRows(Array.isArray(data.prescriptions) ? data.prescriptions : []);
       setLabRows(Array.isArray(data.labOrders) ? data.labOrders : []);
       setApptRows(Array.isArray(data.appointments) ? data.appointments : []);
-      setSelected(new Set());
+      const next = new Set<string>();
+      const rxList = Array.isArray(data.prescriptions) ? data.prescriptions : [];
+      const labList = Array.isArray(data.labOrders) ? data.labOrders : [];
+      const apptList = Array.isArray(data.appointments) ? data.appointments : [];
+      for (const r of rxList) next.add(`rx:${r.id}`);
+      for (const r of labList) next.add(`lab:${r.id}`);
+      for (const r of apptList) next.add(`apt:${r.id}`);
+      setSelected(next);
+      autoSelectedForRef.current = patient.id;
     } finally {
       setLoading(false);
     }
@@ -174,20 +213,6 @@ export default function PatientInvoicePage() {
     if (!patient || !branchId) return;
     void loadCandidates();
   }, [patient, branchId, from, to, rxEmergency, loadCandidates]);
-
-  useEffect(() => {
-    if (!patientSearch.trim()) {
-      setPatientResults([]);
-      return;
-    }
-    const t = setTimeout(() => {
-      authFetch(`/api/patients/search?q=${encodeURIComponent(patientSearch)}&limit=12`)
-        .then((r) => r.ok && r.json())
-        .then((data) => setPatientResults(Array.isArray(data) ? data : []))
-        .catch(() => setPatientResults([]));
-    }, 280);
-    return () => clearTimeout(t);
-  }, [patientSearch]);
 
   function toggleKey(key: string) {
     setSelected((prev) => {
@@ -277,14 +302,9 @@ export default function PatientInvoicePage() {
     <div>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadCrumb pageTitle="Client invoice" />
-        <div className="flex gap-4 text-sm">
-          <Link href="/financial-reports" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
-            Financial reports
-          </Link>
-          <Link href="/prescriptions" className="font-medium text-brand-600 hover:underline dark:text-brand-400">
-            Prescriptions
-          </Link>
-        </div>
+        <Link href="/financial-reports" className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">
+          Financial reports
+        </Link>
       </div>
 
       {error ? (
@@ -293,6 +313,26 @@ export default function PatientInvoicePage() {
         </div>
       ) : null}
 
+      {patientIdParam && !patient ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">Loading client…</p>
+      ) : !patient ? (
+        <>
+          <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+            Latest clients with a balance. Open Invoice to load their prescriptions, lab orders, and visits, then create
+            the invoice.
+          </p>
+          <ClientsWithBalanceTable
+            heading="Clients with balance"
+            actionLabel="Invoice"
+            canAct={canUseInvoice}
+            actionHref={(p) => {
+              const q = new URLSearchParams({ patientId: String(p.id) });
+              if (p.registeredBranch?.id) q.set("branchId", String(p.registeredBranch.id));
+              return `/finance/client-invoice?${q.toString()}`;
+            }}
+          />
+        </>
+      ) : (
       <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950/30">
         <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -300,11 +340,7 @@ export default function PatientInvoicePage() {
               <Label>Branch</Label>
               <select
                 value={branchId}
-                onChange={(e) => {
-                  setBranchId(e.target.value);
-                  setPatient(null);
-                  setSelected(new Set());
-                }}
+                onChange={(e) => setBranchId(e.target.value)}
                 className="mt-1 h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm dark:border-gray-600 dark:bg-gray-900 dark:text-white"
               >
                 {branches.map((biz) => (
@@ -342,73 +378,23 @@ export default function PatientInvoicePage() {
             </div>
           </div>
 
-          <div className="relative mt-3">
-            {!patient ? (
-              <>
-                <Label>Client name or code</Label>
-                <input
-                  value={patientSearch}
-                  onChange={(e) => setPatientSearch(e.target.value)}
-                  placeholder="Type to search…"
-                  disabled={!branchId}
-                  autoComplete="off"
-                  className="mt-1 h-10 w-full max-w-xl rounded-md border border-gray-300 px-3 text-sm disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
-                />
-                {!branchId ? (
-                  <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">Choose a branch first.</p>
-                ) : null}
-                {patientSearch.trim().length >= 2 && patientResults.length === 0 ? (
-                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">No matches.</p>
-                ) : null}
-                {patientResults.length > 0 ? (
-                  <ul className="absolute left-0 top-full z-30 mt-1 max-h-48 w-full max-w-xl overflow-auto rounded-md border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                    {patientResults.map((p) => (
-                      <li key={p.id}>
-                        <button
-                          type="button"
-                          className="dropdown-list-item flex justify-between px-3 py-2"
-                          onClick={() => {
-                            setPatient(p);
-                            setPatientSearch("");
-                            setPatientResults([]);
-                          }}
-                        >
-                          <span>{p.name}</span>
-                          <span className="dropdown-list-item-muted font-mono">{p.patientCode}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </>
-            ) : (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/50">
-                <div className="text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Client · </span>
-                  <span className="font-medium text-gray-900 dark:text-white">{patient.name}</span>
-                  <span className="ml-2 font-mono text-xs text-gray-600 dark:text-gray-400">{patient.patientCode}</span>
-                </div>
-                <button
-                  type="button"
-                  className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-                  onClick={() => {
-                    setPatient(null);
-                    setSelected(new Set());
-                  }}
-                >
-                  Change client
-                </button>
-              </div>
-            )}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/50">
+            <div className="text-sm">
+              <span className="text-gray-500 dark:text-gray-400">Client · </span>
+              <span className="font-medium text-gray-900 dark:text-white">{patient.name}</span>
+              <span className="ml-2 font-mono text-xs text-gray-600 dark:text-gray-400">{patient.patientCode}</span>
+            </div>
+            <button
+              type="button"
+              className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+              onClick={() => router.push("/finance/client-invoice")}
+            >
+              Change client
+            </button>
           </div>
         </div>
 
         <div className="px-4 py-4">
-          {!patient ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Use the filters above, then search by client name or code to load prescriptions, lab orders, and visits.
-            </p>
-          ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm text-gray-500 dark:text-gray-400">Billable items for this client and branch</div>
@@ -644,7 +630,6 @@ export default function PatientInvoicePage() {
                 </label>
               ) : null}
             </>
-          )}
         </div>
 
         <div className="flex justify-end border-t border-gray-200 px-4 py-3 dark:border-gray-800">
@@ -653,10 +638,11 @@ export default function PatientInvoicePage() {
             disabled={!patient || submitting || !branchId || (!hasAnySelection && !visitFromRxOk)}
             onClick={handlePrint}
           >
-            {submitting ? "Preparing…" : "Print"}
+            {submitting ? "Preparing…" : "Create invoice"}
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }

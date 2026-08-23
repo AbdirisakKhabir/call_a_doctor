@@ -6,6 +6,7 @@ import {
   receiptHeaderPaymentContactBarsHtml,
 } from "@/lib/receipt-print-theme";
 import type { ClientInvoiceLine } from "@/lib/client-invoice-build";
+import { printHtmlDocument } from "@/lib/print-html-document";
 
 export function escapeHtml(s: string) {
   return s
@@ -46,8 +47,6 @@ export async function printConsolidatedInvoice(payload: {
   const ref = `INV-${payload.patient.patientCode}-${new Date(payload.generatedAt).getTime()}`;
   const logoDataUrl = await fetchReceiptLogoAsDataUrl();
   const logoInner = receiptLogoImgHtml(logoDataUrl);
-  const w = window.open("", "_blank");
-  if (!w) return;
 
   const rows = payload.lines
     .map(
@@ -80,7 +79,7 @@ export async function printConsolidatedInvoice(payload: {
   if (visitCount) scopeParts.push(`${visitCount} visit${visitCount === 1 ? "" : "s"}`);
   const scopeLine = scopeParts.length ? scopeParts.join(" · ") : "";
 
-  w.document.write(`<!DOCTYPE html>
+  printHtmlDocument(`<!DOCTYPE html>
 <html lang="en"><head>
   <meta charset="utf-8" />
   <title>Invoice ${escapeHtml(ref)}</title>
@@ -138,16 +137,4 @@ export async function printConsolidatedInvoice(payload: {
     <div class="summary-box">Subtotal: $${payload.subtotal.toFixed(2)}</div>
   </div>
 </body></html>`);
-
-  w.document.close();
-  w.focus();
-  const schedule = () => {
-    w.focus();
-    w.print();
-  };
-  if (logoDataUrl) {
-    requestAnimationFrame(() => setTimeout(schedule, 150));
-    return;
-  }
-  setTimeout(schedule, 200);
 }
